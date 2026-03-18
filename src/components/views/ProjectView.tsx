@@ -5,18 +5,14 @@ import {
   LayoutList, 
   Kanban, 
   Plus, 
-  Filter,
   Search,
-  MoreVertical,
   MoreHorizontal
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { TaskList } from '../tasks/TaskList';
 import { KanbanBoard } from '../tasks/KanbanBoard';
 import { TaskDetailPanel } from '../tasks/TaskDetailPanel';
-import { Task } from '@/lib/types';
 import { 
   Dialog, 
   DialogContent, 
@@ -32,16 +28,14 @@ export function ProjectView({ store }: { store: any }) {
   const [view, setView] = useState<'list' | 'kanban'>('list');
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [isCreateTaskOpen, setIsCreateTaskOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
 
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskDesc, setNewTaskDesc] = useState('');
 
   const activeProject = store.activeProject;
   
-  const filteredTasks = store.projectTasks.filter((t: Task) => 
-    t.title.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Use globally filtered tasks from the store
+  const filteredTasks = store.projectTasks;
 
   const handleCreateTask = () => {
     if (newTaskTitle && activeProject) {
@@ -79,16 +73,6 @@ export function ProjectView({ store }: { store: any }) {
         </div>
 
         <div className="flex items-center gap-2">
-          <div className="relative w-48 mr-2">
-            <Search className="absolute left-2.5 top-2 h-3 w-3 text-muted-foreground" />
-            <Input 
-              placeholder="Filter by title..." 
-              className="pl-8 h-8 text-xs bg-card"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
-          
           <Dialog open={isCreateTaskOpen} onOpenChange={setIsCreateTaskOpen}>
             <DialogTrigger asChild>
               <Button size="sm" className="gap-2 h-8">

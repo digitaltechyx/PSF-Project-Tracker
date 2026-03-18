@@ -93,18 +93,18 @@ export function NexusShell() {
     <div className="flex h-screen w-full bg-background overflow-hidden">
       {/* Sidebar */}
       <aside className="w-64 border-r bg-card flex flex-col">
-        <div className="p-4 border-b">
+        <div className="p-4 border-b flex items-center justify-between gap-2">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="w-full justify-between hover:bg-muted font-semibold px-2">
+              <Button variant="ghost" className="flex-1 justify-between hover:bg-muted font-semibold px-2 overflow-hidden">
                 <div className="flex items-center gap-2 overflow-hidden">
                   <div 
-                    className="w-6 h-6 rounded flex-shrink-0" 
+                    className="w-5 h-5 rounded flex-shrink-0" 
                     style={{ backgroundColor: store.activeWorkspace.color }}
                   />
                   <span className="truncate">{store.activeWorkspace.name}</span>
                 </div>
-                <ChevronDown className="h-4 w-4 opacity-50" />
+                <ChevronDown className="h-4 w-4 opacity-50 flex-shrink-0" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-56">
@@ -122,21 +122,16 @@ export function NexusShell() {
                   </div>
                 </DropdownMenuItem>
               ))}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem 
-                className="text-primary font-medium cursor-pointer"
-                onSelect={(e) => {
-                  // CRITICAL: We prevent default and use a timeout to let the menu close.
-                  // This prevents the body from becoming locked/unclickable due to Radix focus fighting.
-                  e.preventDefault();
-                  setTimeout(() => setIsWsDialogOpen(true), 150);
-                }}
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Create Workspace
-              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            className="h-8 w-8 text-muted-foreground hover:text-primary flex-shrink-0"
+            onClick={() => setIsWsDialogOpen(true)}
+          >
+            <Plus className="h-4 w-4" />
+          </Button>
         </div>
 
         <ScrollArea className="flex-1 px-3 py-4">
@@ -259,7 +254,7 @@ export function NexusShell() {
         </main>
       </div>
 
-      {/* Global Dialogs - Kept outside Sidebar for stability */}
+      {/* Global Dialogs */}
       <Dialog open={isWsDialogOpen} onOpenChange={setIsWsDialogOpen}>
         <DialogContent>
           <DialogHeader>

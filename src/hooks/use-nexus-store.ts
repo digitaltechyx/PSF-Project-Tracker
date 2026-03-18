@@ -76,7 +76,7 @@ export function useNexusStore() {
 
   const createWorkspace = useCallback((name: string, description: string) => {
     const newWorkspace: Workspace = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: Math.random().toString(36).substring(2, 11),
       name,
       description,
       color: '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0'),
@@ -92,7 +92,7 @@ export function useNexusStore() {
 
   const createProject = useCallback((name: string, description: string) => {
     const newProject: Project = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: Math.random().toString(36).substring(2, 11),
       workspaceId: activeWorkspaceId,
       name,
       description,
@@ -116,7 +116,7 @@ export function useNexusStore() {
 
   const createTask = useCallback((projectId: string, title: string, description: string) => {
     const newTask: Task = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: Math.random().toString(36).substring(2, 11),
       workspaceId: activeWorkspaceId,
       projectId,
       title,
@@ -140,9 +140,9 @@ export function useNexusStore() {
 
   const addMockMember = useCallback((name: string, email: string) => {
     const newMember: WorkspaceMember = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: Math.random().toString(36).substring(2, 11),
       workspaceId: activeWorkspaceId,
-      userId: Math.random().toString(36).substr(2, 9),
+      userId: Math.random().toString(36).substring(2, 11),
       displayName: name,
       email,
       avatarUrl: `https://picsum.photos/seed/${name}/100/100`,
