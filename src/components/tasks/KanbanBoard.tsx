@@ -31,10 +31,60 @@ export function KanbanBoard({
   updateTask: any
 }) {
   const [mounted, setMounted] = useState(false);
+  const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
+  const [activeColumn, setActiveColumn] = useState<Status | null>(null);
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  const handleDragStart = (e: React.DragEvent, id: string) => {
+    setDraggedTaskId(id);
+    e.dataTransfer.setData('taskId', id);
+    e.dataTransfer.effectAllowed = 'move';
+    
+    // Create a slight delay to allow the ghost image to be created before we change opacity
+    setTimeout(() => {
+      if (document.getElementById(`task-card-${id}`)) {
+        document.getElementById(`task-card-${id}`)?.classList.add('opacity-40');
+      }
+    }, 0);
+  };
+
+  const handleDragEnd = (id: string) => {
+    setDraggedTaskId(null);
+    setActiveColumn(null);
+    if (document.getElementById(`task-card-${id}`)) {
+      document.getElementById(`task-card-${id}`)?.classList.remove('opacity-40');
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent, status: Status) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (activeColumn !== status) setActiveColumn(status);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX;
+    const y = e.clientY;
+    
+    // Only clear if the mouse actually left the column boundaries
+    if (x <= rect.left || x >= rect.right || y <= rect.top || y >= rect.bottom) {
+      setActiveColumn(null);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent, status: Status) => {
+    e.preventDefault();
+    const taskId = e.dataTransfer.getData('taskId') || draggedTaskId;
+    if (taskId) {
+      updateTask(taskId, { status });
+    }
+    setDraggedTaskId(null);
+    setActiveColumn(null);
+  };
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-6 h-full min-h-[500px]">
@@ -42,7 +92,13 @@ export function KanbanBoard({
         const columnTasks = tasks.filter(t => t.status === col.id);
         
         return (
-          <div key={col.id} className="flex flex-col gap-4">
+          <div 
+            key={col.id} 
+            className="flex flex-col gap-4"
+            onDragOver={(e) => handleDragOver(e, col.id)}
+            onDragLeave={handleDragLeave}
+            onDrop={(e) => handleDrop(e, col.id)}
+          >
             <div className="flex items-center justify-between px-2">
               <div className="flex items-center gap-2">
                 <h3 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground flex items-center gap-2">
@@ -57,13 +113,22 @@ export function KanbanBoard({
               </div>
             </div>
 
-            <div className="flex-1 space-y-3 bg-muted/30 p-2 rounded-xl min-h-[150px]">
+            <div className={cn(
+              "flex-1 space-y-3 bg-muted/30 p-2 rounded-xl min-h-[200px] transition-all duration-200 border-2 border-transparent",
+              activeColumn === col.id && "bg-muted/60 border-primary/20 scale-[1.01] shadow-inner",
+              draggedTaskId && activeColumn !== col.id && "opacity-80"
+            )}>
               {columnTasks.map(task => (
                 <Card 
+                  id={`task-card-${task.id}`}
                   key={task.id} 
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, task.id)}
+                  onDragEnd={() => handleDragEnd(task.id)}
                   className={cn(
-                    "cursor-pointer hover:shadow-md transition-shadow border-none border-l-4 shadow-sm",
-                    priorityBorder[task.priority]
+                    "cursor-grab active:cursor-grabbing hover:shadow-md transition-all border-none border-l-4 shadow-sm bg-card",
+                    priorityBorder[task.priority],
+                    draggedTaskId === task.id && "grayscale scale-95"
                   )}
                   onClick={() => onTaskClick(task.id)}
                 >
