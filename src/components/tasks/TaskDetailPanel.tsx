@@ -26,7 +26,8 @@ import {
   Tag as TagIcon, 
   Trash2, 
   X,
-  Loader2
+  Loader2,
+  Plus
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { generateTaskDescription } from '@/ai/flows/ai-task-description-generation';

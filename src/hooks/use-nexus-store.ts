@@ -124,6 +124,7 @@ export function useNexusStore() {
     activeWorkspace,
     workspaceProjects,
     activeProject,
+    tasks,
     workspaceTasks,
     projectTasks,
     workspaceMembers,
