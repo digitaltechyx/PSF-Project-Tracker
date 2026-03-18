@@ -90,8 +90,9 @@ export function useNexusStore() {
   }, []);
 
   const createWorkspace = useCallback((name: string, description: string) => {
+    const newWsId = Math.random().toString(36).substring(2, 11);
     const newWorkspace: Workspace = {
-      id: Math.random().toString(36).substring(2, 11),
+      id: newWsId,
       name,
       description,
       color: '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0'),
@@ -99,8 +100,20 @@ export function useNexusStore() {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
+
+    // Automatically add the creator as the first member
+    const ownerMember: WorkspaceMember = {
+      id: Math.random().toString(36).substring(2, 11),
+      workspaceId: newWsId,
+      userId: currentUser.id,
+      displayName: currentUser.name,
+      email: currentUser.email,
+      avatarUrl: currentUser.avatarUrl,
+    };
+
     setWorkspaces(prev => [...prev, newWorkspace]);
-    setActiveWorkspaceId(newWorkspace.id);
+    setMembers(prev => [...prev, ownerMember]);
+    setActiveWorkspaceId(newWsId);
     setActiveProjectId(null);
     return newWorkspace;
   }, []);
