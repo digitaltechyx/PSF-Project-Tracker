@@ -45,7 +45,7 @@ export function TaskDetailPanel({
   onClose: () => void,
   store: any
 }) {
-  const task = store.tasks.find((t: any) => t.id === taskId);
+  const task = store.tasks?.find((t: any) => t.id === taskId);
   const { toast } = useToast();
   const [isGeneratingDesc, setIsGeneratingDesc] = useState(false);
   const [isSuggestingAttrs, setIsSuggestingAttrs] = useState(false);
@@ -93,9 +93,11 @@ export function TaskDetailPanel({
       <SheetContent className="w-full sm:max-w-xl overflow-y-auto">
         <SheetHeader className="space-y-4 pb-6 border-b">
           <div className="flex justify-between items-start pt-2">
-            <Badge variant="outline" className="uppercase tracking-widest text-[10px]">
-              Task Detail
-            </Badge>
+            <SheetTitle>
+              <Badge variant="outline" className="uppercase tracking-widest text-[10px]">
+                Task Detail
+              </Badge>
+            </SheetTitle>
             <div className="flex gap-2">
               <Button variant="ghost" size="icon" onClick={handleDelete} className="text-destructive h-8 w-8">
                 <Trash2 className="h-4 w-4" />
@@ -110,7 +112,6 @@ export function TaskDetailPanel({
         </SheetHeader>
 
         <div className="space-y-8 py-6">
-          {/* Attributes Grid */}
           <div className="grid grid-cols-2 gap-6">
             <div className="space-y-2">
               <Label className="text-xs text-muted-foreground uppercase font-bold tracking-tight">Status</Label>
