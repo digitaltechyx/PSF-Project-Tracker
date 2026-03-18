@@ -1,4 +1,4 @@
-import { User, Workspace, WorkspaceMember, Project, Task, Status, Priority, Comment } from './types';
+import { User, Workspace, WorkspaceMember, Project, Task, Status, Priority, Comment, Notification } from './types';
 
 export const currentUser: User = {
   id: 'u1',
@@ -122,4 +122,44 @@ export const mockComments: Comment[] = [
     body: 'Agreed. Let\'s prototype that first.',
     createdAt: '2025-01-11T14:30:00.000Z',
   }
+];
+
+export const mockNotifications: Notification[] = [
+  {
+    id: 'n1',
+    workspaceId: 'w1',
+    type: 'comment',
+    user: { name: 'Jordan Smith', avatar: 'https://picsum.photos/seed/u2/100/100' },
+    message: 'commented on "Mobile App Redesign"',
+    content: 'The new color palette looks great! Can we check the contrast for accessibility?',
+    time: '2 hours ago',
+    read: false,
+  },
+  {
+    id: 'n2',
+    workspaceId: 'w1',
+    type: 'status',
+    user: { name: 'Sarah Chen', avatar: 'https://picsum.photos/seed/u3/100/100' },
+    message: 'completed "User testing setup"',
+    time: '5 hours ago',
+    read: true,
+  },
+  {
+    id: 'n3',
+    workspaceId: 'w2',
+    type: 'assignment',
+    user: { name: 'Alex Rivera', avatar: 'https://picsum.photos/seed/u1/100/100' },
+    message: 'assigned you to "Finalize navigation patterns"',
+    time: 'Yesterday',
+    read: true,
+  },
+  {
+    id: 'n4',
+    workspaceId: 'w2',
+    type: 'invite',
+    user: { name: 'Jordan Smith', avatar: 'https://picsum.photos/seed/u2/100/100' },
+    message: 'added you to "Marketing Ops" workspace',
+    time: '2 days ago',
+    read: true,
+  },
 ];

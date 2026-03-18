@@ -59,3 +59,17 @@ export interface Comment {
   body: string;
   createdAt: string;
 }
+
+export interface Notification {
+  id: string;
+  workspaceId: string;
+  type: 'comment' | 'status' | 'assignment' | 'invite';
+  user: {
+    name: string;
+    avatar: string;
+  };
+  message: string;
+  content?: string;
+  time: string;
+  read: boolean;
+}

@@ -7,9 +7,10 @@ import {
   mockTasks, 
   mockWorkspaceMembers, 
   mockComments,
+  mockNotifications,
   currentUser 
 } from '@/lib/mock-data';
-import { Workspace, Project, Task, WorkspaceMember, Comment } from '@/lib/types';
+import { Workspace, Project, Task, WorkspaceMember, Comment, Notification } from '@/lib/types';
 
 export function useNexusStore() {
   const [workspaces, setWorkspaces] = useState<Workspace[]>(mockWorkspaces);
@@ -18,6 +19,7 @@ export function useNexusStore() {
   const [tasks, setTasks] = useState<Task[]>(mockTasks);
   const [members, setMembers] = useState<WorkspaceMember[]>(mockWorkspaceMembers);
   const [comments, setComments] = useState<Comment[]>(mockComments);
+  const [notifications, setNotifications] = useState<Notification[]>(mockNotifications);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
 
@@ -57,13 +59,18 @@ export function useNexusStore() {
   }, [tasks, activeProjectId, globalSearchQuery, filterTasks]);
 
   const myTasks = useMemo(() => {
-    const mTasks = tasks.filter(t => t.assigneeUserId === currentUser.id);
+    const mTasks = tasks.filter(t => t.assigneeUserId === currentUser.id && t.workspaceId === activeWorkspaceId);
     return filterTasks(mTasks, globalSearchQuery);
-  }, [tasks, globalSearchQuery, filterTasks]);
+  }, [tasks, activeWorkspaceId, globalSearchQuery, filterTasks]);
 
   const workspaceMembers = useMemo(() => 
     members.filter(m => m.workspaceId === activeWorkspaceId),
     [members, activeWorkspaceId]
+  );
+
+  const workspaceNotifications = useMemo(() => 
+    notifications.filter(n => n.workspaceId === activeWorkspaceId),
+    [notifications, activeWorkspaceId]
   );
 
   const getTaskComments = useCallback((taskId: string) => {
@@ -183,6 +190,7 @@ export function useNexusStore() {
     projectTasks,
     myTasks,
     workspaceMembers,
+    workspaceNotifications,
     globalSearchQuery,
     setGlobalSearchQuery,
     switchWorkspace,

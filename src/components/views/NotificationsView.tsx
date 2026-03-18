@@ -1,52 +1,21 @@
 "use client";
 
 import React from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Bell, MessageSquare, CheckCircle2, Clock, UserPlus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-const mockNotifications = [
-  {
-    id: 'n1',
-    type: 'comment',
-    user: { name: 'Jordan Smith', avatar: 'https://picsum.photos/seed/u2/100/100' },
-    message: 'commented on "Mobile App Redesign"',
-    content: 'The new color palette looks great! Can we check the contrast for accessibility?',
-    time: '2 hours ago',
-    read: false,
-    icon: <MessageSquare className="h-4 w-4 text-blue-500" />,
-  },
-  {
-    id: 'n2',
-    type: 'status',
-    user: { name: 'Sarah Chen', avatar: 'https://picsum.photos/seed/u3/100/100' },
-    message: 'completed "User testing setup"',
-    time: '5 hours ago',
-    read: true,
-    icon: <CheckCircle2 className="h-4 w-4 text-green-500" />,
-  },
-  {
-    id: 'n3',
-    type: 'assignment',
-    user: { name: 'Alex Rivera', avatar: 'https://picsum.photos/seed/u1/100/100' },
-    message: 'assigned you to "Finalize navigation patterns"',
-    time: 'Yesterday',
-    read: true,
-    icon: <Clock className="h-4 w-4 text-orange-500" />,
-  },
-  {
-    id: 'n4',
-    type: 'invite',
-    user: { name: 'Jordan Smith', avatar: 'https://picsum.photos/seed/u2/100/100' },
-    message: 'added you to "Marketing Ops" workspace',
-    time: '2 days ago',
-    read: true,
-    icon: <UserPlus className="h-4 w-4 text-purple-500" />,
-  },
-];
+const iconMap = {
+  comment: <MessageSquare className="h-4 w-4 text-blue-500" />,
+  status: <CheckCircle2 className="h-4 w-4 text-green-500" />,
+  assignment: <Clock className="h-4 w-4 text-orange-500" />,
+  invite: <UserPlus className="h-4 w-4 text-purple-500" />,
+};
 
 export function NotificationsView({ store }: { store: any }) {
+  const notifications = store.workspaceNotifications;
+
   return (
     <div className="space-y-6 max-w-3xl mx-auto animate-in fade-in slide-in-from-bottom-2 duration-500">
       <div className="flex items-center justify-between">
@@ -61,7 +30,7 @@ export function NotificationsView({ store }: { store: any }) {
       <Card className="border-none shadow-sm overflow-hidden">
         <CardContent className="p-0">
           <div className="divide-y">
-            {mockNotifications.map((notif) => (
+            {notifications.map((notif: any) => (
               <div 
                 key={notif.id} 
                 className={cn(
@@ -88,7 +57,7 @@ export function NotificationsView({ store }: { store: any }) {
                   
                   <div className="flex items-center gap-4 mt-2">
                     <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                      {notif.icon}
+                      {iconMap[notif.type as keyof typeof iconMap]}
                       <span className="capitalize">{notif.type}</span>
                     </div>
                     <span className="text-xs text-muted-foreground/60">• {notif.time}</span>
@@ -101,6 +70,12 @@ export function NotificationsView({ store }: { store: any }) {
               </div>
             ))}
           </div>
+          {notifications.length === 0 && (
+            <div className="p-12 text-center text-muted-foreground">
+              <Bell className="h-12 w-12 mx-auto mb-4 opacity-20" />
+              <p>All caught up! No notifications for this workspace.</p>
+            </div>
+          )}
         </CardContent>
       </Card>
       
