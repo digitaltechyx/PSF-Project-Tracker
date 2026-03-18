@@ -1,3 +1,11 @@
+"use client";
+
+import { NexusShell } from '@/components/NexusShell';
+
 export default function Home() {
-  return <></>;
+  return (
+    <main className="min-h-screen">
+      <NexusShell />
+    </main>
+  );
 }
