@@ -24,6 +24,16 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { 
+  Dialog, 
+  DialogContent, 
+  DialogHeader, 
+  DialogTitle, 
+  DialogFooter,
+  DialogTrigger
+} from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { DashboardView } from './views/DashboardView';
 import { ProjectView } from './views/ProjectView';
 import { MembersView } from './views/MembersView';
@@ -35,6 +45,14 @@ type ViewType = 'dashboard' | 'project' | 'members' | 'my-tasks' | 'notification
 export function NexusShell() {
   const store = useNexusStore();
   const [currentView, setCurrentView] = useState<ViewType>('dashboard');
+  
+  // Dialog States
+  const [isWsDialogOpen, setIsWsDialogOpen] = useState(false);
+  const [isProjDialogOpen, setIsProjDialogOpen] = useState(false);
+  const [newWsName, setNewWsName] = useState('');
+  const [newWsDesc, setNewWsDesc] = useState('');
+  const [newProjName, setNewProjName] = useState('');
+  const [newProjDesc, setNewProjDesc] = useState('');
 
   const handleProjectClick = (id: string) => {
     store.selectProject(id);
@@ -44,6 +62,24 @@ export function NexusShell() {
   const handleNavClick = (view: ViewType) => {
     if (view !== 'project') store.selectProject(null);
     setCurrentView(view);
+  };
+
+  const handleCreateWorkspace = () => {
+    if (newWsName) {
+      store.createWorkspace(newWsName, newWsDesc);
+      setNewWsName('');
+      setNewWsDesc('');
+      setIsWsDialogOpen(false);
+    }
+  };
+
+  const handleCreateProject = () => {
+    if (newProjName) {
+      store.createProject(newProjName, newProjDesc);
+      setNewProjName('');
+      setNewProjDesc('');
+      setIsProjDialogOpen(false);
+    }
   };
 
   return (
@@ -80,7 +116,10 @@ export function NexusShell() {
                 </DropdownMenuItem>
               ))}
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="text-primary font-medium">
+              <DropdownMenuItem 
+                className="text-primary font-medium cursor-pointer"
+                onSelect={() => setIsWsDialogOpen(true)}
+              >
                 <Plus className="h-4 w-4 mr-2" />
                 Create Workspace
               </DropdownMenuItem>
@@ -127,7 +166,12 @@ export function NexusShell() {
           <div className="space-y-4">
             <div className="flex items-center justify-between px-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
               Projects
-              <Button variant="ghost" size="icon" className="h-5 w-5 hover:bg-muted" onClick={() => {}}>
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                className="h-5 w-5 hover:bg-muted" 
+                onClick={() => setIsProjDialogOpen(true)}
+              >
                 <Plus className="h-3 w-3" />
               </Button>
             </div>
@@ -181,7 +225,12 @@ export function NexusShell() {
           <div className="flex items-center gap-4">
             <div className="relative w-64">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input placeholder="Search tasks..." className="pl-9 h-9 bg-muted/50 border-none focus-visible:ring-1" />
+              <Input 
+                placeholder="Search tasks..." 
+                className="pl-9 h-9 bg-muted/50 border-none focus-visible:ring-1" 
+                value={store.globalSearchQuery}
+                onChange={(e) => store.setGlobalSearchQuery(e.target.value)}
+              />
             </div>
             <Button variant="ghost" size="icon" className="h-9 w-9">
               <Settings className="h-5 w-5" />
@@ -197,6 +246,67 @@ export function NexusShell() {
           {currentView === 'notifications' && <NotificationsView store={store} />}
         </main>
       </div>
+
+      {/* Dialogs */}
+      <Dialog open={isWsDialogOpen} onOpenChange={setIsWsDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create New Workspace</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Workspace Name</Label>
+              <Input 
+                placeholder="e.g. Design Team" 
+                value={newWsName}
+                onChange={(e) => setNewWsName(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Description</Label>
+              <Textarea 
+                placeholder="What is this workspace for?" 
+                value={newWsDesc}
+                onChange={(e) => setNewWsDesc(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsWsDialogOpen(false)}>Cancel</Button>
+            <Button onClick={handleCreateWorkspace}>Create Workspace</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isProjDialogOpen} onOpenChange={setIsProjDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create New Project</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Project Name</Label>
+              <Input 
+                placeholder="e.g. Website Launch" 
+                value={newProjName}
+                onChange={(e) => setNewProjName(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Description</Label>
+              <Textarea 
+                placeholder="Project goals and scope..." 
+                value={newProjDesc}
+                onChange={(e) => setNewProjDesc(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsProjDialogOpen(false)}>Cancel</Button>
+            <Button onClick={handleCreateProject}>Create Project</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
