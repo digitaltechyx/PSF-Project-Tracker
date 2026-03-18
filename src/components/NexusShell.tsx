@@ -126,8 +126,10 @@ export function NexusShell() {
               <DropdownMenuItem 
                 className="text-primary font-medium cursor-pointer"
                 onSelect={(e) => {
-                  e.preventDefault(); // Critical to prevent focus lock glitch
-                  setIsWsDialogOpen(true);
+                  // CRITICAL: We prevent default and use a timeout to let the menu close.
+                  // This prevents the body from becoming locked/unclickable due to Radix focus fighting.
+                  e.preventDefault();
+                  setTimeout(() => setIsWsDialogOpen(true), 150);
                 }}
               >
                 <Plus className="h-4 w-4 mr-2" />
@@ -257,7 +259,7 @@ export function NexusShell() {
         </main>
       </div>
 
-      {/* Global Dialogs */}
+      {/* Global Dialogs - Kept outside Sidebar for stability */}
       <Dialog open={isWsDialogOpen} onOpenChange={setIsWsDialogOpen}>
         <DialogContent>
           <DialogHeader>
