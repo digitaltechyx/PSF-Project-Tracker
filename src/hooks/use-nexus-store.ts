@@ -83,6 +83,7 @@ export function useNexusStore() {
   const switchWorkspace = useCallback((id: string) => {
     setActiveWorkspaceId(id);
     setActiveProjectId(null); 
+    setGlobalSearchQuery('');
   }, []);
 
   const selectProject = useCallback((id: string | null) => {
@@ -101,7 +102,6 @@ export function useNexusStore() {
       updatedAt: new Date().toISOString(),
     };
 
-    // Automatically add the creator as the first member
     const ownerMember: WorkspaceMember = {
       id: Math.random().toString(36).substring(2, 11),
       workspaceId: newWsId,
@@ -181,6 +181,10 @@ export function useNexusStore() {
     setMembers(prev => [...prev, newMember]);
   }, [activeWorkspaceId]);
 
+  const removeMember = useCallback((memberId: string) => {
+    setMembers(prev => prev.filter(m => m.id !== memberId));
+  }, []);
+
   const addComment = useCallback((taskId: string, body: string) => {
     const newComment: Comment = {
       id: Math.random().toString(36).substring(2, 11),
@@ -216,6 +220,7 @@ export function useNexusStore() {
     updateTask,
     deleteTask,
     addMockMember,
+    removeMember,
     getTaskComments,
     addComment,
   };

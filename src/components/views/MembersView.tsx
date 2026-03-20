@@ -1,11 +1,11 @@
 "use client";
 
 import React, { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Plus, Mail, Shield, MoreVertical } from 'lucide-react';
+import { Plus, Mail, Shield, MoreVertical, Trash2 } from 'lucide-react';
 import { 
   Dialog, 
   DialogContent, 
@@ -15,9 +15,15 @@ import {
   DialogFooter
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 export function MembersView({ store }: { store: any }) {
-  const { workspaceMembers, addMockMember } = store;
+  const { workspaceMembers, addMockMember, removeMember, currentUser } = store;
   const [isInviteOpen, setIsInviteOpen] = useState(false);
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
@@ -93,9 +99,23 @@ export function MembersView({ store }: { store: any }) {
                     <Shield className="h-3 w-3" />
                     Member
                   </div>
-                  <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
-                    <MoreVertical className="h-4 w-4" />
-                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
+                        <MoreVertical className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem 
+                        className="text-destructive focus:text-destructive gap-2"
+                        disabled={member.userId === currentUser.id}
+                        onClick={() => removeMember(member.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        Remove Member
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
               </div>
             ))}
