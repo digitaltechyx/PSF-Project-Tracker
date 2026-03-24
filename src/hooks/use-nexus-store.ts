@@ -15,8 +15,7 @@ import {
   query, 
   where, 
   doc, 
-  collectionGroup,
-  orderBy
+  collectionGroup
 } from 'firebase/firestore';
 import { Workspace, Project, Task, WorkspaceMember, Notification } from '@/lib/types';
 
@@ -140,9 +139,9 @@ export function useNexusStore() {
   const createWorkspace = useCallback((name: string, description: string) => {
     if (!db || !user) return;
     const wsRef = doc(collection(db, 'workspaces'));
-    const memberRoles = { [user.uid]: 'owner' };
+    const memberRoles = { [user.uid]: 'owner' as const };
     
-    const wsData = {
+    const wsData: Workspace = {
       id: wsRef.id,
       name,
       description,
@@ -172,14 +171,15 @@ export function useNexusStore() {
   const createProject = useCallback((name: string, description: string) => {
     if (!db || !activeWorkspace || !user) return;
     const projRef = doc(collection(db, 'workspaces', activeWorkspace.id, 'projects'));
+    const memberRoles = activeWorkspace.memberRoles || { [user.uid]: 'owner' as const };
     
-    const projData = {
+    const projData: Project = {
       id: projRef.id,
       workspaceId: activeWorkspace.id,
       name,
       description,
       color: '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0'),
-      memberRoles: (activeWorkspace as any).memberRoles || { [user.uid]: 'owner' },
+      memberRoles,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -190,10 +190,9 @@ export function useNexusStore() {
   const createTask = useCallback((projectId: string, taskData: Partial<Task>) => {
     if (!db || !activeWorkspace || !user) return;
     const taskRef = doc(collection(db, 'workspaces', activeWorkspace.id, 'projects', projectId, 'tasks'));
-    const memberRoles = (activeWorkspace as any).memberRoles || { [user.uid]: 'owner' };
+    const memberRoles = activeWorkspace.memberRoles || { [user.uid]: 'owner' as const };
     
-    const newTask = {
-      ...taskData,
+    const newTask: Task = {
       id: taskRef.id,
       workspaceId: activeWorkspace.id,
       projectId,
@@ -201,8 +200,8 @@ export function useNexusStore() {
       description: taskData.description || '',
       status: taskData.status || 'todo',
       priority: taskData.priority || 'medium',
-      dueDate: taskData.dueDate || null,
-      assigneeUserId: taskData.assigneeUserId || null,
+      dueDate: taskData.dueDate || undefined,
+      assigneeUserId: taskData.assigneeUserId || undefined,
       tags: taskData.tags || [],
       memberRoles,
       createdAt: new Date().toISOString(),
@@ -231,7 +230,7 @@ export function useNexusStore() {
     if (!db || !activeWorkspace || !user) return;
     const tempId = Math.random().toString(36).substring(7);
     const memberRef = doc(db, 'workspaces', activeWorkspace.id, 'members', tempId);
-    const memberRoles = (activeWorkspace as any).memberRoles || { [user.uid]: 'owner' };
+    const memberRoles = activeWorkspace.memberRoles || { [user.uid]: 'owner' as const };
     
     setDocumentNonBlocking(memberRef, {
       id: tempId,
@@ -254,7 +253,7 @@ export function useNexusStore() {
     const task = tasks.find(t => t.id === taskId);
     if (!db || !activeWorkspace || !task || !user) return;
     const commentRef = doc(collection(db, 'workspaces', activeWorkspace.id, 'projects', task.projectId, 'tasks', taskId, 'comments'));
-    const memberRoles = (activeWorkspace as any).memberRoles || { [user.uid]: 'owner' };
+    const memberRoles = activeWorkspace.memberRoles || { [user.uid]: 'owner' as const };
     
     setDocumentNonBlocking(commentRef, {
       id: commentRef.id,
@@ -269,14 +268,14 @@ export function useNexusStore() {
   return {
     currentUser: user ? { id: user.uid, name: user.displayName || 'User', email: user.email || '', avatarUrl: user.photoURL || '' } : null,
     workspaces,
-    activeWorkspace: activeWorkspace || { name: 'Loading...', color: '#ccc' },
+    activeWorkspace: activeWorkspace || { name: 'Loading...', color: '#ccc', memberRoles: {} },
     workspaceProjects: projects,
     activeProject,
     tasks,
     workspaceTasks,
     projectTasks,
     myTasks,
-    workspaceMembers,
+    workspaceMembers: members,
     workspaceNotifications,
     globalSearchQuery,
     setGlobalSearchQuery,

@@ -65,26 +65,26 @@ service cloud.firestore {
 
       match /members/{memberUserId} {
         allow get, list: if isSignedIn() && (isMember(resource.data) || isOwner(memberUserId));
-        allow create: if isAdmin(request.resource.data);
+        allow create: if isSignedIn() && isAdmin(request.resource.data);
         allow update: if resource != null && (isAdmin(resource.data) || isOwner(memberUserId));
         allow delete: if resource != null && (isAdmin(resource.data) || isOwner(memberUserId));
       }
 
       match /projects/{projectId} {
         allow get, list: if isMember(resource.data);
-        allow create: if isAdmin(request.resource.data);
+        allow create: if isSignedIn() && isAdmin(request.resource.data);
         allow update: if resource != null && isAdmin(resource.data);
         allow delete: if resource != null && isAdmin(resource.data);
 
         match /tasks/{taskId} {
           allow get, list: if isMember(resource.data);
-          allow create: if isMember(request.resource.data);
+          allow create: if isSignedIn() && isMember(request.resource.data);
           allow update: if resource != null && isMember(resource.data);
           allow delete: if resource != null && isAdmin(resource.data);
 
           match /comments/{commentId} {
             allow get, list: if isMember(resource.data);
-            allow create: if isMember(request.resource.data) && request.resource.data.authorUserId == request.auth.uid;
+            allow create: if isSignedIn() && isMember(request.resource.data) && request.resource.data.authorUserId == request.auth.uid;
             allow update: if resource != null && (isOwner(resource.data.authorUserId) || isAdmin(resource.data)) && request.resource.data.authorUserId == resource.data.authorUserId;
             allow delete: if resource != null && (isOwner(resource.data.authorUserId) || isAdmin(resource.data));
           }

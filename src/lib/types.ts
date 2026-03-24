@@ -14,6 +14,7 @@ export interface Workspace {
   description: string;
   color: string;
   ownerUserId: string;
+  memberRoles: Record<string, 'owner' | 'admin' | 'member'>;
   createdAt: string;
   updatedAt: string;
 }
@@ -33,6 +34,7 @@ export interface Project {
   name: string;
   description: string;
   color: string;
+  memberRoles: Record<string, 'owner' | 'admin' | 'member'>;
   createdAt: string;
   updatedAt: string;
 }
@@ -48,6 +50,7 @@ export interface Task {
   dueDate?: string;
   assigneeUserId?: string;
   tags?: string[];
+  memberRoles: Record<string, 'owner' | 'admin' | 'member'>;
   createdAt: string;
   updatedAt: string;
 }
@@ -57,6 +60,7 @@ export interface Comment {
   taskId: string;
   authorUserId: string;
   body: string;
+  memberRoles: Record<string, 'owner' | 'admin' | 'member'>;
   createdAt: string;
 }
 
