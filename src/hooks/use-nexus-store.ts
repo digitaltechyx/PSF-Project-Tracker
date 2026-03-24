@@ -27,7 +27,6 @@ export function useNexusStore() {
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
 
   // 1. Fetch Workspaces where user is a member
-  // Explicitly filter by memberRoles to align with Security Rules
   const workspacesQuery = useMemoFirebase(() => {
     if (!db || !user?.uid) return null;
     return query(
@@ -73,9 +72,9 @@ export function useNexusStore() {
   );
 
   // 3. Fetch Tasks (Collection Group for workspace-wide view)
-  // Ensures the query path isn't root by requiring workspaceId and memberRoles filter
   const tasksQuery = useMemoFirebase(() => {
-    if (!db || !activeWorkspace?.id || !user?.uid) return null;
+    // CRITICAL: Ensure we have a valid workspace and user before attempting a group query
+    if (!db || !activeWorkspace?.id || !user?.uid || activeWorkspace.id === 'Loading...') return null;
     return query(
       collectionGroup(db, 'tasks'),
       where('workspaceId', '==', activeWorkspace.id),
@@ -88,7 +87,7 @@ export function useNexusStore() {
 
   // 4. Fetch Members for active workspace
   const membersQuery = useMemoFirebase(() => {
-    if (!db || !activeWorkspace?.id || !user?.uid) return null;
+    if (!db || !activeWorkspace?.id || !user?.uid || activeWorkspace.id === 'Loading...') return null;
     return query(
       collection(db, 'workspaces', activeWorkspace.id, 'members'),
       where(`memberRoles.${user.uid}`, '>=', '')
@@ -153,7 +152,7 @@ export function useNexusStore() {
 
     setDocumentNonBlocking(wsRef, wsData, { merge: true });
 
-    // Ensure member document is also created with the role
+    // Explicitly create membership for the owner
     const memberRef = doc(db, 'workspaces', wsRef.id, 'members', user.uid);
     setDocumentNonBlocking(memberRef, {
       id: user.uid,
@@ -169,7 +168,7 @@ export function useNexusStore() {
   }, [db, user]);
 
   const createProject = useCallback((name: string, description: string) => {
-    if (!db || !activeWorkspace || !user) return;
+    if (!db || !activeWorkspace?.id || !user) return;
     const projRef = doc(collection(db, 'workspaces', activeWorkspace.id, 'projects'));
     const memberRoles = activeWorkspace.memberRoles || { [user.uid]: 'owner' as const };
     
@@ -188,7 +187,7 @@ export function useNexusStore() {
   }, [db, activeWorkspace, user]);
 
   const createTask = useCallback((projectId: string, taskData: Partial<Task>) => {
-    if (!db || !activeWorkspace || !user) return;
+    if (!db || !activeWorkspace?.id || !user) return;
     const taskRef = doc(collection(db, 'workspaces', activeWorkspace.id, 'projects', projectId, 'tasks'));
     const memberRoles = activeWorkspace.memberRoles || { [user.uid]: 'owner' as const };
     
@@ -212,7 +211,7 @@ export function useNexusStore() {
   }, [db, activeWorkspace, user]);
 
   const updateTask = useCallback((taskId: string, data: Partial<Task>) => {
-    if (!db || !activeWorkspace) return;
+    if (!db || !activeWorkspace?.id) return;
     const task = tasks.find(t => t.id === taskId);
     if (!task) return;
     const taskRef = doc(db, 'workspaces', activeWorkspace.id, 'projects', task.projectId, 'tasks', taskId);
@@ -221,13 +220,13 @@ export function useNexusStore() {
 
   const deleteTask = useCallback((taskId: string) => {
     const task = tasks.find(t => t.id === taskId);
-    if (!db || !activeWorkspace || !task) return;
+    if (!db || !activeWorkspace?.id || !task) return;
     const taskRef = doc(db, 'workspaces', activeWorkspace.id, 'projects', task.projectId, 'tasks', taskId);
     deleteDocumentNonBlocking(taskRef);
   }, [db, activeWorkspace, tasks]);
 
   const addMockMember = useCallback((name: string, email: string) => {
-    if (!db || !activeWorkspace || !user) return;
+    if (!db || !activeWorkspace?.id || !user) return;
     const tempId = Math.random().toString(36).substring(7);
     const memberRef = doc(db, 'workspaces', activeWorkspace.id, 'members', tempId);
     const memberRoles = activeWorkspace.memberRoles || { [user.uid]: 'owner' as const };
@@ -244,14 +243,14 @@ export function useNexusStore() {
   }, [db, activeWorkspace, user]);
 
   const removeMember = useCallback((memberId: string) => {
-    if (!db || !activeWorkspace) return;
+    if (!db || !activeWorkspace?.id) return;
     const memberRef = doc(db, 'workspaces', activeWorkspace.id, 'members', memberId);
     deleteDocumentNonBlocking(memberRef);
   }, [db, activeWorkspace]);
 
   const addComment = useCallback((taskId: string, body: string) => {
     const task = tasks.find(t => t.id === taskId);
-    if (!db || !activeWorkspace || !task || !user) return;
+    if (!db || !activeWorkspace?.id || !task || !user) return;
     const commentRef = doc(collection(db, 'workspaces', activeWorkspace.id, 'projects', task.projectId, 'tasks', taskId, 'comments'));
     const memberRoles = activeWorkspace.memberRoles || { [user.uid]: 'owner' as const };
     

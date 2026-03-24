@@ -12,7 +12,7 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
-    // Standardized membership check that is easily provable to the query engine
+    // Standardized membership check for map-based roles
     function isMember(data) {
       return isSignedIn() && 
              data != null && 
@@ -28,8 +28,8 @@ service cloud.firestore {
     }
 
     // --- COLLECTION GROUP RULES ---
-    // These must be at the top level to properly authorize collectionGroup() queries.
-    // The query MUST include a filter on memberRoles for the current user.
+    // These must be defined to authorize collectionGroup() queries used in Dashboard and Global views.
+    // The query MUST include a filter on memberRoles[uid] to be provable.
 
     match /{path=**}/tasks/{taskId} {
       allow list, get: if isMember(resource.data);
@@ -49,7 +49,7 @@ service cloud.firestore {
     }
 
     match /workspaces/{workspaceId} {
-      // For listing workspaces, the rule MUST match the query filter on memberRoles
+      // workspace listing requires a filter on memberRoles[uid]
       allow list: if isMember(resource.data);
       allow get: if isMember(resource.data) || isOwner(resource.data.ownerUserId);
       allow create: if isSignedIn() && request.resource.data.ownerUserId == request.auth.uid;
@@ -69,7 +69,7 @@ service cloud.firestore {
         allow update: if resource != null && isAdmin(resource.data);
         allow delete: if resource != null && isAdmin(resource.data);
 
-        // Nested matches inherit or override. The top-level collectionGroup match handles global views.
+        // Hierarchical matches for nested tasks/comments
         match /tasks/{taskId} {
           allow create: if isSignedIn() && isMember(request.resource.data);
           allow update: if resource != null && isMember(resource.data);
