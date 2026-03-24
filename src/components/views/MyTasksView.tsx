@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState } from 'react';
@@ -81,7 +80,7 @@ export function MyTasksView({ store }: { store: any }) {
             <div>
               <h3 className="font-semibold text-lg">No tasks assigned to you</h3>
               <p className="text-muted-foreground max-w-xs mx-auto">
-                Sit back and relax, or check with your team if there's anything you can help with!
+                Tasks assigned to you in this workspace will appear here. Try creating a task and assigning it to yourself!
               </p>
             </div>
           </div>

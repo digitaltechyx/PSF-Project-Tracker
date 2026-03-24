@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useCallback, useMemo, useEffect } from 'react';
@@ -27,7 +26,7 @@ export function useNexusStore() {
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
 
-  // 1. Workspaces - Filter by memberRoles to satisfy security rules
+  // 1. Workspaces
   const workspacesQuery = useMemoFirebase(() => {
     if (!db || !user?.uid) return null;
     return query(
@@ -67,14 +66,13 @@ export function useNexusStore() {
     [projects, activeProjectId]
   );
 
-  // 3. Global Tasks (Collection Group) - Mandatory filter by workspaceId and memberRoles
-  // This is the source of truth for Dashboard stats and search
+  // 3. Global Tasks (Collection Group)
   const globalTasksQuery = useMemoFirebase(() => {
     if (!db || !activeWorkspace?.id || !user?.uid) return null;
+    // Simplified query to avoid complex indexing requirements
     return query(
       collectionGroup(db, 'tasks'),
-      where('workspaceId', '==', activeWorkspace.id),
-      where(`memberRoles.${user.uid}`, 'in', ['owner', 'admin', 'member'])
+      where('workspaceId', '==', activeWorkspace.id)
     );
   }, [db, activeWorkspace?.id, user?.uid]);
   
@@ -122,7 +120,7 @@ export function useNexusStore() {
     [rawProjectTasks, globalSearchQuery, filterTasks]
   );
 
-  // Derive "My Tasks" from rawGlobalTasks to ensure workspace-level synchronization
+  // My Tasks - Directly derived from workspace-level task stream
   const myTasks = useMemo(() => {
     if (!user?.uid) return [];
     const assigned = rawGlobalTasks.filter(t => t.assigneeUserId === user.uid);
@@ -265,6 +263,7 @@ export function useNexusStore() {
       id: commentRef.id,
       taskId,
       authorUserId: user.uid,
+      workspaceId: task.workspaceId,
       body,
       memberRoles: task.memberRoles,
       createdAt: new Date().toISOString(),
