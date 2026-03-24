@@ -35,7 +35,7 @@ import { suggestTaskAttributes } from '@/ai/flows/ai-task-attribute-suggestion';
 import { useToast } from '@/hooks/use-toast';
 import { Separator } from '@/components/ui/separator';
 import { useFirestore, useCollection, useMemoFirebase, useUser } from '@/firebase';
-import { collection, query, orderBy, where } from 'firebase/firestore';
+import { collection, query, orderBy } from 'firebase/firestore';
 
 export function TaskDetailPanel({ 
   taskId, 
@@ -71,19 +71,17 @@ export function TaskDetailPanel({
     );
   }, [taskId, store.projectTasks, store.myTasks, store.workspaceTasks, store.tasks]);
 
-  // Real-time comments listener
+  // Real-time comments listener - Using hierarchical rule, no memberRoles filter needed
   const commentsQuery = useMemoFirebase(() => {
     if (!db || !task || !user) return null;
-    // Comments use hierarchical structure
     return query(
       collection(db, 'workspaces', task.workspaceId, 'projects', task.projectId, 'tasks', task.id, 'comments'),
-      where(`memberRoles.${user.uid}`, '>=', ''),
       orderBy('createdAt', 'asc')
     );
   }, [db, task, user]);
   
   const { data: commentsData } = useCollection(commentsQuery);
-  const comments = commentsData || [];
+  const comments = useMemo(() => commentsData || [], [commentsData]);
 
   if (!task) return null;
 

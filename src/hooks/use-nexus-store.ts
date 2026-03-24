@@ -26,7 +26,7 @@ export function useNexusStore() {
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
 
-  // 1. Workspaces
+  // 1. Workspaces - Still requires the filter for the top-level list
   const workspacesQuery = useMemoFirebase(() => {
     if (!db || !user?.uid) return null;
     return query(
@@ -52,14 +52,11 @@ export function useNexusStore() {
     }
   }, [activeWorkspace, activeWorkspaceId]);
 
-  // 2. Projects
+  // 2. Projects - Hierarchical, no memberRoles filter needed if nested
   const projectsQuery = useMemoFirebase(() => {
-    if (!db || !activeWorkspace?.id || !user?.uid) return null;
-    return query(
-      collection(db, 'workspaces', activeWorkspace.id, 'projects'),
-      where(`memberRoles.${user.uid}`, '>=', '')
-    );
-  }, [db, activeWorkspace?.id, user?.uid]);
+    if (!db || !activeWorkspace?.id) return null;
+    return query(collection(db, 'workspaces', activeWorkspace.id, 'projects'));
+  }, [db, activeWorkspace?.id]);
   
   const { data: projectsData } = useCollection<Project>(projectsQuery);
   const projects = useMemo(() => projectsData || [], [projectsData]);
@@ -69,7 +66,7 @@ export function useNexusStore() {
     [projects, activeProjectId]
   );
 
-  // 3. Global Tasks (Collection Group) - Used for Dashboard & My Tasks
+  // 3. Global Tasks (Collection Group) - MUST use memberRoles filter
   const globalTasksQuery = useMemoFirebase(() => {
     if (!db || !user?.uid || !activeWorkspace?.id) return null;
     return query(
@@ -82,26 +79,20 @@ export function useNexusStore() {
   const { data: globalTasksData } = useCollection<Task>(globalTasksQuery);
   const globalTasks = useMemo(() => globalTasksData || [], [globalTasksData]);
 
-  // 4. Project-Specific Tasks (Direct Collection)
+  // 4. Project-Specific Tasks (Direct Collection) - Hierarchical
   const activeProjectTasksQuery = useMemoFirebase(() => {
-    if (!db || !activeWorkspace?.id || !activeProjectId || !user?.uid) return null;
-    return query(
-      collection(db, 'workspaces', activeWorkspace.id, 'projects', activeProjectId, 'tasks'),
-      where(`memberRoles.${user.uid}`, '>=', '')
-    );
-  }, [db, activeWorkspace?.id, activeProjectId, user?.uid]);
+    if (!db || !activeWorkspace?.id || !activeProjectId) return null;
+    return query(collection(db, 'workspaces', activeWorkspace.id, 'projects', activeProjectId, 'tasks'));
+  }, [db, activeWorkspace?.id, activeProjectId]);
 
   const { data: activeProjectTasksData } = useCollection<Task>(activeProjectTasksQuery);
   const activeProjectTasks = useMemo(() => activeProjectTasksData || [], [activeProjectTasksData]);
 
-  // 5. Members
+  // 5. Members - Hierarchical
   const membersQuery = useMemoFirebase(() => {
-    if (!db || !activeWorkspace?.id || !user?.uid) return null;
-    return query(
-      collection(db, 'workspaces', activeWorkspace.id, 'members'),
-      where(`memberRoles.${user.uid}`, '>=', '')
-    );
-  }, [db, activeWorkspace?.id, user?.uid]);
+    if (!db || !activeWorkspace?.id) return null;
+    return query(collection(db, 'workspaces', activeWorkspace.id, 'members'));
+  }, [db, activeWorkspace?.id]);
   
   const { data: membersData } = useCollection<WorkspaceMember>(membersQuery);
   const members = useMemo(() => membersData || [], [membersData]);
@@ -219,12 +210,8 @@ export function useNexusStore() {
 
   const updateTask = useCallback((taskId: string, data: Partial<Task>) => {
     if (!db) return;
-    
-    // Hardened task lookup
     const task = activeProjectTasks.find(t => t.id === taskId) || globalTasks.find(t => t.id === taskId);
-    
     if (!task) return;
-
     const taskRef = doc(db, 'workspaces', task.workspaceId, 'projects', task.projectId, 'tasks', taskId);
     updateDocumentNonBlocking(taskRef, { 
       ...data, 

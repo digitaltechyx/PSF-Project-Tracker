@@ -13,7 +13,6 @@ service cloud.firestore {
     }
 
     // Standardized membership check for map-based roles
-    // The query MUST include a filter on memberRoles[uid] to be provable.
     function isMember(data) {
       return isSignedIn() && 
              data != null && 
@@ -29,7 +28,7 @@ service cloud.firestore {
     }
 
     // --- COLLECTION GROUP RULES ---
-    // These must be defined to authorize collectionGroup() queries used in Dashboard and Global views.
+    // Mandatory for collectionGroup() queries. These MUST use resource.data.
     
     match /{path=**}/tasks/{taskId} {
       allow list, get: if isMember(resource.data);
@@ -49,38 +48,43 @@ service cloud.firestore {
     }
 
     match /workspaces/{workspaceId} {
-      // Workspace listing requires a filter: where('memberRoles.' + uid, '>=', '')
+      // Helper to check membership on the workspace document itself
+      function isWsMember() {
+        let ws = get(/databases/$(database)/documents/workspaces/$(workspaceId)).data;
+        return isSignedIn() && (ws.ownerUserId == request.auth.uid || ws.memberRoles[request.auth.uid] != null);
+      }
+
+      function isWsAdmin() {
+        let ws = get(/databases/$(database)/documents/workspaces/$(workspaceId)).data;
+        return isSignedIn() && (ws.ownerUserId == request.auth.uid || ws.memberRoles[request.auth.uid] == 'admin' || ws.memberRoles[request.auth.uid] == 'owner');
+      }
+
+      // Root workspace listing requires the memberRoles filter
       allow list: if isMember(resource.data);
-      allow get: if isMember(resource.data) || isOwner(resource.data.ownerUserId);
+      allow get: if isWsMember();
       allow create: if isSignedIn() && request.resource.data.ownerUserId == request.auth.uid;
-      allow update: if resource != null && (resource.data.ownerUserId == request.auth.uid || isAdmin(resource.data)) && request.resource.data.ownerUserId == resource.data.ownerUserId;
+      allow update: if resource != null && isWsAdmin();
       allow delete: if resource != null && resource.data.ownerUserId == request.auth.uid;
 
       match /members/{memberUserId} {
-        allow get, list: if isSignedIn() && (isMember(get(/databases/$(database)/documents/workspaces/$(workspaceId)).data) || isOwner(memberUserId));
-        allow create: if isSignedIn() && isAdmin(get(/databases/$(database)/documents/workspaces/$(workspaceId)).data);
-        allow update: if resource != null && (isAdmin(get(/databases/$(database)/documents/workspaces/$(workspaceId)).data) || isOwner(memberUserId));
-        allow delete: if resource != null && (isAdmin(get(/databases/$(database)/documents/workspaces/$(workspaceId)).data) || isOwner(memberUserId));
+        allow get, list: if isWsMember() || isOwner(memberUserId);
+        allow create, update, delete: if isWsAdmin();
       }
 
       match /projects/{projectId} {
-        allow get, list: if isMember(resource.data);
-        allow create: if isSignedIn() && isAdmin(request.resource.data);
-        allow update: if resource != null && isAdmin(resource.data);
-        allow delete: if resource != null && isAdmin(resource.data);
+        allow get, list: if isWsMember();
+        allow create, update, delete: if isWsAdmin();
 
-        // Hierarchical matches for nested tasks/comments
         match /tasks/{taskId} {
-          allow get, list: if isMember(resource.data);
-          allow create: if isSignedIn() && isMember(request.resource.data);
-          allow update: if resource != null && isMember(resource.data);
-          allow delete: if resource != null && isAdmin(resource.data);
+          allow get, list: if isWsMember();
+          allow create, update: if isWsMember();
+          allow delete: if isWsAdmin();
 
           match /comments/{commentId} {
-            allow get, list: if isMember(resource.data);
-            allow create: if isSignedIn() && isMember(request.resource.data) && request.resource.data.authorUserId == request.auth.uid;
-            allow update: if resource != null && (isOwner(resource.data.authorUserId) || isAdmin(resource.data)) && request.resource.data.authorUserId == resource.data.authorUserId;
-            allow delete: if resource != null && (isOwner(resource.data.authorUserId) || isAdmin(resource.data));
+            allow get, list: if isWsMember();
+            allow create: if isWsMember() && request.resource.data.authorUserId == request.auth.uid;
+            allow update: if resource != null && (isOwner(resource.data.authorUserId) || isWsAdmin());
+            allow delete: if resource != null && (isOwner(resource.data.authorUserId) || isWsAdmin());
           }
         }
       }
