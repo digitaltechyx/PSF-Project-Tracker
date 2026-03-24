@@ -5,7 +5,7 @@ export interface User {
   id: string;
   name: string;
   email: string;
-  avatarUrl?: string;
+  avatarUrl?: string | null;
   updatedAt?: string;
 }
 
@@ -26,7 +26,7 @@ export interface WorkspaceMember {
   userId: string;
   displayName: string;
   email: string;
-  avatarUrl?: string;
+  avatarUrl?: string | null;
   memberRoles?: Record<string, 'owner' | 'admin' | 'member'>;
 }
 
@@ -49,8 +49,8 @@ export interface Task {
   description: string;
   status: Status;
   priority: Priority;
-  dueDate?: string;
-  assigneeUserId?: string;
+  dueDate?: string | null;
+  assigneeUserId?: string | null;
   tags?: string[];
   memberRoles: Record<string, 'owner' | 'admin' | 'member'>;
   createdAt: string;

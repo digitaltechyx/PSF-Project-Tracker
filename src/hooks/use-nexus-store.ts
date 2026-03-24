@@ -26,19 +26,17 @@ export function useNexusStore() {
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
 
-  // 1. Fetch Workspaces where user is a member
   const workspacesQuery = useMemoFirebase(() => {
     if (!db || !user?.uid) return null;
     return query(
       collection(db, 'workspaces'),
-      where(`memberRoles.${user.uid}`, '>=', '') // Required for Security Rules indexing
+      where(`memberRoles.${user.uid}`, '>=', '')
     );
   }, [db, user?.uid]);
   
-  const { data: workspacesData, isLoading: isWorkspacesLoading } = useCollection<Workspace>(workspacesQuery);
+  const { data: workspacesData } = useCollection<Workspace>(workspacesQuery);
   const workspaces = useMemo(() => workspacesData || [], [workspacesData]);
 
-  // Handle active workspace selection logic
   const activeWorkspace = useMemo(() => {
     if (workspaces.length === 0) return null;
     if (activeWorkspaceId) {
@@ -47,14 +45,12 @@ export function useNexusStore() {
     return workspaces[0];
   }, [workspaces, activeWorkspaceId]);
 
-  // Sync activeWorkspaceId when workspaces load
   useEffect(() => {
     if (activeWorkspace && !activeWorkspaceId) {
       setActiveWorkspaceId(activeWorkspace.id);
     }
   }, [activeWorkspace, activeWorkspaceId]);
 
-  // 2. Fetch Projects for active workspace
   const projectsQuery = useMemoFirebase(() => {
     if (!db || !activeWorkspace?.id || !user?.uid || activeWorkspace.id === 'Loading...') return null;
     return query(
@@ -71,9 +67,7 @@ export function useNexusStore() {
     [projects, activeProjectId]
   );
 
-  // 3. Fetch Tasks (Collection Group for workspace-wide view)
   const tasksQuery = useMemoFirebase(() => {
-    // CRITICAL: Prevent root path queries by ensuring we have a valid workspace context and user
     if (!db || !user?.uid || !activeWorkspace?.id || activeWorkspace.id === 'Loading...') return null;
     return query(
       collectionGroup(db, 'tasks'),
@@ -85,7 +79,6 @@ export function useNexusStore() {
   const { data: tasksData } = useCollection<Task>(tasksQuery);
   const tasks = useMemo(() => tasksData || [], [tasksData]);
 
-  // 4. Fetch Members for active workspace
   const membersQuery = useMemoFirebase(() => {
     if (!db || !activeWorkspace?.id || !user?.uid || activeWorkspace.id === 'Loading...') return null;
     return query(
@@ -97,7 +90,6 @@ export function useNexusStore() {
   const { data: membersData } = useCollection<WorkspaceMember>(membersQuery);
   const members = useMemo(() => membersData || [], [membersData]);
 
-  // Filter Logic
   const filterTasks = useCallback((taskList: Task[], queryStr: string) => {
     if (!queryStr) return taskList;
     const lowerQuery = queryStr.toLowerCase();
@@ -152,7 +144,6 @@ export function useNexusStore() {
 
     setDocumentNonBlocking(wsRef, wsData, { merge: true });
 
-    // Explicitly create membership for the owner
     const memberRef = doc(db, 'workspaces', wsRef.id, 'members', user.uid);
     setDocumentNonBlocking(memberRef, {
       id: user.uid,
@@ -160,7 +151,7 @@ export function useNexusStore() {
       userId: user.uid,
       displayName: user.displayName || 'Anonymous',
       email: user.email || '',
-      avatarUrl: user.photoURL || '',
+      avatarUrl: user.photoURL || null,
       memberRoles
     }, { merge: true });
 
@@ -203,8 +194,8 @@ export function useNexusStore() {
       description: taskData.description || '',
       status: taskData.status || 'todo',
       priority: taskData.priority || 'medium',
-      dueDate: taskData.dueDate || undefined,
-      assigneeUserId: taskData.assigneeUserId || undefined,
+      dueDate: taskData.dueDate || null,
+      assigneeUserId: taskData.assigneeUserId || null,
       tags: taskData.tags || [],
       memberRoles,
       createdAt: new Date().toISOString(),
@@ -273,9 +264,8 @@ export function useNexusStore() {
   }, [db, activeWorkspace, tasks, user]);
 
   return {
-    currentUser: user ? { id: user.uid, name: user.displayName || 'User', email: user.email || '', avatarUrl: user.photoURL || '' } : null,
+    currentUser: user ? { id: user.uid, name: user.displayName || 'User', email: user.email || '', avatarUrl: user.photoURL || null } : null,
     workspaces,
-    isWorkspacesLoading,
     activeWorkspace: activeWorkspace || { name: 'Loading...', color: '#ccc', memberRoles: {} },
     workspaceProjects: projects,
     activeProject,

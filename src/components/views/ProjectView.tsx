@@ -60,8 +60,8 @@ export function ProjectView({ store }: { store: any }) {
         description: newTaskDesc,
         status: newTaskStatus,
         priority: newTaskPriority,
-        dueDate: newTaskDueDate ? new Date(newTaskDueDate).toISOString() : undefined,
-        assigneeUserId: newTaskAssignee || undefined,
+        dueDate: newTaskDueDate ? new Date(newTaskDueDate).toISOString() : null,
+        assigneeUserId: newTaskAssignee || null,
         tags: tagsArray,
       });
 
