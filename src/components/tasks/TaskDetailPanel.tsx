@@ -5,8 +5,7 @@ import {
   Sheet, 
   SheetContent, 
   SheetHeader, 
-  SheetTitle, 
-  SheetClose 
+  SheetTitle 
 } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -22,8 +21,6 @@ import {
 import { 
   Sparkles, 
   Calendar, 
-  User as UserIcon, 
-  Tag as TagIcon, 
   Trash2, 
   X,
   Loader2,
@@ -37,6 +34,8 @@ import { generateTaskDescription } from '@/ai/flows/ai-task-description-generati
 import { suggestTaskAttributes } from '@/ai/flows/ai-task-attribute-suggestion';
 import { useToast } from '@/hooks/use-toast';
 import { Separator } from '@/components/ui/separator';
+import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
+import { collection, query, orderBy } from 'firebase/firestore';
 
 export function TaskDetailPanel({ 
   taskId, 
@@ -49,8 +48,8 @@ export function TaskDetailPanel({
   onClose: () => void,
   store: any
 }) {
+  const db = useFirestore();
   const task = store.tasks?.find((t: any) => t.id === taskId);
-  const comments = store.getTaskComments(taskId);
   const { toast } = useToast();
   const [isGeneratingDesc, setIsGeneratingDesc] = useState(false);
   const [isSuggestingAttrs, setIsSuggestingAttrs] = useState(false);
@@ -60,6 +59,16 @@ export function TaskDetailPanel({
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // Real-time comments listener
+  const commentsQuery = useMemoFirebase(() => {
+    if (!db || !task) return null;
+    return query(
+      collection(db, 'workspaces', task.workspaceId, 'projects', task.projectId, 'tasks', task.id, 'comments'),
+      orderBy('createdAt', 'asc')
+    );
+  }, [db, task]);
+  const { data: comments = [] } = useCollection(commentsQuery);
 
   if (!task) return null;
 
@@ -183,17 +192,18 @@ export function TaskDetailPanel({
             </div>
             <div className="space-y-2">
               <Label className="text-xs text-muted-foreground uppercase font-bold tracking-tight">Assignee</Label>
-              <Select value={task.assigneeUserId} onValueChange={(val) => handleUpdate('assigneeUserId', val)}>
+              <Select value={task.assigneeUserId || 'unassigned'} onValueChange={(val) => handleUpdate('assigneeUserId', val === 'unassigned' ? null : val)}>
                 <SelectTrigger className="h-9">
                   <SelectValue placeholder="Unassigned" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="unassigned">Unassigned</SelectItem>
                   {store.workspaceMembers.map((m: any) => (
-                    <SelectItem key={m.userId} value={m.userId}>
+                    <SelectItem key={m.id} value={m.userId}>
                       <div className="flex items-center gap-2">
                         <Avatar className="h-5 w-5">
                           <AvatarImage src={m.avatarUrl} />
-                          <AvatarFallback>{m.displayName.charAt(0)}</AvatarFallback>
+                          <AvatarFallback>{m.displayName?.charAt(0)}</AvatarFallback>
                         </Avatar>
                         {m.displayName}
                       </div>
@@ -230,7 +240,7 @@ export function TaskDetailPanel({
 
           <div className="space-y-4">
             <Label className="text-xs text-muted-foreground uppercase font-bold tracking-tight flex items-center gap-1.5">
-              <TagIcon className="h-3 w-3" /> Tags
+              Tags
             </Label>
             <div className="flex flex-wrap gap-2">
               {task.tags?.map((tag: string) => (
@@ -263,7 +273,7 @@ export function TaskDetailPanel({
                   <div key={comment.id} className="flex gap-3">
                     <Avatar className="h-8 w-8">
                       <AvatarImage src={author?.avatarUrl} />
-                      <AvatarFallback>{author?.displayName.charAt(0) || '?'}</AvatarFallback>
+                      <AvatarFallback>{author?.displayName?.charAt(0) || '?'}</AvatarFallback>
                     </Avatar>
                     <div className="flex-1 space-y-1">
                       <div className="flex items-center gap-2">
@@ -288,8 +298,8 @@ export function TaskDetailPanel({
 
             <div className="flex items-start gap-3 pt-2">
               <Avatar className="h-8 w-8">
-                <AvatarImage src={store.currentUser.avatarUrl} />
-                <AvatarFallback>{store.currentUser.name.charAt(0)}</AvatarFallback>
+                <AvatarImage src={store.currentUser?.avatarUrl} />
+                <AvatarFallback>{store.currentUser?.name?.charAt(0)}</AvatarFallback>
               </Avatar>
               <div className="flex-1 space-y-2">
                 <Textarea 

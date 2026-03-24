@@ -9,9 +9,11 @@ import {
   ChevronDown,
   Box,
   ListTodo,
-  Bell
+  Bell,
+  LogOut
 } from 'lucide-react';
 import { useNexusStore } from '@/hooks/use-nexus-store';
+import { useAuth } from '@/firebase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { 
@@ -42,6 +44,7 @@ type ViewType = 'dashboard' | 'project' | 'members' | 'my-tasks' | 'notification
 
 export function NexusShell() {
   const store = useNexusStore();
+  const auth = useAuth();
   const [currentView, setCurrentView] = useState<ViewType>('dashboard');
   const [mounted, setMounted] = useState(false);
   
@@ -85,7 +88,11 @@ export function NexusShell() {
     }
   };
 
-  if (!mounted) return <div className="h-screen w-full bg-background" />;
+  const handleLogout = () => {
+    auth.signOut();
+  };
+
+  if (!mounted || !store.currentUser) return <div className="h-screen w-full bg-background" />;
 
   return (
     <div className="flex h-screen w-full bg-background overflow-hidden">
@@ -126,10 +133,7 @@ export function NexusShell() {
             variant="ghost" 
             size="icon" 
             className="h-8 w-8 text-muted-foreground hover:text-primary flex-shrink-0"
-            onClick={(e) => {
-              e.preventDefault();
-              setIsWsDialogOpen(true);
-            }}
+            onClick={() => setIsWsDialogOpen(true)}
           >
             <Plus className="h-4 w-4" />
           </Button>
@@ -205,15 +209,20 @@ export function NexusShell() {
         </ScrollArea>
 
         <div className="p-4 border-t mt-auto">
-          <div className="flex items-center gap-3">
-            <Avatar className="h-8 w-8">
-              <AvatarImage src={store.currentUser.avatarUrl} />
-              <AvatarFallback>AR</AvatarFallback>
-            </Avatar>
-            <div className="flex flex-col overflow-hidden">
-              <span className="text-sm font-semibold truncate">{store.currentUser.name}</span>
-              <span className="text-xs text-muted-foreground truncate">{store.currentUser.email}</span>
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 overflow-hidden">
+              <Avatar className="h-8 w-8">
+                <AvatarImage src={store.currentUser.avatarUrl} />
+                <AvatarFallback>{store.currentUser.name?.charAt(0)}</AvatarFallback>
+              </Avatar>
+              <div className="flex flex-col overflow-hidden">
+                <span className="text-sm font-semibold truncate">{store.currentUser.name}</span>
+                <span className="text-xs text-muted-foreground truncate">{store.currentUser.email}</span>
+              </div>
             </div>
+            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" onClick={handleLogout}>
+              <LogOut className="h-4 w-4" />
+            </Button>
           </div>
         </div>
       </aside>
@@ -292,7 +301,7 @@ export function NexusShell() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Create New Project</DialogTitle>
-            <DialogDescription>Create a project to organize tasks in {store.activeWorkspace.name}.</DialogDescription>
+            <DialogDescription>Create a project to organize tasks in {store.activeWorkspace?.name}.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
