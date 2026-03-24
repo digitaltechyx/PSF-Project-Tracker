@@ -3,8 +3,6 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // --- GLOBAL HELPER FUNCTIONS ---
-
     function isSignedIn() {
       return request.auth != null;
     }
@@ -13,21 +11,15 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
-    // Simplified membership check for rules
     function isMemberOfWs(wsId) {
       let ws = get(/databases/$(database)/documents/workspaces/$(wsId)).data;
-      return isSignedIn() && (ws.ownerUserId == request.auth.uid || ws.memberRoles[request.auth.uid] != null);
+      return isSignedIn() && (ws.ownerUserId == request.auth.uid || (ws.memberRoles != null && ws.memberRoles[request.auth.uid] != null));
     }
 
     // --- COLLECTION GROUP RULES ---
     
     match /{path=**}/tasks/{taskId} {
-      // Basic read access for testing collection groups
-      allow read: if isSignedIn() && (
-        resource == null || 
-        resource.data.workspaceId == null || 
-        isMemberOfWs(resource.data.workspaceId)
-      );
+      allow read: if isSignedIn();
     }
 
     match /{path=**}/comments/{commentId} {
@@ -42,7 +34,7 @@ service cloud.firestore {
     }
 
     match /workspaces/{workspaceId} {
-      allow list: if isSignedIn(); // Filter results in app
+      allow list: if isSignedIn();
       allow get: if isSignedIn();
       allow create: if isSignedIn();
       allow update, delete: if isMemberOfWs(workspaceId);

@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   LayoutList, 
   Kanban, 
@@ -20,7 +20,7 @@ import {
   DialogContent, 
   DialogHeader, 
   DialogTitle, 
-  DialogTrigger,
+  DialogTrigger, 
   DialogFooter,
   DialogDescription
 } from '@/components/ui/dialog';
@@ -52,6 +52,13 @@ export function ProjectView({ store }: { store: any }) {
   const activeProject = store.activeProject;
   const filteredTasks = store.projectTasks;
 
+  // Initialize assignee to current user when dialog opens
+  useEffect(() => {
+    if (isCreateTaskOpen && store.currentUser) {
+      setNewTaskAssignee(store.currentUser.id);
+    }
+  }, [isCreateTaskOpen, store.currentUser]);
+
   const handleCreateTask = () => {
     if (newTaskTitle && activeProject) {
       const tagsArray = newTaskTags.split(',').map(tag => tag.trim()).filter(tag => tag !== '');
@@ -62,7 +69,7 @@ export function ProjectView({ store }: { store: any }) {
         status: newTaskStatus,
         priority: newTaskPriority,
         dueDate: newTaskDueDate ? new Date(newTaskDueDate).toISOString() : null,
-        assigneeUserId: newTaskAssignee || null,
+        assigneeUserId: newTaskAssignee || store.currentUser?.id,
         tags: tagsArray,
       });
 
@@ -72,7 +79,7 @@ export function ProjectView({ store }: { store: any }) {
       setNewTaskStatus('todo');
       setNewTaskPriority('medium');
       setNewTaskDueDate('');
-      setNewTaskAssignee('');
+      setNewTaskAssignee(store.currentUser?.id || '');
       setNewTaskTags('');
       setIsCreateTaskOpen(false);
     }
@@ -213,7 +220,7 @@ export function ProjectView({ store }: { store: any }) {
                   </Label>
                   <Input 
                     id="task-tags"
-                    placeholder="E.g. Design, Frontend, Urgernt (comma separated)" 
+                    placeholder="E.g. Design, Frontend (comma separated)" 
                     value={newTaskTags}
                     onChange={(e) => setNewTaskTags(e.target.value)}
                   />

@@ -27,7 +27,7 @@ export function useNexusStore() {
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
 
-  // 1. Workspaces - Basic membership check
+  // 1. Workspaces
   const workspacesQuery = useMemoFirebase(() => {
     if (!db || !user?.uid) return null;
     return query(collection(db, 'workspaces'));
@@ -36,7 +36,6 @@ export function useNexusStore() {
   const { data: workspacesData, isLoading: isWorkspacesLoading } = useCollection<Workspace>(workspacesQuery);
   const workspaces = useMemo(() => {
     if (!workspacesData || !user?.uid) return [];
-    // Filter locally to ensure immediate access without complex indexes
     return workspacesData.filter(w => 
       w.ownerUserId === user.uid || (w.memberRoles && w.memberRoles[user.uid])
     );
@@ -70,7 +69,7 @@ export function useNexusStore() {
     [projects, activeProjectId]
   );
 
-  // 3. Global Tasks (Collection Group) - Simplified to avoid indexing errors
+  // 3. Global Tasks (Try collection group, but it might fail without index)
   const globalTasksQuery = useMemoFirebase(() => {
     if (!db || !activeWorkspace?.id) return null;
     return query(
@@ -82,7 +81,7 @@ export function useNexusStore() {
   const { data: globalTasksData, isLoading: isTasksLoading } = useCollection<Task>(globalTasksQuery);
   const rawGlobalTasks = useMemo(() => globalTasksData || [], [globalTasksData]);
 
-  // 4. Project-Specific Tasks (Direct Collection) - Very reliable, no index needed
+  // 4. Active Project Tasks (Always works, no index needed)
   const activeProjectTasksQuery = useMemoFirebase(() => {
     if (!db || !activeWorkspace?.id || !activeProjectId) return null;
     return query(
@@ -102,6 +101,15 @@ export function useNexusStore() {
   const { data: membersData } = useCollection<WorkspaceMember>(membersQuery);
   const members = useMemo(() => membersData || [], [membersData]);
 
+  // Helper: Combine and filter tasks
+  const allWorkspaceTasks = useMemo(() => {
+    const combined = [...rawGlobalTasks];
+    rawProjectTasks.forEach(pt => {
+      if (!combined.find(gt => gt.id === pt.id)) combined.push(pt);
+    });
+    return combined;
+  }, [rawGlobalTasks, rawProjectTasks]);
+
   const filterTasks = useCallback((taskList: Task[], queryStr: string) => {
     if (!queryStr) return taskList;
     const lowerQuery = queryStr.toLowerCase();
@@ -112,29 +120,17 @@ export function useNexusStore() {
     );
   }, []);
 
-  // Filtered views
-  const workspaceTasks = useMemo(() => 
-    filterTasks(rawGlobalTasks, globalSearchQuery),
-    [rawGlobalTasks, globalSearchQuery, filterTasks]
-  );
-
   const projectTasks = useMemo(() => 
     filterTasks(rawProjectTasks, globalSearchQuery),
     [rawProjectTasks, globalSearchQuery, filterTasks]
   );
 
-  // "My Tasks" - Aggregated from available streams to ensure data presence
   const myTasks = useMemo(() => {
     if (!user?.uid) return [];
-    // Combine both streams to increase chances of finding assigned tasks
-    const combined = [...rawGlobalTasks];
-    rawProjectTasks.forEach(pt => {
-      if (!combined.find(gt => gt.id === pt.id)) combined.push(pt);
-    });
-    
-    const assigned = combined.filter(t => t.assigneeUserId === user.uid);
+    // Just compare the current user ID against the assignee field
+    const assigned = allWorkspaceTasks.filter(t => t.assigneeUserId === user.uid);
     return filterTasks(assigned, globalSearchQuery);
-  }, [rawGlobalTasks, rawProjectTasks, user?.uid, globalSearchQuery, filterTasks]);
+  }, [allWorkspaceTasks, user?.uid, globalSearchQuery, filterTasks]);
 
   const switchWorkspace = useCallback((id: string) => {
     setActiveWorkspaceId(id);
@@ -198,10 +194,6 @@ export function useNexusStore() {
   const createTask = useCallback((projectId: string, taskData: Partial<Task>) => {
     if (!db || !activeWorkspace?.id || !user) return;
     
-    const roles = activeWorkspace.memberRoles && Object.keys(activeWorkspace.memberRoles).length > 0 
-      ? activeWorkspace.memberRoles 
-      : { [user.uid]: 'owner' as const };
-
     const taskRef = doc(collection(db, 'workspaces', activeWorkspace.id, 'projects', projectId, 'tasks'));
     
     const newTask: Task = {
@@ -213,9 +205,9 @@ export function useNexusStore() {
       status: taskData.status || 'todo',
       priority: taskData.priority || 'medium',
       dueDate: taskData.dueDate || null,
-      assigneeUserId: taskData.assigneeUserId || null,
+      assigneeUserId: taskData.assigneeUserId || user.uid, // Default to current user
       tags: taskData.tags || [],
-      memberRoles: roles,
+      memberRoles: activeWorkspace.memberRoles || { [user.uid]: 'owner' },
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -225,7 +217,7 @@ export function useNexusStore() {
 
   const updateTask = useCallback((taskId: string, data: Partial<Task>) => {
     if (!db) return;
-    const task = rawGlobalTasks.find(t => t.id === taskId) || rawProjectTasks.find(t => t.id === taskId);
+    const task = allWorkspaceTasks.find(t => t.id === taskId);
     if (!task) return;
     
     const taskRef = doc(db, 'workspaces', task.workspaceId, 'projects', task.projectId, 'tasks', taskId);
@@ -233,14 +225,14 @@ export function useNexusStore() {
       ...data, 
       updatedAt: new Date().toISOString() 
     });
-  }, [db, rawGlobalTasks, rawProjectTasks]);
+  }, [db, allWorkspaceTasks]);
 
   const deleteTask = useCallback((taskId: string) => {
-    const task = rawGlobalTasks.find(t => t.id === taskId) || rawProjectTasks.find(t => t.id === taskId);
+    const task = allWorkspaceTasks.find(t => t.id === taskId);
     if (!db || !task) return;
     const taskRef = doc(db, 'workspaces', task.workspaceId, 'projects', task.projectId, 'tasks', taskId);
     deleteDocumentNonBlocking(taskRef);
-  }, [db, rawGlobalTasks, rawProjectTasks]);
+  }, [db, allWorkspaceTasks]);
 
   const addMockMember = useCallback((name: string, email: string) => {
     if (!db || !activeWorkspace?.id || !user) return;
@@ -264,7 +256,7 @@ export function useNexusStore() {
   }, [db, activeWorkspace]);
 
   const addComment = useCallback((taskId: string, body: string) => {
-    const task = rawGlobalTasks.find(t => t.id === taskId) || rawProjectTasks.find(t => t.id === taskId);
+    const task = allWorkspaceTasks.find(t => t.id === taskId);
     if (!db || !task || !user) return;
     const commentRef = doc(collection(db, 'workspaces', task.workspaceId, 'projects', task.projectId, 'tasks', taskId, 'comments'));
     
@@ -277,7 +269,7 @@ export function useNexusStore() {
       memberRoles: task.memberRoles,
       createdAt: new Date().toISOString(),
     }, { merge: true });
-  }, [db, rawGlobalTasks, rawProjectTasks, user]);
+  }, [db, allWorkspaceTasks, user]);
 
   return {
     currentUser: user ? { id: user.uid, name: user.displayName || 'User', email: user.email || '', avatarUrl: user.photoURL || null } : null,
@@ -285,11 +277,9 @@ export function useNexusStore() {
     activeWorkspace: activeWorkspace || { name: 'Loading...', color: '#ccc', memberRoles: {} },
     workspaceProjects: projects,
     activeProject,
-    workspaceTasks, 
-    allWorkspaceTasks: rawGlobalTasks.length > 0 ? rawGlobalTasks : rawProjectTasks, // Fallback for stats
+    allWorkspaceTasks,
     projectTasks,
     myTasks,
-    tasks: rawGlobalTasks.length > 0 ? rawGlobalTasks : rawProjectTasks, 
     workspaceMembers: members,
     workspaceNotifications: [],
     globalSearchQuery,
