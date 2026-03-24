@@ -2,15 +2,6 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    /**
-     * FIRESTORE SECURITY RULES - PROTOTYPING MODE
-     * 
-     * CORE PHILOSOPHY:
-     * This ruleset implements a robust "Authorization Independence" model through aggressive 
-     * data denormalization. The goal is to maximize performance and security while allowing 
-     * for rapid frontend iteration without strict schema enforcement.
-     */
-
     // --- GLOBAL HELPER FUNCTIONS ---
 
     function isSignedIn() {
@@ -35,13 +26,10 @@ service cloud.firestore {
              (data.memberRoles[request.auth.uid] == 'admin' || data.memberRoles[request.auth.uid] == 'owner');
     }
 
-    // --- COLLECTION GROUP RULES (For global workspace views) ---
+    // --- COLLECTION GROUP RULES ---
+    // These allow global workspace views (Dashboard, My Tasks)
+    // Query MUST include: .where('memberRoles.<uid>', '>=', '')
 
-    /**
-     * @description Supports collectionGroup queries for tasks and comments across projects.
-     * @principle Authorization Independence: access is checked against the document's own memberRoles map.
-     * CRITICAL: Queries must filter by `memberRoles.<uid> != null` (e.g., using range filters) to match this rule.
-     */
     match /{path=**}/tasks/{taskId} {
       allow list, get: if isMember(resource.data);
     }
@@ -53,10 +41,10 @@ service cloud.firestore {
     // --- HIERARCHICAL COLLECTION RULES ---
 
     match /users/{userId} {
-      allow get, list: if isOwner(userId);
-      allow create: if isOwner(userId) && request.resource.data.id == userId;
-      allow update: if isOwner(userId) && request.resource.data.id == resource.data.id;
-      allow delete: if isOwner(userId);
+      allow get: if isOwner(userId);
+      allow list: if false; // Listing users is restricted
+      allow create, update: if isOwner(userId);
+      allow delete: if false;
     }
 
     match /workspaces/{workspaceId} {

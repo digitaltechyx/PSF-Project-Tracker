@@ -15,8 +15,7 @@ import {
   query, 
   where, 
   doc, 
-  collectionGroup,
-  orderBy
+  collectionGroup
 } from 'firebase/firestore';
 import { Workspace, Project, Task, WorkspaceMember, Notification } from '@/lib/types';
 
@@ -29,16 +28,17 @@ export function useNexusStore() {
 
   // 1. Fetch Workspaces where user is a member
   const workspacesQuery = useMemoFirebase(() => {
-    if (!db || !user) return null;
+    if (!db || !user?.uid) return null;
     return query(
       collection(db, 'workspaces'),
       where(`memberRoles.${user.uid}`, '>=', '')
     );
-  }, [db, user]);
+  }, [db, user?.uid]);
   
-  const { data: workspacesData } = useCollection<Workspace>(workspacesQuery);
+  const { data: workspacesData, isLoading: isWorkspacesLoading } = useCollection<Workspace>(workspacesQuery);
   const workspaces = useMemo(() => workspacesData || [], [workspacesData]);
 
+  // Handle active workspace selection logic
   const activeWorkspace = useMemo(() => {
     if (workspaces.length === 0) return null;
     if (activeWorkspaceId) {
@@ -47,7 +47,7 @@ export function useNexusStore() {
     return workspaces[0];
   }, [workspaces, activeWorkspaceId]);
 
-  // Set initial workspace if none selected
+  // Sync activeWorkspaceId when workspaces load
   useEffect(() => {
     if (activeWorkspace && !activeWorkspaceId) {
       setActiveWorkspaceId(activeWorkspace.id);
@@ -56,12 +56,12 @@ export function useNexusStore() {
 
   // 2. Fetch Projects for active workspace
   const projectsQuery = useMemoFirebase(() => {
-    if (!db || !activeWorkspace || !user) return null;
+    if (!db || !activeWorkspace?.id || !user?.uid) return null;
     return query(
       collection(db, 'workspaces', activeWorkspace.id, 'projects'),
       where(`memberRoles.${user.uid}`, '>=', '')
     );
-  }, [db, activeWorkspace, user]);
+  }, [db, activeWorkspace?.id, user?.uid]);
   
   const { data: projectsData } = useCollection<Project>(projectsQuery);
   const projects = useMemo(() => projectsData || [], [projectsData]);
@@ -73,26 +73,25 @@ export function useNexusStore() {
 
   // 3. Fetch Tasks (Collection Group for workspace-wide view)
   const tasksQuery = useMemoFirebase(() => {
-    if (!db || !activeWorkspace || !user?.uid) return null;
-    // CRITICAL: Filter by workspaceId AND membership to satisfy security rules
+    if (!db || !activeWorkspace?.id || !user?.uid) return null;
     return query(
       collectionGroup(db, 'tasks'),
       where('workspaceId', '==', activeWorkspace.id),
       where(`memberRoles.${user.uid}`, '>=', '')
     );
-  }, [db, activeWorkspace, user?.uid]);
+  }, [db, activeWorkspace?.id, user?.uid]);
   
   const { data: tasksData } = useCollection<Task>(tasksQuery);
   const tasks = useMemo(() => tasksData || [], [tasksData]);
 
   // 4. Fetch Members for active workspace
   const membersQuery = useMemoFirebase(() => {
-    if (!db || !activeWorkspace || !user) return null;
+    if (!db || !activeWorkspace?.id || !user?.uid) return null;
     return query(
       collection(db, 'workspaces', activeWorkspace.id, 'members'),
       where(`memberRoles.${user.uid}`, '>=', '')
     );
-  }, [db, activeWorkspace, user]);
+  }, [db, activeWorkspace?.id, user?.uid]);
   
   const { data: membersData } = useCollection<WorkspaceMember>(membersQuery);
   const members = useMemo(() => membersData || [], [membersData]);
@@ -123,10 +122,6 @@ export function useNexusStore() {
     const mTasks = tasks.filter(t => t.assigneeUserId === user.uid);
     return filterTasks(mTasks, globalSearchQuery);
   }, [tasks, user, globalSearchQuery, filterTasks]);
-
-  const workspaceMembers = useMemo(() => members, [members]);
-
-  const workspaceNotifications: Notification[] = [];
 
   const switchWorkspace = useCallback((id: string) => {
     setActiveWorkspaceId(id);
@@ -270,6 +265,7 @@ export function useNexusStore() {
   return {
     currentUser: user ? { id: user.uid, name: user.displayName || 'User', email: user.email || '', avatarUrl: user.photoURL || '' } : null,
     workspaces,
+    isWorkspacesLoading,
     activeWorkspace: activeWorkspace || { name: 'Loading...', color: '#ccc', memberRoles: {} },
     workspaceProjects: projects,
     activeProject,
@@ -278,7 +274,7 @@ export function useNexusStore() {
     projectTasks,
     myTasks,
     workspaceMembers: members,
-    workspaceNotifications,
+    workspaceNotifications: [] as Notification[],
     globalSearchQuery,
     setGlobalSearchQuery,
     switchWorkspace,

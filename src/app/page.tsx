@@ -1,14 +1,31 @@
 "use client";
 
 import { NexusShell } from '@/components/NexusShell';
-import { useUser, useAuth } from '@/firebase';
+import { useUser, useAuth, useFirestore } from '@/firebase';
 import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 import { Button } from '@/components/ui/button';
 import { LogIn, Loader2 } from 'lucide-react';
+import { useEffect } from 'react';
+import { doc, setDoc } from 'firebase/firestore';
 
 export default function Home() {
   const { user, isUserLoading } = useUser();
   const auth = useAuth();
+  const db = useFirestore();
+
+  // Synchronize user profile to Firestore on login
+  useEffect(() => {
+    if (user && db) {
+      const userRef = doc(db, 'users', user.uid);
+      setDoc(userRef, {
+        id: user.uid,
+        name: user.displayName || 'User',
+        email: user.email,
+        avatarUrl: user.photoURL,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+    }
+  }, [user, db]);
 
   const handleLogin = async () => {
     const provider = new GoogleAuthProvider();

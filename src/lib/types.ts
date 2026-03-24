@@ -6,6 +6,7 @@ export interface User {
   name: string;
   email: string;
   avatarUrl?: string;
+  updatedAt?: string;
 }
 
 export interface Workspace {
@@ -26,6 +27,7 @@ export interface WorkspaceMember {
   displayName: string;
   email: string;
   avatarUrl?: string;
+  memberRoles?: Record<string, 'owner' | 'admin' | 'member'>;
 }
 
 export interface Project {
