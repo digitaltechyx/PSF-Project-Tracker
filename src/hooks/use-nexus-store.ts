@@ -31,7 +31,7 @@ export function useNexusStore() {
     if (!db || !user?.uid) return null;
     return query(
       collection(db, 'workspaces'),
-      where(`memberRoles.${user.uid}`, '>=', '')
+      where(`memberRoles.${user.uid}`, '>=', '') // Required for Security Rules indexing
     );
   }, [db, user?.uid]);
   
@@ -56,7 +56,7 @@ export function useNexusStore() {
 
   // 2. Fetch Projects for active workspace
   const projectsQuery = useMemoFirebase(() => {
-    if (!db || !activeWorkspace?.id || !user?.uid) return null;
+    if (!db || !activeWorkspace?.id || !user?.uid || activeWorkspace.id === 'Loading...') return null;
     return query(
       collection(db, 'workspaces', activeWorkspace.id, 'projects'),
       where(`memberRoles.${user.uid}`, '>=', '')
@@ -170,7 +170,6 @@ export function useNexusStore() {
   const createProject = useCallback((name: string, description: string) => {
     if (!db || !activeWorkspace?.id || !user) return;
     const projRef = doc(collection(db, 'workspaces', activeWorkspace.id, 'projects'));
-    // Ensure memberRoles is copied from the workspace for authorization independence
     const memberRoles = activeWorkspace.memberRoles && Object.keys(activeWorkspace.memberRoles).length > 0 
       ? activeWorkspace.memberRoles 
       : { [user.uid]: 'owner' as const };

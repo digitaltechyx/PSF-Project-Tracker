@@ -75,8 +75,8 @@ export function useCollection<T = any>(
         ? (memoizedTargetRefOrQuery as CollectionReference).path
         : (memoizedTargetRefOrQuery as unknown as InternalQuery)._query.path.canonicalString();
 
-    if (!path || path === "/" || path === "") {
-      console.warn("useCollection: Refusing to execute a query on the root path.");
+    if (!path || path === "/" || path === "" || path.includes('/databases/(default)/documents/')) {
+      console.warn("useCollection: Refusing to execute a query on the root or empty path.");
       setData(null);
       setIsLoading(false);
       return;
@@ -97,6 +97,7 @@ export function useCollection<T = any>(
         setIsLoading(false);
       },
       (error: FirestoreError) => {
+        // Build the contextual error for the error emitter
         const contextualError = new FirestorePermissionError({
           operation: 'list',
           path,
