@@ -221,13 +221,9 @@ export function useNexusStore() {
   const updateTask = useCallback((taskId: string, data: Partial<Task>) => {
     if (!db) return;
     
-    // Search in all available task lists to find the task's context (project/workspace)
     const task = activeProjectTasks.find(t => t.id === taskId) || globalTasks.find(t => t.id === taskId);
     
-    if (!task) {
-      console.warn(`Task ${taskId} not found for update.`);
-      return;
-    }
+    if (!task) return;
 
     const taskRef = doc(db, 'workspaces', task.workspaceId, 'projects', task.projectId, 'tasks', taskId);
     updateDocumentNonBlocking(taskRef, { 
@@ -291,6 +287,7 @@ export function useNexusStore() {
     workspaceTasks,
     projectTasks,
     myTasks,
+    tasks: globalTasks, // Expose raw globalTasks for details panel lookup
     workspaceMembers: members,
     workspaceNotifications: [],
     globalSearchQuery,

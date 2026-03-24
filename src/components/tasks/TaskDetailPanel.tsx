@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useEffect } from 'react';
@@ -50,7 +51,6 @@ export function TaskDetailPanel({
 }) {
   const db = useFirestore();
   const { user } = useUser();
-  const task = store.tasks?.find((t: any) => t.id === taskId);
   const { toast } = useToast();
   const [isGeneratingDesc, setIsGeneratingDesc] = useState(false);
   const [isSuggestingAttrs, setIsSuggestingAttrs] = useState(false);
@@ -61,6 +61,9 @@ export function TaskDetailPanel({
     setMounted(true);
   }, []);
 
+  // Look for the task in the store's task list
+  const task = store.tasks?.find((t: any) => t.id === taskId);
+
   // Real-time comments listener
   const commentsQuery = useMemoFirebase(() => {
     if (!db || !task || !user) return null;
@@ -70,6 +73,7 @@ export function TaskDetailPanel({
       orderBy('createdAt', 'asc')
     );
   }, [db, task, user]);
+  
   const { data: comments = [] } = useCollection(commentsQuery);
 
   if (!task) return null;
