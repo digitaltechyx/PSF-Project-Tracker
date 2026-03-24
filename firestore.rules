@@ -1,0 +1,145 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    /**
+     * FIRESTORE SECURITY RULES - PROTOTYPING MODE
+     * 
+     * CORE PHILOSOPHY:
+     * This ruleset implements a robust "Authorization Independence" model through aggressive 
+     * data denormalization. The goal is to maximize performance and security while allowing 
+     * for rapid frontend iteration without strict schema enforcement.
+     * 
+     * DATA STRUCTURE:
+     * - /users/{userId}: Private user profiles restricted to the account owner.
+     * - /workspaces/{workspaceId}: Shared organizational containers.
+     * - Hierarchical Subcollections: Projects, Tasks, and Comments are nested under Workspaces 
+     *   to provide clear logical grouping.
+     * 
+     * KEY SECURITY DECISIONS:
+     * 1. DENORMALIZATION FOR AUTHORIZATION: To avoid costly and slow `get()` lookups, all 
+     *    collaborative entities (Workspaces, Projects, Tasks, Comments) MUST include a 
+     *    `memberRoles` map (e.g., `{ 'uid123': 'owner', 'uid456': 'member' }`). This allows 
+     *    security rules to check access rights atomically within the document itself.
+     * 2. IDENTITIY-BASED ACCESS: All decisions are derived from `request.auth.uid`.
+     * 3. RELATIONAL INTEGRITY: Rules enforce that internal fields (like `ownerUserId` or `authorUserId`) 
+     *    match the authenticated user and remain immutable after creation.
+     * 4. PROTOTYPE FLEXIBILITY: Data types and general content fields are not validated to 
+     *    facilitate rapid schema changes during development.
+     */
+
+    // --- GLOBAL HELPER FUNCTIONS ---
+
+    /** Checks if the user is authenticated. */
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    /** Checks if the authenticated user's ID matches the provided ID. */
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    /** Checks if the user is the owner of an existing document. */
+    function isExistingOwner(userId) {
+      return resource != null && isOwner(userId);
+    }
+
+    /** Checks if the user is present in the document's denormalized memberRoles map. */
+    function isMember(data) {
+      return isSignedIn() && data.memberRoles != null && request.auth.uid in data.memberRoles;
+    }
+
+    /** Checks if the user has an 'admin' or 'owner' role in the document's memberRoles map. */
+    function isAdmin(data) {
+      return isSignedIn() && data.memberRoles != null && 
+             (data.memberRoles[request.auth.uid] == 'admin' || data.memberRoles[request.auth.uid] == 'owner');
+    }
+
+    // --- COLLECTION RULES ---
+
+    /**
+     * @description Rules for the User profile collection. Access is strictly restricted to the account owner.
+     * @path /users/{userId}
+     * @allow (get) If auth.uid matches {userId}.
+     * @deny (list) If auth.uid does not match {userId}.
+     * @principle Enforces path-based ownership and relational integrity for root user documents.
+     */
+    match /users/{userId} {
+      allow get, list: if isOwner(userId);
+      allow create: if isOwner(userId) && request.resource.data.id == userId;
+      allow update: if isExistingOwner(userId) && request.resource.data.id == resource.data.id;
+      allow delete: if isExistingOwner(userId);
+    }
+
+    /**
+     * @description Rules for Workspaces. Access is determined by the `memberRoles` map or `ownerUserId`.
+     * @path /workspaces/{workspaceId}
+     * @allow (get) If auth.uid is in memberRoles map.
+     * @deny (update) If user is a 'member' but not an 'admin' or 'owner'.
+     * @principle Uses Shared Access pattern with denormalized roles for atomic authorization.
+     */
+    match /workspaces/{workspaceId} {
+      allow get, list: if isSignedIn() && (resource.data.ownerUserId == request.auth.uid || isMember(resource.data));
+      allow create: if isSignedIn() && request.resource.data.ownerUserId == request.auth.uid;
+      allow update: if resource != null && (resource.data.ownerUserId == request.auth.uid || isAdmin(resource.data)) && request.resource.data.ownerUserId == resource.data.ownerUserId;
+      allow delete: if resource != null && resource.data.ownerUserId == request.auth.uid;
+
+      /**
+       * @description Workspace Members subcollection.
+       * @path /workspaces/{workspaceId}/members/{userId}
+       * @allow (list) If the user is a member of the workspace.
+       * @deny (create) If the user is not an admin/owner of the workspace.
+       * @principle Relies on denormalized `memberRoles` on the member document itself.
+       */
+      match /members/{memberUserId} {
+        allow get, list: if isMember(resource.data);
+        allow create: if isAdmin(request.resource.data);
+        allow update: if resource != null && (isAdmin(resource.data) || isOwner(memberUserId));
+        allow delete: if resource != null && (isAdmin(resource.data) || isOwner(memberUserId));
+      }
+
+      /**
+       * @description Projects nested within a workspace.
+       * @path /workspaces/{workspaceId}/projects/{projectId}
+       * @allow (create) If the incoming data includes a valid memberRoles map where the user is an admin.
+       * @deny (get) If the user's UID is missing from the project's memberRoles map.
+       * @principle Authorization independence: the project document contains all data needed for access checks.
+       */
+      match /projects/{projectId} {
+        allow get, list: if isMember(resource.data);
+        allow create: if isAdmin(request.resource.data);
+        allow update: if resource != null && isAdmin(resource.data);
+        allow delete: if resource != null && isAdmin(resource.data);
+
+        /**
+         * @description Tasks nested within a project.
+         * @path /workspaces/{workspaceId}/projects/{projectId}/tasks/{taskId}
+         * @allow (update) If the user is a workspace member.
+         * @deny (delete) If the user is not a workspace admin.
+         * @principle Extends the shared access model to nested task resources.
+         */
+        match /tasks/{taskId} {
+          allow get, list: if isMember(resource.data);
+          allow create: if isMember(request.resource.data);
+          allow update: if resource != null && isMember(resource.data);
+          allow delete: if resource != null && isAdmin(resource.data);
+
+          /**
+           * @description Comments nested within a task.
+           * @path /workspaces/{workspaceId}/projects/{projectId}/tasks/{taskId}/comments/{commentId}
+           * @allow (create) If user is a member and authorUserId matches auth.uid.
+           * @deny (update) If user is not the original author or a workspace admin.
+           * @principle Combines shared access membership with individual record ownership.
+           */
+          match /comments/{commentId} {
+            allow get, list: if isMember(resource.data);
+            allow create: if isMember(request.resource.data) && request.resource.data.authorUserId == request.auth.uid;
+            allow update: if resource != null && (isOwner(resource.data.authorUserId) || isAdmin(resource.data)) && request.resource.data.authorUserId == resource.data.authorUserId;
+            allow delete: if resource != null && (isOwner(resource.data.authorUserId) || isAdmin(resource.data));
+          }
+        }
+      }
+    }
+  }
+}

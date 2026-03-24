@@ -1,0 +1,415 @@
+{
+  "entities": {
+    "User": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "User",
+      "type": "object",
+      "description": "Represents a user within the application, identified by an external authentication system. Contains basic profile information.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the User entity, typically provided by an external authentication system (e.g., Google ID)."
+        },
+        "name": {
+          "type": "string",
+          "description": "The full name of the user."
+        },
+        "email": {
+          "type": "string",
+          "description": "The email address of the user.",
+          "format": "email"
+        },
+        "avatarUrl": {
+          "type": "string",
+          "description": "URL to the user's avatar image.",
+          "format": "uri"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "email"
+      ]
+    },
+    "Workspace": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Workspace",
+      "type": "object",
+      "description": "A top-level container for organizing projects and tasks. Users can belong to multiple workspaces.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Workspace entity."
+        },
+        "name": {
+          "type": "string",
+          "description": "The name of the workspace."
+        },
+        "description": {
+          "type": "string",
+          "description": "A brief description of the workspace."
+        },
+        "color": {
+          "type": "string",
+          "description": "A color code or name associated with the workspace for visual identification (e.g., '#RRGGBB')."
+        },
+        "ownerUserId": {
+          "type": "string",
+          "description": "Reference to the User who owns this workspace. (Relationship: User 1:N Workspace)"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp when the workspace was created.",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp when the workspace was last updated.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "ownerUserId",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "WorkspaceMember": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "WorkspaceMember",
+      "type": "object",
+      "description": "Represents the association between a user and a workspace, indicating membership.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the WorkspaceMember entity."
+        },
+        "workspaceId": {
+          "type": "string",
+          "description": "Reference to the Workspace this member belongs to. (Relationship: Workspace 1:N WorkspaceMember)"
+        },
+        "userId": {
+          "type": "string",
+          "description": "Reference to the User who is a member. (Relationship: User 1:N WorkspaceMember)"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "The display name of the member within this specific workspace context."
+        },
+        "email": {
+          "type": "string",
+          "description": "The email address of the member within this specific workspace context.",
+          "format": "email"
+        },
+        "avatarUrl": {
+          "type": "string",
+          "description": "URL to the member's avatar image, potentially overriding the User's default avatar for this workspace.",
+          "format": "uri"
+        }
+      },
+      "required": [
+        "id",
+        "workspaceId",
+        "userId",
+        "displayName",
+        "email"
+      ]
+    },
+    "Project": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Project",
+      "type": "object",
+      "description": "A collection of tasks, nested within a specific workspace.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Project entity."
+        },
+        "workspaceId": {
+          "type": "string",
+          "description": "Reference to the Workspace this project belongs to. (Relationship: Workspace 1:N Project)"
+        },
+        "name": {
+          "type": "string",
+          "description": "The name of the project."
+        },
+        "description": {
+          "type": "string",
+          "description": "A detailed description of the project."
+        },
+        "color": {
+          "type": "string",
+          "description": "A color code or name associated with the project for visual identification (e.g., '#RRGGBB')."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp when the project was created.",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp when the project was last updated.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "workspaceId",
+        "name",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Task": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Task",
+      "type": "object",
+      "description": "An individual unit of work, part of a project within a workspace.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Task entity."
+        },
+        "workspaceId": {
+          "type": "string",
+          "description": "Reference to the Workspace this task belongs to. (Relationship: Workspace 1:N Task) Required for top-level filtering."
+        },
+        "projectId": {
+          "type": "string",
+          "description": "Reference to the Project this task belongs to. (Relationship: Project 1:N Task)"
+        },
+        "title": {
+          "type": "string",
+          "description": "The title of the task."
+        },
+        "description": {
+          "type": "string",
+          "description": "A detailed description of the task."
+        },
+        "status": {
+          "type": "string",
+          "description": "The current status of the task.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "priority": {
+          "type": "string",
+          "description": "The priority level of the task.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "dueDate": {
+          "type": "string",
+          "description": "The date by which the task is expected to be completed.",
+          "format": "date-time"
+        },
+        "assigneeUserId": {
+          "type": "string",
+          "description": "Reference to the User assigned to this task. (Relationship: User 1:N Task)"
+        },
+        "tags": {
+          "type": "array",
+          "description": "A list of tags associated with the task for categorization.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp when the task was created.",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp when the task was last updated.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "workspaceId",
+        "projectId",
+        "title",
+        "status",
+        "priority",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Comment": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Comment",
+      "type": "object",
+      "description": "A text-based comment made on a task by a user.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Comment entity."
+        },
+        "taskId": {
+          "type": "string",
+          "description": "Reference to the Task this comment belongs to. (Relationship: Task 1:N Comment)"
+        },
+        "authorUserId": {
+          "type": "string",
+          "description": "Reference to the User who authored this comment. (Relationship: User 1:N Comment)"
+        },
+        "body": {
+          "type": "string",
+          "description": "The content of the comment."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp when the comment was created.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "taskId",
+        "authorUserId",
+        "body",
+        "createdAt"
+      ]
+    }
+  },
+  "auth": {
+    "providers": [
+      "password",
+      "anonymous"
+    ]
+  },
+  "firestore": {
+    "structure": [
+      {
+        "path": "/users/{userId}",
+        "definition": {
+          "entityName": "User",
+          "schema": {
+            "$ref": "#/backend/entities/User"
+          },
+          "description": "Stores user profile information, such as name, email, and avatar URL. The document ID `{userId}` must match `request.auth.uid` for path-based ownership and access control.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier of the user, matching `request.auth.uid`."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/workspaces/{workspaceId}",
+        "definition": {
+          "entityName": "Workspace",
+          "schema": {
+            "$ref": "#/backend/entities/Workspace"
+          },
+          "description": "Stores details about a workspace. Each document includes `ownerUserId` and a denormalized `memberRoles` map (`{ [uid: string]: 'owner' | 'admin' | 'member' }`) to enable authorization independence for the workspace and its nested documents. Access is granted if `request.auth.uid` is in `memberRoles` or matches `ownerUserId`.",
+          "params": [
+            {
+              "name": "workspaceId",
+              "description": "The unique identifier for the workspace."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/workspaces/{workspaceId}/members/{userId}",
+        "definition": {
+          "entityName": "WorkspaceMember",
+          "schema": {
+            "$ref": "#/backend/entities/WorkspaceMember"
+          },
+          "description": "Contains specific details about a user's membership within a workspace (e.g., their display name or avatar specific to this workspace). The document ID `{userId}` matches the member's user ID. Access is controlled by the `memberRoles` map on the parent `Workspace` document.",
+          "params": [
+            {
+              "name": "workspaceId",
+              "description": "The unique identifier of the parent workspace."
+            },
+            {
+              "name": "userId",
+              "description": "The unique identifier of the user who is a member of this workspace."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/workspaces/{workspaceId}/projects/{projectId}",
+        "definition": {
+          "entityName": "Project",
+          "schema": {
+            "$ref": "#/backend/entities/Project"
+          },
+          "description": "Stores details about a project, nested within a specific workspace. Each document includes denormalized `workspaceId` and the `memberRoles` map from its parent `Workspace` for authorization independence. Access is granted if `request.auth.uid` is in `resource.data.memberRoles`.",
+          "params": [
+            {
+              "name": "workspaceId",
+              "description": "The unique identifier of the parent workspace."
+            },
+            {
+              "name": "projectId",
+              "description": "The unique identifier for the project."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/workspaces/{workspaceId}/projects/{projectId}/tasks/{taskId}",
+        "definition": {
+          "entityName": "Task",
+          "schema": {
+            "$ref": "#/backend/entities/Task"
+          },
+          "description": "Stores details about a task, nested within a project. Each document includes denormalized `workspaceId`, `projectId`, and the `memberRoles` map from the parent `Workspace` for authorization independence. Access is granted if `request.auth.uid` is in `resource.data.memberRoles`.",
+          "params": [
+            {
+              "name": "workspaceId",
+              "description": "The unique identifier of the parent workspace."
+            },
+            {
+              "name": "projectId",
+              "description": "The unique identifier of the parent project."
+            },
+            {
+              "name": "taskId",
+              "description": "The unique identifier for the task."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/workspaces/{workspaceId}/projects/{projectId}/tasks/{taskId}/comments/{commentId}",
+        "definition": {
+          "entityName": "Comment",
+          "schema": {
+            "$ref": "#/backend/entities/Comment"
+          },
+          "description": "Stores comments associated with a task. Each document includes denormalized `workspaceId`, `projectId`, `taskId`, `authorUserId`, and the `memberRoles` map from the parent `Workspace` for authorization independence. Access is granted if `request.auth.uid` is in `resource.data.memberRoles`.",
+          "params": [
+            {
+              "name": "workspaceId",
+              "description": "The unique identifier of the parent workspace."
+            },
+            {
+              "name": "projectId",
+              "description": "The unique identifier of the parent project."
+            },
+            {
+              "name": "taskId",
+              "description": "The unique identifier of the parent task."
+            },
+            {
+              "name": "commentId",
+              "description": "The unique identifier for the comment."
+            }
+          ]
+        }
+      }
+    ],
+    "reasoning": "The Firestore structure is designed to be secure, scalable, and debuggable, strictly adhering to the core design principles and strategy mandates. The fundamental approach revolves around strong authorization independence, achieved primarily through denormalization of authorization context.\n\n1.  **Authorization Independence (CRITICAL):** To eliminate the need for `get()` calls in security rules, which break atomic operations and complicate debugging, a `memberRoles` map is denormalized across all collaborative entities. Each `Workspace` document, as well as its nested `Project`, `Task`, and `Comment` documents, will include a `memberRoles: { [userId: string]: 'owner' | 'admin' | 'member' }` field. This ensures that any access request to these documents can be immediately validated by checking `request.auth.uid in resource.data.memberRoles` or `request.auth.uid == resource.data.ownerUserId`, making authorization checks atomic and highly performant.\n\n2.  **Structural Segregation (Homogeneous Security Posture):** Data is segregated into distinct collections based on its security requirements. For example, `/users/{userId}` is strictly for user-owned profile data, while all data within `/workspaces/{workspaceId}` (and its subcollections) is subject to workspace-specific membership rules. There is no mixing of public/private or different access levels within the same collection.\n\n3.  **Access Modeling & Hierarchical Paths:**\n    *   **Private User Data:** `/users/{userId}` stores individual `User` profiles, where the `{userId}` wildcard directly matches `request.auth.uid` for simple, path-based ownership.\n    *   **Collaborative Workspaces:** `/workspaces/{workspaceId}` serves as the root for collaborative data. The `Workspace` document itself contains the crucial `ownerUserId` and the denormalized `memberRoles` map.\n    *   **Nested Collaboration:** `Project`, `Task`, and `Comment` entities follow a clear hierarchical path structure within the workspace: `/workspaces/{workspaceId}/projects/{projectId}`, `/workspaces/{workspaceId}/projects/{projectId}/tasks/{taskId}`, and `/workspaces/{workspaceId}/projects/{projectId}/tasks/{taskId}/comments/{commentId}`. Each of these documents includes the denormalized `workspaceId`, its direct parent's ID (e.g., `projectId` in `Task`), and the `memberRoles` map from the parent workspace, providing full context for authorization without upward traversal.\n    *   **Workspace Members List:** The `/workspaces/{workspaceId}/members/{userId}` subcollection is used to store specific `WorkspaceMember` details (e.g., display name, avatar) for *listing* purposes within a workspace, complementing the `memberRoles` map used for authorization.\n\n4.  **QAPs (Rules are not Filters):** The structure explicitly supports efficient and secure `list` operations:\n    *   **Fetching user workspaces:** A user can efficiently query all workspaces they are a member of using `db.collection('workspaces').where('memberRoles.' + request.auth.uid, 'exists', true)`. This query directly leverages the denormalized `memberRoles` map, which is indexable by Firestore, satisfying the QAP principle.\n    *   **Fetching projects within a workspace:** `db.collection('workspaces/{workspaceId}/projects')` operations are secured because each `Project` document contains the denormalized `memberRoles` map, allowing rules to enforce access without `get()` operations. Similar logic applies to `Task` and `Comment` subcollections.\n    *   **Dashboard Stats:** Denormalized `workspaceId` and `projectId` fields in `Task` documents enable efficient `collectionGroup` queries to aggregate data (e.g., total tasks, overdue tasks across projects within a workspace) without complex joins or insecure list operations."
+  }
+}
