@@ -19,6 +19,9 @@ import {
   where,
   getDocs,
   limit,
+  orderBy,
+  startAt,
+  endAt
 } from 'firebase/firestore';
 import { Workspace, Project, Task, WorkspaceMember, User, Invitation } from '@/lib/types';
 
@@ -115,33 +118,28 @@ export function useNexusStore() {
     setActiveProjectId(id);
   }, []);
 
-  const searchUsersByEmail = async (email: string): Promise<User[]> => {
-    if (!db || !email) return [];
+  const searchUsersByEmail = async (queryText: string): Promise<User[]> => {
+    if (!db || !queryText || queryText.trim().length < 2) return [];
     
     const usersRef = collection(db, 'users');
-    const term = email.trim();
+    const term = queryText.trim().toLowerCase();
     
     try {
-      // 1. Try exact match (most common)
-      const q1 = query(usersRef, where('email', '==', term), limit(5));
-      const snap1 = await getDocs(q1);
+      // Use prefix matching for real-time feel
+      // This matches any email starting with the term
+      const q = query(
+        usersRef, 
+        orderBy('email'),
+        startAt(term),
+        endAt(term + '\uf8ff'),
+        limit(5)
+      );
       
-      let foundDocs = snap1.docs;
-      
-      // 2. If nothing found, try lowercase fallback
-      if (foundDocs.length === 0) {
-        const q2 = query(usersRef, where('email', '==', term.toLowerCase()), limit(5));
-        const snap2 = await getDocs(q2);
-        foundDocs = snap2.docs;
-      }
-      
-      return foundDocs.map(doc => {
-        const data = doc.data();
-        return {
-          ...data,
-          id: doc.id
-        } as User;
-      });
+      const snap = await getDocs(q);
+      return snap.docs.map(doc => ({
+        ...doc.data(),
+        id: doc.id
+      } as User));
     } catch (error) {
       console.error("Search failed:", error);
       return [];

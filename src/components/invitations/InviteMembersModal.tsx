@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Dialog, 
   DialogContent, 
@@ -58,6 +58,30 @@ export function InviteMembersModal({
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<any[]>([]);
 
+  // Real-time search effect
+  useEffect(() => {
+    if (activeTab !== 'email' || !searchEmail.trim()) {
+      setSearchResults([]);
+      return;
+    }
+
+    const delayDebounceFn = setTimeout(async () => {
+      if (searchEmail.trim().length >= 2) {
+        setIsSearching(true);
+        try {
+          const users = await store.searchUsersByEmail(searchEmail);
+          setSearchResults(users);
+        } catch (error) {
+          console.error("Search failed:", error);
+        } finally {
+          setIsSearching(false);
+        }
+      }
+    }, 400);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [searchEmail, activeTab, store]);
+
   const handleCreateLink = async () => {
     setIsGenerating(true);
     try {
@@ -73,26 +97,6 @@ export function InviteMembersModal({
       toast({ variant: 'destructive', title: 'Error', description: error.message });
     } finally {
       setIsGenerating(false);
-    }
-  };
-
-  const handleSearch = async () => {
-    if (!searchEmail) return;
-    setIsSearching(true);
-    setSearchResults([]);
-    try {
-      const users = await store.searchUsersByEmail(searchEmail);
-      setSearchResults(users);
-      if (users.length === 0) {
-        toast({ 
-          title: 'No user found', 
-          description: `No user with email "${searchEmail}" has registered yet.` 
-        });
-      }
-    } catch (error: any) {
-      toast({ variant: 'destructive', title: 'Error', description: error.message });
-    } finally {
-      setIsSearching(false);
     }
   };
 
@@ -211,27 +215,21 @@ export function InviteMembersModal({
 
           <TabsContent value="email" className="space-y-6 py-4">
             <div className="space-y-4">
-              <div className="flex gap-2">
-                <div className="relative flex-1">
-                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input 
-                    placeholder="Enter user email..." 
-                    className="pl-9" 
-                    value={searchEmail}
-                    onChange={(e) => setSearchEmail(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                  />
-                </div>
-                <Button onClick={handleSearch} disabled={isSearching}>
-                  {isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Search'}
-                </Button>
+              <div className="relative">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input 
+                  placeholder="Type an email to search..." 
+                  className="pl-9" 
+                  value={searchEmail}
+                  onChange={(e) => setSearchEmail(e.target.value)}
+                />
               </div>
 
-              <div className="space-y-3 max-h-[250px] overflow-y-auto min-h-[100px]">
+              <div className="space-y-3 max-h-[300px] overflow-y-auto min-h-[100px]">
                 {isSearching && (
                   <div className="flex flex-col items-center justify-center py-8 text-muted-foreground gap-2">
                     <Loader2 className="h-6 w-6 animate-spin text-primary" />
-                    <span className="text-sm">Searching users...</span>
+                    <span className="text-sm">Searching...</span>
                   </div>
                 )}
                 
@@ -267,9 +265,15 @@ export function InviteMembersModal({
                   );
                 })}
 
-                {!isSearching && searchResults.length === 0 && searchEmail && (
+                {!isSearching && searchResults.length === 0 && searchEmail.length >= 2 && (
                   <div className="text-center py-6 text-muted-foreground text-sm border border-dashed rounded-lg">
                     No results for "{searchEmail}"
+                  </div>
+                )}
+                
+                {!isSearching && searchEmail.length < 2 && (
+                  <div className="text-center py-6 text-muted-foreground text-xs italic">
+                    Type at least 2 characters to search
                   </div>
                 )}
               </div>
