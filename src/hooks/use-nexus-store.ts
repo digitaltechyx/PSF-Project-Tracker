@@ -107,7 +107,7 @@ export function useNexusStore() {
     );
   }, [allWorkspaceTasks, activeProject, globalSearchQuery]);
 
-  // 5. Fetch members for the active workspace - CRITICAL FIX
+  // 5. Fetch member profile documents for details
   const membersQuery = useMemoFirebase(() => {
     const wsId = activeWorkspaceId || activeWorkspace?.id;
     if (!db || !wsId) return null;
@@ -115,7 +115,24 @@ export function useNexusStore() {
   }, [db, activeWorkspaceId, activeWorkspace?.id]);
   
   const { data: membersData } = useCollection<WorkspaceMember>(membersQuery);
-  const members = useMemo(() => membersData || [], [membersData]);
+  const profiles = useMemo(() => membersData || [], [membersData]);
+
+  // 6. DERIVED TEAM LIST: Combine memberRoles (truth) with profiles (details)
+  const workspaceMembers = useMemo(() => {
+    if (!activeWorkspace) return [];
+    const roles = activeWorkspace.memberRoles || {};
+    return Object.entries(roles).map(([uid, role]) => {
+      const profile = profiles.find(p => p.userId === uid || p.id === uid);
+      return {
+        id: uid,
+        userId: uid,
+        role: role as 'owner' | 'lead' | 'member',
+        displayName: profile?.displayName || (uid === user?.uid ? user.displayName : 'Pending...'),
+        email: profile?.email || '',
+        avatarUrl: profile?.avatarUrl || null,
+      };
+    });
+  }, [activeWorkspace, profiles, user]);
 
   const switchWorkspace = useCallback((id: string) => {
     setActiveWorkspaceId(id);
@@ -132,11 +149,11 @@ export function useNexusStore() {
     const usersRef = collection(db, 'users');
     const term = queryText.trim().toLowerCase();
     try {
+      // Direct exact match first, then fall back to prefix matching
       const q = query(
         usersRef, 
-        orderBy('email'),
-        startAt(term),
-        endAt(term + '\uf8ff'),
+        where('email', '>=', term),
+        where('email', '<=', term + '\uf8ff'),
         limit(5)
       );
       const snap = await getDocs(q);
@@ -186,7 +203,6 @@ export function useNexusStore() {
     const wsId = activeWorkspaceId || activeWorkspace?.id;
     if (!db || !wsId || !user) return;
     
-    // 1. Update the workspace document with the new role
     const wsRef = doc(db, 'workspaces', wsId);
     const currentRoles = activeWorkspace?.memberRoles || {};
     const newRoles = { 
@@ -196,12 +212,11 @@ export function useNexusStore() {
     
     updateDocumentNonBlocking(wsRef, { memberRoles: newRoles });
 
-    // 2. Add the member record to the subcollection
     const memberRef = doc(db, 'workspaces', wsId, 'members', targetUser.id);
     setDocumentNonBlocking(memberRef, {
       id: targetUser.id,
       workspaceId: wsId,
-      userId: targetUser.id, // CRITICAL: This must be the user ID
+      userId: targetUser.id,
       displayName: targetUser.name || 'User',
       email: targetUser.email?.toLowerCase() || '',
       avatarUrl: targetUser.avatarUrl || null,
@@ -243,7 +258,7 @@ export function useNexusStore() {
     allWorkspaceTasks,
     projectTasks,
     myTasks,
-    workspaceMembers: members,
+    workspaceMembers, // Now returns the derived team list
     workspaceNotifications: [],
     globalSearchQuery,
     isTasksLoading,
@@ -275,11 +290,10 @@ export function useNexusStore() {
     removeMember: (memberId: string) => {
       const wsId = activeWorkspaceId || activeWorkspace?.id;
       if (!db || !wsId) return;
-      // Remove from subcollection
+      
       const memberRef = doc(db, 'workspaces', wsId, 'members', memberId);
       deleteDocumentNonBlocking(memberRef);
 
-      // Remove from role map
       const currentRoles = { ...(activeWorkspace?.memberRoles || {}) };
       delete currentRoles[memberId];
       const wsRef = doc(db, 'workspaces', wsId);

@@ -21,7 +21,7 @@ interface MembersViewProps {
 }
 
 export function MembersView({ store, onInviteClick, isAdmin }: MembersViewProps) {
-  const { workspaceMembers, removeMember, currentUser, isWorkspacesLoading } = store;
+  const { workspaceMembers, removeMember, currentUser, isWorkspacesLoading, activeWorkspace } = store;
   const [searchQuery, setSearchQuery] = useState('');
 
   const filteredMembers = useMemo(() => {
@@ -63,32 +63,30 @@ export function MembersView({ store, onInviteClick, isAdmin }: MembersViewProps)
         <CardContent className="p-0">
           <div className="divide-y">
             {filteredMembers.map((member: any) => {
-              // Ensure we use member.userId for consistent mapping
               const userId = member.userId || member.id;
-              const role = store.activeWorkspace?.memberRoles?.[userId] || 'member';
-              const isOwner = store.activeWorkspace?.ownerUserId === userId;
+              const isOwner = activeWorkspace?.ownerUserId === userId;
               
               return (
-                <div key={member.id} className="flex items-center justify-between p-4 hover:bg-muted/30 transition-colors">
+                <div key={userId} className="flex items-center justify-between p-4 hover:bg-muted/30 transition-colors">
                   <div className="flex items-center gap-4">
-                    <Avatar className="h-10 w-10">
+                    <Avatar className="h-10 w-10 border">
                       <AvatarImage src={member.avatarUrl} />
-                      <AvatarFallback>{(member.displayName || '?').charAt(0)}</AvatarFallback>
+                      <AvatarFallback className="font-bold">{(member.displayName || '?').charAt(0)}</AvatarFallback>
                     </Avatar>
                     <div className="flex flex-col">
                       <span className="font-semibold text-sm flex items-center gap-2">
-                        {member.displayName || 'Unnamed User'}
+                        {member.displayName || 'Pending Sync...'}
                         {userId === currentUser?.id && (
                           <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded font-bold uppercase">You</span>
                         )}
                       </span>
-                      <span className="text-xs text-muted-foreground">{member.email}</span>
+                      <span className="text-xs text-muted-foreground">{member.email || 'Initializing...'}</span>
                     </div>
                   </div>
                   <div className="flex items-center gap-6">
                     <div className="hidden md:flex items-center gap-1.5 text-xs font-medium text-muted-foreground bg-muted px-2.5 py-1 rounded-full capitalize">
                       <Shield className="h-3 w-3" />
-                      {isOwner ? 'Owner' : role}
+                      {isOwner ? 'Owner' : member.role}
                     </div>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -133,7 +131,7 @@ export function MembersView({ store, onInviteClick, isAdmin }: MembersViewProps)
           <Mail className="h-8 w-8 text-primary mx-auto opacity-50" />
           <h3 className="font-semibold">Collaborate with your team</h3>
           <p className="text-sm text-muted-foreground max-w-sm mx-auto">
-            Invite members to your workspace to assign tasks, share feedback, and track project progress together.
+            Members can assign tasks, share feedback, and track project progress together. Roles define what they can do.
           </p>
         </div>
       )}
