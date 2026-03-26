@@ -43,17 +43,18 @@ export function useNexusStore() {
     );
   }, [workspacesData, user?.uid]);
 
-  // 2. Identify the active workspace
+  // 2. Identify the active workspace from the FILTERED list
   const activeWorkspace = useMemo(() => {
     if (workspaces.length === 0) return null;
     if (activeWorkspaceId) {
-      return workspaces.find(w => w.id === activeWorkspaceId) || workspaces[0];
+      const found = workspaces.find(w => w.id === activeWorkspaceId);
+      return found || workspaces[0];
     }
     return workspaces[0];
   }, [workspaces, activeWorkspaceId]);
 
   useEffect(() => {
-    if (activeWorkspace && !activeWorkspaceId) {
+    if (activeWorkspace && activeWorkspace.id !== activeWorkspaceId) {
       setActiveWorkspaceId(activeWorkspace.id);
     }
   }, [activeWorkspace, activeWorkspaceId]);
@@ -66,13 +67,19 @@ export function useNexusStore() {
   }, [activeWorkspace, user?.uid, isOwner]);
 
   const isAdmin = useMemo(() => isOwner || currentRole === 'lead' || currentRole === 'owner', [isOwner, currentRole]);
+  const isMemberOnly = useMemo(() => !isAdmin && currentRole === 'member', [isAdmin, currentRole]);
 
-  // 3. Fetch projects for the active workspace - GATED BY USER
+  // 3. Fetch projects for the active workspace - GATED BY ACTUAL MEMBERSHIP
   const projectsQuery = useMemoFirebase(() => {
-    const wsId = activeWorkspaceId || activeWorkspace?.id;
+    const wsId = activeWorkspace?.id;
     if (!db || !user?.uid || !wsId) return null;
+    
+    // Only query if we have verified membership in the local list
+    const isVerified = workspaces.some(w => w.id === wsId);
+    if (!isVerified) return null;
+
     return query(collection(db, 'workspaces', wsId, 'projects'));
-  }, [db, user?.uid, activeWorkspaceId, activeWorkspace?.id]);
+  }, [db, user?.uid, activeWorkspace?.id, workspaces]);
   
   const { data: projectsData, isLoading: isProjectsLoading } = useCollection<Project>(projectsQuery);
   const projects = useMemo(() => projectsData || [], [projectsData]);
@@ -91,10 +98,14 @@ export function useNexusStore() {
   const { data: globalTasksData, isLoading: isTasksLoading } = useCollection<Task>(globalTasksQuery);
   
   const allWorkspaceTasks = useMemo(() => {
-    const wsId = activeWorkspaceId || activeWorkspace?.id;
+    const wsId = activeWorkspace?.id;
     if (!globalTasksData || !wsId) return [];
+    
+    const isVerified = workspaces.some(w => w.id === wsId);
+    if (!isVerified) return [];
+
     return globalTasksData.filter(t => t.workspaceId === wsId);
-  }, [globalTasksData, activeWorkspaceId, activeWorkspace?.id]);
+  }, [globalTasksData, activeWorkspace?.id, workspaces]);
 
   const myTasks = useMemo(() => {
     if (!user?.uid) return [];
@@ -118,12 +129,16 @@ export function useNexusStore() {
     );
   }, [allWorkspaceTasks, activeProject, globalSearchQuery]);
 
-  // 5. Members - GATED BY USER
+  // 5. Members - GATED BY ACTUAL MEMBERSHIP
   const membersQuery = useMemoFirebase(() => {
-    const wsId = activeWorkspaceId || activeWorkspace?.id;
+    const wsId = activeWorkspace?.id;
     if (!db || !user?.uid || !wsId) return null;
+
+    const isVerified = workspaces.some(w => w.id === wsId);
+    if (!isVerified) return null;
+
     return query(collection(db, 'workspaces', wsId, 'members'));
-  }, [db, user?.uid, activeWorkspaceId, activeWorkspace?.id]);
+  }, [db, user?.uid, activeWorkspace?.id, workspaces]);
   
   const { data: membersData } = useCollection<WorkspaceMember>(membersQuery);
   const profiles = useMemo(() => membersData || [], [membersData]);
@@ -132,7 +147,7 @@ export function useNexusStore() {
     if (!activeWorkspace) return [];
     const roles = activeWorkspace.memberRoles || {};
     return Object.entries(roles).map(([uid, role]) => {
-      const profile = profiles.find(p => p.id === uid);
+      const profile = profiles.find(p => p.userId === uid || p.id === uid);
       const isMe = uid === user?.uid;
       return {
         id: uid,
@@ -293,6 +308,7 @@ export function useNexusStore() {
     isWorkspacesLoading,
     isAdmin,
     isOwner,
+    isMemberOnly,
     currentRole,
     setGlobalSearchQuery,
     switchWorkspace,

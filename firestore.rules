@@ -10,9 +10,12 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/workspaces/$(wsId)).data;
     }
 
-    function isWorkspaceOwner(wsId) {
+    function isWorkspaceMember(wsId) {
       let ws = getWorkspace(wsId);
-      return isSignedIn() && ws.ownerUserId == request.auth.uid;
+      return isSignedIn() && (
+        ws.ownerUserId == request.auth.uid || 
+        (ws.memberRoles != null && ws.memberRoles[request.auth.uid] != null)
+      );
     }
 
     function isWorkspaceAdmin(wsId) {
@@ -25,12 +28,9 @@ service cloud.firestore {
       );
     }
 
-    function isWorkspaceMember(wsId) {
+    function isWorkspaceOwner(wsId) {
       let ws = getWorkspace(wsId);
-      return isSignedIn() && (
-        ws.ownerUserId == request.auth.uid || 
-        (ws.memberRoles != null && ws.memberRoles[request.auth.uid] != null)
-      );
+      return isSignedIn() && ws.ownerUserId == request.auth.uid;
     }
 
     // --- COLLECTION GROUP RULES ---
@@ -46,34 +46,29 @@ service cloud.firestore {
     // --- HIERARCHICAL RULES ---
 
     match /users/{userId} {
-      allow get: if isSignedIn();
-      allow list: if isSignedIn();
-      allow create, update: if isSignedIn() && request.auth.uid == userId;
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && request.auth.uid == userId;
     }
 
     match /invitations/{inviteId} {
-      allow get: if true;
-      allow list: if isSignedIn() && isWorkspaceOwner(resource.data.workspaceId);
-      allow create: if isSignedIn() && isWorkspaceOwner(request.resource.data.workspaceId);
-      // Allow joining users to update usageCount
+      allow read: if true;
+      allow create: if isSignedIn();
       allow update: if isSignedIn();
       allow delete: if isSignedIn() && isWorkspaceOwner(resource.data.workspaceId);
     }
 
     match /workspaces/{workspaceId} {
+      // Allow any signed in user to list/get workspace metadata for discovery/joining
       allow list: if isSignedIn();
       allow get: if isSignedIn();
       allow create: if isSignedIn();
       allow delete: if isWorkspaceOwner(workspaceId);
-      // Allow update for joining (adding role)
+      // Allow update for joining (adding roles) or admin management
       allow update: if isSignedIn();
 
       match /members/{memberUserId} {
         allow read: if isSignedIn();
-        // Allow users to join themselves, or admins to add them
-        allow create: if (isSignedIn() && request.auth.uid == memberUserId) || isWorkspaceAdmin(workspaceId);
-        // Only owner can manage members
-        allow update, delete: if isWorkspaceOwner(workspaceId);
+        allow write: if (isSignedIn() && request.auth.uid == memberUserId) || isWorkspaceAdmin(workspaceId);
       }
 
       match /projects/{projectId} {
