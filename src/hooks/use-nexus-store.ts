@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useCallback, useMemo, useEffect } from 'react';
@@ -99,8 +98,14 @@ export function useNexusStore() {
 
   const myTasks = useMemo(() => {
     if (!user?.uid) return [];
-    return allWorkspaceTasks.filter(t => t.assigneeUserId === user.uid);
-  }, [allWorkspaceTasks, user?.uid]);
+    let tasks = allWorkspaceTasks.filter(t => t.assigneeUserId === user.uid);
+    if (!globalSearchQuery) return tasks;
+    const lowerQuery = globalSearchQuery.toLowerCase();
+    return tasks.filter(t => 
+      t.title.toLowerCase().includes(lowerQuery) ||
+      (t.description && t.description.toLowerCase().includes(lowerQuery))
+    );
+  }, [allWorkspaceTasks, user?.uid, globalSearchQuery]);
 
   const projectTasks = useMemo(() => {
     if (!activeProject) return [];

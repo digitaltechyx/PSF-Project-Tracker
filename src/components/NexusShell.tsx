@@ -240,15 +240,17 @@ export function NexusShell() {
             </h1>
           </div>
           <div className="flex items-center gap-3">
-            <div className="relative w-64">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input 
-                placeholder="Search..." 
-                className="pl-9 h-9 bg-muted/50 border-none" 
-                value={store.globalSearchQuery}
-                onChange={(e) => store.setGlobalSearchQuery(e.target.value)}
-              />
-            </div>
+            {currentView !== 'dashboard' && currentView !== 'notifications' && (
+              <div className="relative w-64 animate-in fade-in duration-300">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input 
+                  placeholder="Search..." 
+                  className="pl-9 h-9 bg-muted/50 border-none" 
+                  value={store.globalSearchQuery}
+                  onChange={(e) => store.setGlobalSearchQuery(e.target.value)}
+                />
+              </div>
+            )}
           </div>
         </header>
 
