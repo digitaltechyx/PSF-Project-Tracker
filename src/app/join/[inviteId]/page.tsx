@@ -23,7 +23,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 
 /**
  * JoinWorkspacePage handles the invitation acceptance process.
- * Includes debug logging to track authentication state transitions.
+ * Uses shared Firebase instances from the application provider to ensure consistent auth state.
  */
 export default function JoinWorkspacePage() {
   const params = useParams();
@@ -44,24 +44,35 @@ export default function JoinWorkspacePage() {
   // Action state
   const [joining, setJoining] = useState(false);
   const [signingIn, setSigningIn] = useState(false);
+  const [signInError, setSignInError] = useState<string | null>(null);
   const [joined, setJoined] = useState(false);
 
-  // 1. Listen for auth state changes to transition UI from login to join
+  // 1. Listen for auth state changes using the SHARED auth instance
   useEffect(() => {
+    console.log('[JoinPage] Setting up auth listener...');
+    
+    if (!auth) {
+      console.error('[JoinPage] Firebase auth instance is missing!');
+      setAuthLoading(false);
+      return;
+    }
+
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      console.log('[JoinPage] Auth state changed:', currentUser?.email);
+      console.log('[JoinPage] Auth state changed:', currentUser?.email || 'no user');
       setUser(currentUser);
       setAuthLoading(false);
     });
+
     return () => unsubscribe();
   }, [auth]);
 
-  // 2. Fetch invitation details on mount
+  // 2. Fetch invitation details
   useEffect(() => {
     async function fetchInvitation() {
       if (!db || !inviteId) return;
 
       try {
+        console.log('[JoinPage] Fetching invitation:', inviteId);
         const inviteRef = doc(db, 'invitations', inviteId);
         const inviteSnap = await getDoc(inviteRef);
 
@@ -72,6 +83,7 @@ export default function JoinWorkspacePage() {
         }
 
         const data = inviteSnap.data();
+        console.log('[JoinPage] Invitation data:', data);
         
         // Expiry check
         if (data.expiresAt && new Date(data.expiresAt) < new Date()) {
@@ -87,7 +99,7 @@ export default function JoinWorkspacePage() {
           return;
         }
 
-        // Max uses check
+        // Max uses check (using usageCount from backend.json)
         if (data.maxUses !== 'unlimited' && data.usageCount >= data.maxUses) {
           setInviteError('This invitation has reached its maximum uses');
           setInviteLoading(false);
@@ -97,7 +109,7 @@ export default function JoinWorkspacePage() {
         setInvitation({ id: inviteSnap.id, ...data });
         setInviteLoading(false);
       } catch (error: any) {
-        console.error('Error fetching invitation:', error);
+        console.error('[JoinPage] Error fetching invitation:', error);
         setInviteError('Failed to load invitation details');
         setInviteLoading(false);
       }
@@ -106,31 +118,38 @@ export default function JoinWorkspacePage() {
     fetchInvitation();
   }, [db, inviteId]);
 
-  // Handle Google Sign In popup
+  // Handle Google Sign In
   const handleSignIn = async () => {
+    console.log('[JoinPage] Starting sign in...');
     if (signingIn) return;
     setSigningIn(true);
+    setSignInError(null);
+
     try {
       const provider = new GoogleAuthProvider();
-      // Explicitly awaiting ensures we catch specific errors like popup-closed
+      provider.setCustomParameters({ prompt: 'select_account' });
+      
+      console.log('[JoinPage] Opening popup...');
       const result = await signInWithPopup(auth, provider);
-      console.log('[JoinPage] Sign in successful:', result.user.email);
+      console.log('[JoinPage] Sign in SUCCESS:', result.user.email);
+      
     } catch (error: any) {
-      // Gracefully handle "popup closed by user" without crashing the app
+      console.error('[JoinPage] Sign in error:', error);
       if (error.code === 'auth/popup-closed-by-user') {
-        console.log('[JoinPage] Sign in cancelled by user');
+        console.log('[JoinPage] User closed the popup');
+        setSignInError('Sign in was cancelled. Please try again.');
       } else {
-        console.error('Sign in error:', error);
-        setInviteError('Sign in failed: ' + (error.message || 'Please try again.'));
+        setSignInError(`Sign in failed: ${error.message}`);
       }
     } finally {
       setSigningIn(false);
     }
   };
 
-  // Handle final Join action
+  // Handle Join Workspace
   const handleJoinWorkspace = async () => {
     if (!user || !invitation || !db) return;
+    console.log('[JoinPage] Joining workspace:', invitation.workspaceName);
     setJoining(true);
 
     try {
@@ -179,12 +198,12 @@ export default function JoinWorkspacePage() {
         updatedAt: serverTimestamp(),
       }, { merge: true });
 
+      console.log('[JoinPage] Successfully joined, redirecting to home...');
       setJoined(true);
-      // Success feedback delay
       setTimeout(() => router.push('/'), 1500);
       
     } catch (error: any) {
-      console.error('Error joining workspace:', error);
+      console.error('[JoinPage] Error joining workspace:', error);
       setInviteError('Failed to join: ' + (error.message || 'Check your permissions.'));
     } finally {
       setJoining(false);
@@ -248,7 +267,12 @@ export default function JoinWorkspacePage() {
 
               {!user ? (
                 <div className="space-y-4">
-                  <p className="text-xs text-center text-muted-foreground">Please sign in to accept this invitation.</p>
+                  {signInError && (
+                    <div className="p-3 bg-destructive/10 text-destructive text-xs rounded-lg">
+                      {signInError}
+                    </div>
+                  )}
+                  <p className="text-xs text-center text-muted-foreground">Please sign in with Google to accept this invitation.</p>
                   <Button className="w-full gap-2 h-11" onClick={handleSignIn} disabled={signingIn}>
                     {signingIn ? <Loader2 className="h-5 w-5 animate-spin" /> : <LogIn className="h-5 w-5" />}
                     {signingIn ? 'Signing in...' : 'Sign in with Google'}
