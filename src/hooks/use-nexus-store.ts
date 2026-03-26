@@ -118,28 +118,32 @@ export function useNexusStore() {
   const searchUsersByEmail = async (email: string): Promise<User[]> => {
     if (!db || !email) return [];
     
-    const searchEmail = email.trim();
-    const lowerSearchEmail = searchEmail.toLowerCase();
     const usersRef = collection(db, 'users');
+    const term = email.trim();
     
     try {
-      // Search for both the raw input and normalized lowercase version
-      const q = query(
-        usersRef, 
-        where('email', 'in', [searchEmail, lowerSearchEmail]), 
-        limit(5)
-      );
+      // 1. Try exact match (most common)
+      const q1 = query(usersRef, where('email', '==', term), limit(5));
+      const snap1 = await getDocs(q1);
       
-      const snap = await getDocs(q);
-      return snap.docs.map(doc => {
+      let foundDocs = snap1.docs;
+      
+      // 2. If nothing found, try lowercase fallback
+      if (foundDocs.length === 0) {
+        const q2 = query(usersRef, where('email', '==', term.toLowerCase()), limit(5));
+        const snap2 = await getDocs(q2);
+        foundDocs = snap2.docs;
+      }
+      
+      return foundDocs.map(doc => {
         const data = doc.data();
         return {
           ...data,
-          id: doc.id // Ensure ID is mapped from document ID
+          id: doc.id
         } as User;
       });
     } catch (error) {
-      console.error("Error searching users:", error);
+      console.error("Search failed:", error);
       return [];
     }
   };
@@ -191,9 +195,9 @@ export function useNexusStore() {
       id: targetUser.id,
       workspaceId: activeWorkspace.id,
       userId: targetUser.id,
-      displayName: targetUser.name,
+      displayName: targetUser.name || 'User',
       email: targetUser.email?.toLowerCase() || '',
-      avatarUrl: targetUser.avatarUrl,
+      avatarUrl: targetUser.avatarUrl || null,
     }, { merge: true });
   }, [db, activeWorkspace, user]);
 

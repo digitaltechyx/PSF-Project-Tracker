@@ -84,7 +84,10 @@ export function InviteMembersModal({
       const users = await store.searchUsersByEmail(searchEmail);
       setSearchResults(users);
       if (users.length === 0) {
-        toast({ title: 'No user found', description: 'Make sure the user has logged in to the app at least once.' });
+        toast({ 
+          title: 'No user found', 
+          description: `No user with email "${searchEmail}" has registered yet.` 
+        });
       }
     } catch (error: any) {
       toast({ variant: 'destructive', title: 'Error', description: error.message });
@@ -96,7 +99,7 @@ export function InviteMembersModal({
   const handleAddDirect = async (user: any, targetRole: 'member' | 'lead') => {
     try {
       await store.directAddMember(user, targetRole);
-      toast({ title: 'Member added!', description: `${user.name} is now a ${targetRole}.` });
+      toast({ title: 'Member added!', description: `${user.name || user.email} is now a ${targetRole}.` });
       setSearchResults([]);
       setSearchEmail('');
     } catch (error: any) {
@@ -212,7 +215,7 @@ export function InviteMembersModal({
                 <div className="relative flex-1">
                   <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                   <Input 
-                    placeholder="Search by exact email..." 
+                    placeholder="Enter user email..." 
                     className="pl-9" 
                     value={searchEmail}
                     onChange={(e) => setSearchEmail(e.target.value)}
@@ -228,11 +231,11 @@ export function InviteMembersModal({
                 {isSearching && (
                   <div className="flex flex-col items-center justify-center py-8 text-muted-foreground gap-2">
                     <Loader2 className="h-6 w-6 animate-spin text-primary" />
-                    <span className="text-sm">Searching...</span>
+                    <span className="text-sm">Searching users...</span>
                   </div>
                 )}
                 
-                {searchResults.map(user => {
+                {!isSearching && searchResults.map(user => {
                   const isAlreadyMember = store.activeWorkspace?.memberRoles?.[user.id] !== undefined;
                   return (
                     <div key={user.id} className="flex items-center justify-between p-3 rounded-lg border bg-card/50">
@@ -242,13 +245,13 @@ export function InviteMembersModal({
                           <AvatarFallback>{user.name?.charAt(0) || '?'}</AvatarFallback>
                         </Avatar>
                         <div className="flex flex-col">
-                          <span className="text-sm font-semibold">{user.name}</span>
+                          <span className="text-sm font-semibold">{user.name || 'User'}</span>
                           <span className="text-xs text-muted-foreground">{user.email}</span>
                         </div>
                       </div>
                       <div className="flex gap-2">
                         {isAlreadyMember ? (
-                          <Badge variant="secondary">Already Member</Badge>
+                          <Badge variant="secondary">Member</Badge>
                         ) : (
                           <>
                             <Button size="sm" variant="outline" className="h-8 px-2 text-[10px]" onClick={() => handleAddDirect(user, 'member')}>
@@ -266,7 +269,7 @@ export function InviteMembersModal({
 
                 {!isSearching && searchResults.length === 0 && searchEmail && (
                   <div className="text-center py-6 text-muted-foreground text-sm border border-dashed rounded-lg">
-                    No results found for "{searchEmail}"
+                    No results for "{searchEmail}"
                   </div>
                 )}
               </div>
