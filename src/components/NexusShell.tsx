@@ -238,12 +238,6 @@ export function NexusShell() {
             </h1>
           </div>
           <div className="flex items-center gap-3">
-            {isAdmin && (
-              <Button size="sm" variant="outline" className="gap-2 h-9" onClick={() => setIsInviteOpen(true)}>
-                <UserPlus className="h-4 w-4" />
-                Invite
-              </Button>
-            )}
             <div className="relative w-64">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input 
@@ -259,7 +253,13 @@ export function NexusShell() {
         <main className="flex-1 overflow-auto bg-background p-6">
           {currentView === 'dashboard' && <DashboardView store={store} onNavigateToProject={handleProjectClick} />}
           {currentView === 'project' && <ProjectView store={store} />}
-          {currentView === 'members' && <MembersView store={store} />}
+          {currentView === 'members' && (
+            <MembersView 
+              store={store} 
+              onInviteClick={() => setIsInviteOpen(true)} 
+              isAdmin={isAdmin}
+            />
+          )}
           {currentView === 'my-tasks' && <MyTasksView store={store} />}
           {currentView === 'notifications' && <NotificationsView store={store} />}
         </main>
