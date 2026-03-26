@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useMemo } from 'react';
@@ -24,11 +25,12 @@ export function MembersView({ store, onInviteClick, isAdmin }: MembersViewProps)
   const [searchQuery, setSearchQuery] = useState('');
 
   const filteredMembers = useMemo(() => {
+    if (!workspaceMembers) return [];
     if (!searchQuery.trim()) return workspaceMembers;
     const lowerQuery = searchQuery.toLowerCase();
     return workspaceMembers.filter((m: any) => 
-      m.displayName?.toLowerCase().includes(lowerQuery) || 
-      m.email?.toLowerCase().includes(lowerQuery)
+      (m.displayName || '').toLowerCase().includes(lowerQuery) || 
+      (m.email || '').toLowerCase().includes(lowerQuery)
     );
   }, [workspaceMembers, searchQuery]);
 
@@ -69,12 +71,12 @@ export function MembersView({ store, onInviteClick, isAdmin }: MembersViewProps)
                   <div className="flex items-center gap-4">
                     <Avatar className="h-10 w-10">
                       <AvatarImage src={member.avatarUrl} />
-                      <AvatarFallback>{member.displayName?.charAt(0) || '?'}</AvatarFallback>
+                      <AvatarFallback>{(member.displayName || '?').charAt(0)}</AvatarFallback>
                     </Avatar>
                     <div className="flex flex-col">
                       <span className="font-semibold text-sm flex items-center gap-2">
-                        {member.displayName}
-                        {member.userId === currentUser.id && (
+                        {member.displayName || 'Unnamed User'}
+                        {member.userId === currentUser?.id && (
                           <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded font-bold uppercase">You</span>
                         )}
                       </span>
@@ -95,8 +97,8 @@ export function MembersView({ store, onInviteClick, isAdmin }: MembersViewProps)
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem 
                           className="text-destructive focus:text-destructive gap-2"
-                          disabled={member.userId === currentUser.id || isOwner || !isAdmin}
-                          onClick={() => removeMember(member.id)}
+                          disabled={member.userId === currentUser?.id || isOwner || !isAdmin}
+                          onClick={() => removeMember(member.userId)}
                         >
                           <Trash2 className="h-4 w-4" />
                           Remove Member

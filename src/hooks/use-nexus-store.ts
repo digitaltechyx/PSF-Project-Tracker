@@ -32,12 +32,14 @@ export function useNexusStore() {
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
 
+  // 1. Fetch all workspaces the user has access to
   const workspacesQuery = useMemoFirebase(() => {
     if (!db || !user?.uid) return null;
     return query(collection(db, 'workspaces'));
   }, [db, user?.uid]);
   
   const { data: workspacesData, isLoading: isWorkspacesLoading } = useCollection<Workspace>(workspacesQuery);
+  
   const workspaces = useMemo(() => {
     if (!workspacesData || !user?.uid) return [];
     return workspacesData.filter(w => 
@@ -45,6 +47,7 @@ export function useNexusStore() {
     );
   }, [workspacesData, user?.uid]);
 
+  // 2. Identify the active workspace
   const activeWorkspace = useMemo(() => {
     if (workspaces.length === 0) return null;
     if (activeWorkspaceId) {
@@ -59,6 +62,7 @@ export function useNexusStore() {
     }
   }, [activeWorkspace, activeWorkspaceId]);
 
+  // 3. Fetch projects for the active workspace
   const projectsQuery = useMemoFirebase(() => {
     if (!db || !activeWorkspace?.id) return null;
     return query(collection(db, 'workspaces', activeWorkspace.id, 'projects'));
@@ -72,6 +76,7 @@ export function useNexusStore() {
     [projects, activeProjectId]
   );
 
+  // 4. Fetch all tasks via collection group for a global view
   const globalTasksQuery = useMemoFirebase(() => {
     if (!db || !user?.uid) return null;
     return query(collectionGroup(db, 'tasks'));
@@ -100,6 +105,7 @@ export function useNexusStore() {
     );
   }, [allWorkspaceTasks, activeProject, globalSearchQuery]);
 
+  // 5. Fetch members for the active workspace
   const membersQuery = useMemoFirebase(() => {
     if (!db || !activeWorkspace?.id) return null;
     return query(collection(db, 'workspaces', activeWorkspace.id, 'members'));
@@ -118,6 +124,7 @@ export function useNexusStore() {
     setActiveProjectId(id);
   }, []);
 
+  // Search users in the global /users collection
   const searchUsersByEmail = async (queryText: string): Promise<User[]> => {
     if (!db || !queryText || queryText.trim().length < 2) return [];
     
@@ -125,8 +132,6 @@ export function useNexusStore() {
     const term = queryText.trim().toLowerCase();
     
     try {
-      // Use prefix matching for real-time feel
-      // This matches any email starting with the term
       const q = query(
         usersRef, 
         orderBy('email'),
@@ -164,6 +169,7 @@ export function useNexusStore() {
 
     setDocumentNonBlocking(wsRef, wsData, { merge: true });
 
+    // Add owner as the first member
     const memberRef = doc(db, 'workspaces', wsRef.id, 'members', user.uid);
     setDocumentNonBlocking(memberRef, {
       id: user.uid,
@@ -180,14 +186,16 @@ export function useNexusStore() {
   const directAddMember = useCallback((targetUser: User, role: 'member' | 'lead') => {
     if (!db || !activeWorkspace || !user) return;
     
+    // 1. Update the workspace document with the new role
     const newRoles = { 
-      ...activeWorkspace.memberRoles, 
+      ...(activeWorkspace.memberRoles || {}), 
       [targetUser.id]: role 
     };
     
     const wsRef = doc(db, 'workspaces', activeWorkspace.id);
     updateDocumentNonBlocking(wsRef, { memberRoles: newRoles });
 
+    // 2. Add the member record to the subcollection
     const memberRef = doc(db, 'workspaces', activeWorkspace.id, 'members', targetUser.id);
     setDocumentNonBlocking(memberRef, {
       id: targetUser.id,
@@ -261,6 +269,18 @@ export function useNexusStore() {
         const ref = doc(db, 'workspaces', t.workspaceId, 'projects', t.projectId, 'tasks', t.id);
         deleteDocumentNonBlocking(ref);
       }
+    },
+    removeMember: (memberId: string) => {
+      if (!db || !activeWorkspace) return;
+      // Remove from subcollection
+      const memberRef = doc(db, 'workspaces', activeWorkspace.id, 'members', memberId);
+      deleteDocumentNonBlocking(memberRef);
+
+      // Remove from role map
+      const newRoles = { ...activeWorkspace.memberRoles };
+      delete newRoles[memberId];
+      const wsRef = doc(db, 'workspaces', activeWorkspace.id);
+      updateDocumentNonBlocking(wsRef, { memberRoles: newRoles });
     },
     addComment: (taskId: string, body: string) => {
       if (!db || !user) return;

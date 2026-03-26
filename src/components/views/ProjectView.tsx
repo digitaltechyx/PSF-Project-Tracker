@@ -8,7 +8,8 @@ import {
   Plus, 
   Calendar,
   User as UserIcon,
-  Tag as TagIcon
+  Tag as TagIcon,
+  Loader2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -34,6 +35,7 @@ import {
   SelectValue 
 } from '@/components/ui/select';
 import { Status, Priority } from '@/lib/types';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
 export function ProjectView({ store }: { store: any }) {
   const [view, setView] = useState<'list' | 'kanban'>('list');
@@ -193,8 +195,11 @@ export function ProjectView({ store }: { store: any }) {
                         {store.workspaceMembers.map((m: any) => (
                           <SelectItem key={m.userId} value={m.userId}>
                             <div className="flex items-center gap-2">
-                              <UserIcon className="h-3 w-3" />
-                              {m.displayName}
+                              <Avatar className="h-4 w-4">
+                                <AvatarImage src={m.avatarUrl} />
+                                <AvatarFallback>{(m.displayName || '?').charAt(0)}</AvatarFallback>
+                              </Avatar>
+                              <span className="truncate">{m.displayName || 'Unnamed'}</span>
                             </div>
                           </SelectItem>
                         ))}
@@ -236,7 +241,12 @@ export function ProjectView({ store }: { store: any }) {
       </div>
 
       <div className="flex-1 min-h-0">
-        {view === 'list' ? (
+        {store.isTasksLoading ? (
+          <div className="h-full flex flex-col items-center justify-center space-y-4">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <p className="text-sm text-muted-foreground">Loading tasks...</p>
+          </div>
+        ) : view === 'list' ? (
           <TaskList 
             tasks={filteredTasks} 
             onTaskClick={(id) => setSelectedTaskId(id)} 
