@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { 
-  getAuth, 
   onAuthStateChanged, 
   signInWithPopup, 
   GoogleAuthProvider,
@@ -17,20 +16,21 @@ import {
   setDoc, 
   serverTimestamp 
 } from 'firebase/firestore';
-import { useFirestore } from '@/firebase';
+import { useFirestore, useAuth } from '@/firebase';
 import { Loader2, AlertCircle, LogIn, CheckCircle2, ShieldCheck, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 
 /**
  * JoinWorkspacePage handles the invitation acceptance process.
- * It listens for auth state changes to transition from login to join UI.
+ * It uses a dedicated auth listener to ensure the UI reacts instantly after login.
  */
 export default function JoinWorkspacePage() {
   const params = useParams();
   const router = useRouter();
   const inviteId = params.inviteId as string;
   const db = useFirestore();
+  const auth = useAuth();
 
   // Auth state
   const [user, setUser] = useState<User | null>(null);
@@ -46,15 +46,14 @@ export default function JoinWorkspacePage() {
   const [signingIn, setSigningIn] = useState(false);
   const [joined, setJoined] = useState(false);
 
-  // 1. Listen for auth state changes to handle popup login response
+  // 1. Listen for auth state changes to transition UI from login to join
   useEffect(() => {
-    const auth = getAuth();
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setAuthLoading(false);
     });
     return () => unsubscribe();
-  }, []);
+  }, [auth]);
 
   // 2. Fetch invitation details on mount
   useEffect(() => {
@@ -108,15 +107,18 @@ export default function JoinWorkspacePage() {
 
   // Handle Google Sign In popup
   const handleSignIn = async () => {
+    if (signingIn) return;
     setSigningIn(true);
     try {
-      const auth = getAuth();
       const provider = new GoogleAuthProvider();
-      // The onAuthStateChanged listener handles the state update
+      // Explicitly awaiting ensures we catch specific errors like popup-closed
       await signInWithPopup(auth, provider);
     } catch (error: any) {
-      console.error('Sign in error:', error);
-      if (error.code !== 'auth/popup-closed-by-user') {
+      // Gracefully handle "popup closed by user" without crashing the app
+      if (error.code === 'auth/popup-closed-by-user') {
+        // Just stop the loading state, the user can try again
+      } else {
+        console.error('Sign in error:', error);
         setInviteError('Sign in failed: ' + (error.message || 'Please try again.'));
       }
     } finally {
@@ -141,19 +143,19 @@ export default function JoinWorkspacePage() {
       const isAlreadyMember = workspaceData.memberRoles?.[user.uid];
 
       if (!isAlreadyMember) {
-        // 1. Update workspace roles
+        // 1. Update workspace roles to grant access
         await updateDoc(workspaceRef, {
           [`memberRoles.${user.uid}`]: invitation.role || 'member',
           updatedAt: serverTimestamp(),
         });
 
-        // 2. Increment invitation usage
+        // 2. Increment invitation usage (usageCount from backend.json)
         const inviteRef = doc(db, 'invitations', invitation.id);
         await updateDoc(inviteRef, {
           usageCount: increment(1),
         });
 
-        // 3. Create workspace member record
+        // 3. Create workspace member record for search and list views
         const memberRef = doc(db, 'workspaces', invitation.workspaceId, 'members', user.uid);
         await setDoc(memberRef, {
           id: user.uid,
@@ -165,7 +167,7 @@ export default function JoinWorkspacePage() {
         }, { merge: true });
       }
 
-      // 4. Always sync user profile for searchable emails
+      // 4. Sync global user profile for searchable emails
       const userRef = doc(db, 'users', user.uid);
       await setDoc(userRef, {
         id: user.uid,
@@ -176,7 +178,7 @@ export default function JoinWorkspacePage() {
       }, { merge: true });
 
       setJoined(true);
-      // Brief delay for visual confirmation before redirect
+      // Success feedback delay
       setTimeout(() => router.push('/'), 1500);
       
     } catch (error: any) {
@@ -267,7 +269,7 @@ export default function JoinWorkspacePage() {
                   </Button>
                   <button 
                     className="w-full text-xs text-muted-foreground hover:underline"
-                    onClick={() => getAuth().signOut()}
+                    onClick={() => auth.signOut()}
                   >
                     Not you? Sign in with a different account
                   </button>
