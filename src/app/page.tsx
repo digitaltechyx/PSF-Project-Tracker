@@ -78,10 +78,23 @@ export default function Home() {
       }
     } catch (err: any) {
       console.error("Email Auth failed", err);
-      let message = err.message;
-      if (err.code === 'auth/email-already-in-use') message = 'This email is already registered.';
-      if (err.code === 'auth/wrong-password') message = 'Incorrect password.';
-      if (err.code === 'auth/user-not-found') message = 'No user found with this email.';
+      let message = "An error occurred during authentication.";
+      
+      // Map Firebase auth errors to user-friendly messages
+      if (err.code === 'auth/invalid-credential') {
+        message = 'Invalid email or password. Please check your credentials.';
+      } else if (err.code === 'auth/email-already-in-use') {
+        message = 'This email is already registered. Try logging in instead.';
+      } else if (err.code === 'auth/weak-password') {
+        message = 'Password should be at least 6 characters.';
+      } else if (err.code === 'auth/invalid-email') {
+        message = 'Please enter a valid email address.';
+      } else if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
+        message = 'Invalid email or password.';
+      } else {
+        message = err.message || message;
+      }
+      
       setError(message);
     } finally {
       setLoading(false);

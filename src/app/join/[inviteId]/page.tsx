@@ -20,7 +20,7 @@ import {
   serverTimestamp 
 } from 'firebase/firestore';
 import { useFirestore, useAuth } from '@/firebase';
-import { Loader2, AlertCircle, LogIn, CheckCircle2, ShieldCheck, Users, Mail, UserPlus } from 'lucide-react';
+import { Loader2, AlertCircle, LogIn, CheckCircle2, Users, Mail, UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -58,11 +58,12 @@ export default function JoinWorkspacePage() {
   // Listen for auth state changes
   useEffect(() => {
     if (!auth) {
-      setAuthLoading(false);
+      console.log('[JoinPage] Auth not ready');
       return;
     }
 
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      console.log('[JoinPage] Auth state changed:', currentUser?.email);
       setUser(currentUser);
       setAuthLoading(false);
     });
@@ -76,6 +77,7 @@ export default function JoinWorkspacePage() {
       if (!db || !inviteId) return;
 
       try {
+        console.log('[JoinPage] Fetching invitation:', inviteId);
         const inviteRef = doc(db, 'invitations', inviteId);
         const inviteSnap = await getDoc(inviteRef);
 
@@ -86,6 +88,7 @@ export default function JoinWorkspacePage() {
         }
 
         const data = inviteSnap.data();
+        console.log('[JoinPage] Invitation data:', data);
         
         if (data.expiresAt && new Date(data.expiresAt) < new Date()) {
           setInviteError('This invitation has expired');
@@ -108,7 +111,7 @@ export default function JoinWorkspacePage() {
         setInvitation({ id: inviteSnap.id, ...data });
         setInviteLoading(false);
       } catch (error: any) {
-        console.error('Error fetching invitation:', error);
+        console.error('[JoinPage] Error fetching invitation:', error);
         setInviteError('Failed to load invitation details');
         setInviteLoading(false);
       }
@@ -119,14 +122,17 @@ export default function JoinWorkspacePage() {
 
   const handleGoogleSignIn = async () => {
     if (signingIn) return;
+    console.log('[JoinPage] Starting Google Sign In');
     setSigningIn(true);
     setSignInError(null);
 
     try {
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: 'select_account' });
-      await signInWithPopup(auth, provider);
+      const result = await signInWithPopup(auth, provider);
+      console.log('[JoinPage] Google Sign In success:', result.user.email);
     } catch (error: any) {
+      console.error('[JoinPage] Google Sign In error:', error);
       if (error.code !== 'auth/popup-closed-by-user') {
         setSignInError(`Sign in failed: ${error.message}`);
       }
@@ -137,6 +143,7 @@ export default function JoinWorkspacePage() {
 
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log('[JoinPage] Starting Email Auth:', authMode);
     setSigningIn(true);
     setSignInError(null);
 
@@ -145,11 +152,28 @@ export default function JoinWorkspacePage() {
         if (!name.trim()) throw new Error('Name is required');
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         await updateProfile(userCredential.user, { displayName: name });
+        console.log('[JoinPage] Email Sign Up success:', userCredential.user.email);
       } else {
-        await signInWithEmailAndPassword(auth, email, password);
+        const userCredential = await signInWithEmailAndPassword(auth, email, password);
+        console.log('[JoinPage] Email Sign In success:', userCredential.user.email);
       }
     } catch (error: any) {
-      setSignInError(error.message);
+      console.error('[JoinPage] Email Auth error:', error);
+      let message = 'Authentication failed.';
+      
+      if (error.code === 'auth/invalid-credential') {
+        message = 'Invalid email or password.';
+      } else if (error.code === 'auth/email-already-in-use') {
+        message = 'This email is already registered.';
+      } else if (error.code === 'auth/weak-password') {
+        message = 'Password should be at least 6 characters.';
+      } else if (error.code === 'auth/invalid-email') {
+        message = 'Invalid email address.';
+      } else {
+        message = error.message;
+      }
+      
+      setSignInError(message);
     } finally {
       setSigningIn(false);
     }
@@ -157,6 +181,7 @@ export default function JoinWorkspacePage() {
 
   const handleJoinWorkspace = async () => {
     if (!user || !invitation || !db) return;
+    console.log('[JoinPage] Joining workspace:', invitation.workspaceId);
     setJoining(true);
 
     try {
@@ -205,15 +230,19 @@ export default function JoinWorkspacePage() {
         updatedAt: serverTimestamp(),
       }, { merge: true });
 
+      console.log('[JoinPage] Join successful, redirecting...');
       setJoined(true);
       setTimeout(() => router.push('/'), 1500);
       
     } catch (error: any) {
+      console.error('[JoinPage] Join error:', error);
       setInviteError('Failed to join: ' + (error.message || 'Check your permissions.'));
     } finally {
       setJoining(false);
     }
   };
+
+  console.log('[JoinPage] Render - user:', user?.email, 'authLoading:', authLoading);
 
   if (authLoading || (inviteLoading && !inviteError)) {
     return (
