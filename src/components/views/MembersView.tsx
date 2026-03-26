@@ -6,7 +6,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Mail, Shield, MoreVertical, Trash2, Search, UserPlus } from 'lucide-react';
+import { Mail, Shield, MoreVertical, Trash2, Search, UserPlus, Loader2 } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,7 +21,7 @@ interface MembersViewProps {
 }
 
 export function MembersView({ store, onInviteClick, isAdmin }: MembersViewProps) {
-  const { workspaceMembers, removeMember, currentUser } = store;
+  const { workspaceMembers, removeMember, currentUser, isWorkspacesLoading } = store;
   const [searchQuery, setSearchQuery] = useState('');
 
   const filteredMembers = useMemo(() => {
@@ -63,8 +63,10 @@ export function MembersView({ store, onInviteClick, isAdmin }: MembersViewProps)
         <CardContent className="p-0">
           <div className="divide-y">
             {filteredMembers.map((member: any) => {
-              const role = store.activeWorkspace?.memberRoles?.[member.userId] || 'member';
-              const isOwner = store.activeWorkspace?.ownerUserId === member.userId;
+              // Ensure we use member.userId for consistent mapping
+              const userId = member.userId || member.id;
+              const role = store.activeWorkspace?.memberRoles?.[userId] || 'member';
+              const isOwner = store.activeWorkspace?.ownerUserId === userId;
               
               return (
                 <div key={member.id} className="flex items-center justify-between p-4 hover:bg-muted/30 transition-colors">
@@ -76,7 +78,7 @@ export function MembersView({ store, onInviteClick, isAdmin }: MembersViewProps)
                     <div className="flex flex-col">
                       <span className="font-semibold text-sm flex items-center gap-2">
                         {member.displayName || 'Unnamed User'}
-                        {member.userId === currentUser?.id && (
+                        {userId === currentUser?.id && (
                           <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded font-bold uppercase">You</span>
                         )}
                       </span>
@@ -97,8 +99,8 @@ export function MembersView({ store, onInviteClick, isAdmin }: MembersViewProps)
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem 
                           className="text-destructive focus:text-destructive gap-2"
-                          disabled={member.userId === currentUser?.id || isOwner || !isAdmin}
-                          onClick={() => removeMember(member.userId)}
+                          disabled={userId === currentUser?.id || isOwner || !isAdmin}
+                          onClick={() => removeMember(userId)}
                         >
                           <Trash2 className="h-4 w-4" />
                           Remove Member
@@ -109,17 +111,24 @@ export function MembersView({ store, onInviteClick, isAdmin }: MembersViewProps)
                 </div>
               );
             })}
-            {filteredMembers.length === 0 && (
-              <div className="p-8 text-center text-muted-foreground space-y-2">
+            {filteredMembers.length === 0 && !isWorkspacesLoading && (
+              <div className="p-12 text-center text-muted-foreground space-y-3">
+                <Search className="h-8 w-8 mx-auto opacity-20" />
                 <p>No members found matching "{searchQuery}"</p>
                 <Button variant="link" size="sm" onClick={() => setSearchQuery('')}>Clear search</Button>
+              </div>
+            )}
+            {isWorkspacesLoading && (
+              <div className="p-12 text-center space-y-3">
+                <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary opacity-50" />
+                <p className="text-sm text-muted-foreground italic">Updating team list...</p>
               </div>
             )}
           </div>
         </CardContent>
       </Card>
       
-      {!searchQuery && (
+      {!searchQuery && filteredMembers.length > 0 && (
         <div className="bg-primary/5 rounded-xl p-8 text-center space-y-3">
           <Mail className="h-8 w-8 text-primary mx-auto opacity-50" />
           <h3 className="font-semibold">Collaborate with your team</h3>
