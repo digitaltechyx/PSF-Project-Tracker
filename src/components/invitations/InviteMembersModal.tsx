@@ -7,7 +7,6 @@ import {
   DialogHeader, 
   DialogTitle, 
   DialogDescription,
-  DialogFooter
 } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -28,12 +27,9 @@ import {
   Check, 
   Loader2, 
   UserPlus,
-  ShieldCheck,
-  ShieldAlert
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
 
 export function InviteMembersModal({ 
   isOpen, 
@@ -50,7 +46,7 @@ export function InviteMembersModal({
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   
   // Link State
-  const [role, setRole] = useState<'member' | 'admin'>('member');
+  const [role, setRole] = useState<'member' | 'lead'>('member');
   const [expires, setExpires] = useState<string>('7');
   const [maxUses, setMaxUses] = useState<string>('unlimited');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -94,7 +90,7 @@ export function InviteMembersModal({
     }
   };
 
-  const handleAddDirect = async (user: any, targetRole: 'member' | 'admin') => {
+  const handleAddDirect = async (user: any, targetRole: 'member' | 'lead') => {
     try {
       await store.directAddMember(user, targetRole);
       toast({ title: 'Member added!', description: `${user.name} is now a ${targetRole}.` });
@@ -151,7 +147,7 @@ export function InviteMembersModal({
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="member">Member</SelectItem>
-                        <SelectItem value="admin">Admin</SelectItem>
+                        <SelectItem value="lead">Lead</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -242,8 +238,8 @@ export function InviteMembersModal({
                       <Button size="sm" variant="outline" className="h-8 px-2 text-[10px]" onClick={() => handleAddDirect(user, 'member')}>
                         Add Member
                       </Button>
-                      <Button size="sm" variant="secondary" className="h-8 px-2 text-[10px]" onClick={() => handleAddDirect(user, 'admin')}>
-                        Add Admin
+                      <Button size="sm" variant="secondary" className="h-8 px-2 text-[10px]" onClick={() => handleAddDirect(user, 'lead')}>
+                        Add Lead
                       </Button>
                     </div>
                   </div>

@@ -153,7 +153,7 @@ export function useNexusStore() {
     setActiveWorkspaceId(wsRef.id);
   }, [db, user]);
 
-  const directAddMember = useCallback((targetUser: User, role: 'member' | 'admin') => {
+  const directAddMember = useCallback((targetUser: User, role: 'member' | 'lead') => {
     if (!db || !activeWorkspace || !user) return;
     
     const newRoles = { 
@@ -175,7 +175,7 @@ export function useNexusStore() {
     }, { merge: true });
   }, [db, activeWorkspace, user]);
 
-  const createInviteLink = useCallback((options: { role: 'member' | 'admin', expiresDays: number | 'never', maxUses: number | 'unlimited' }) => {
+  const createInviteLink = useCallback((options: { role: 'member' | 'lead', expiresDays: number | 'never', maxUses: number | 'unlimited' }) => {
     if (!db || !activeWorkspace || !user) return;
     
     const inviteRef = doc(collection(db, 'invitations'));
@@ -210,7 +210,7 @@ export function useNexusStore() {
     projectTasks,
     myTasks,
     workspaceMembers: members,
-    workspaceNotifications: [], // Fallback to prevent crashes
+    workspaceNotifications: [],
     globalSearchQuery,
     isTasksLoading,
     isProjectsLoading,
@@ -248,7 +248,6 @@ export function useNexusStore() {
           taskId: t.id,
           authorUserId: user.uid,
           body,
-          memberRoles: t.memberRoles,
           createdAt: new Date().toISOString(),
         }, { merge: true });
       }

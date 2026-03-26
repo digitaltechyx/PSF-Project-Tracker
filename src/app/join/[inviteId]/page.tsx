@@ -153,7 +153,7 @@ export default function JoinPage() {
                 <div className="flex items-center justify-between text-sm p-3 bg-muted rounded-lg">
                   <span className="text-muted-foreground">Your Role</span>
                   <div className="flex items-center gap-1.5 font-semibold capitalize">
-                    {invite.role === 'admin' ? <ShieldCheck className="h-4 w-4 text-primary" /> : <Users className="h-4 w-4" />}
+                    {invite.role === 'lead' ? <ShieldCheck className="h-4 w-4 text-primary" /> : <Users className="h-4 w-4" />}
                     {invite.role}
                   </div>
                 </div>

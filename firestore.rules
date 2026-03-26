@@ -26,7 +26,7 @@ service cloud.firestore {
       let ws = getWorkspace(wsId);
       return isSignedIn() && (
         ws.ownerUserId == request.auth.uid || 
-        (ws.memberRoles != null && (ws.memberRoles[request.auth.uid] == 'admin' || ws.memberRoles[request.auth.uid] == 'owner'))
+        (ws.memberRoles != null && (ws.memberRoles[request.auth.uid] == 'lead' || ws.memberRoles[request.auth.uid] == 'owner'))
       );
     }
 

@@ -15,7 +15,7 @@ export interface Workspace {
   description: string;
   color: string;
   ownerUserId: string;
-  memberRoles: Record<string, 'owner' | 'admin' | 'member'>;
+  memberRoles: Record<string, 'owner' | 'lead' | 'member'>;
   createdAt: string;
   updatedAt: string;
 }
@@ -35,7 +35,6 @@ export interface Project {
   name: string;
   description: string;
   color: string;
-  memberRoles: Record<string, 'owner' | 'admin' | 'member'>;
   createdAt: string;
   updatedAt: string;
 }
@@ -51,7 +50,6 @@ export interface Task {
   dueDate?: string | null;
   assigneeUserId?: string | null;
   tags?: string[];
-  memberRoles: Record<string, 'owner' | 'admin' | 'member'>;
   createdAt: string;
   updatedAt: string;
 }
@@ -61,7 +59,6 @@ export interface Comment {
   taskId: string;
   authorUserId: string;
   body: string;
-  memberRoles: Record<string, 'owner' | 'admin' | 'member'>;
   createdAt: string;
 }
 
@@ -69,11 +66,10 @@ export interface Invitation {
   id: string;
   workspaceId: string;
   workspaceName: string;
-  role: 'member' | 'admin';
+  role: 'member' | 'lead';
   invitedBy: string;
   invitedByName: string;
   type: 'link' | 'direct';
-  email?: string; // Only for direct invites
   status: 'active' | 'accepted' | 'expired' | 'cancelled';
   usageCount: number;
   maxUses: number | 'unlimited';
