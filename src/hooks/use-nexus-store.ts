@@ -18,10 +18,8 @@ import {
   where,
   getDocs,
   limit,
-  getDoc,
-  orderBy,
-  startAt,
-  endAt
+  serverTimestamp,
+  orderBy
 } from 'firebase/firestore';
 import { Workspace, Project, Task, WorkspaceMember, User, Invitation } from '@/lib/types';
 
@@ -74,6 +72,7 @@ export function useNexusStore() {
   const projectsQuery = useMemoFirebase(() => {
     const wsId = activeWorkspace?.id;
     if (!db || !user?.uid || !wsId) return null;
+    // Only fetch if we are verified as a member
     const isVerified = workspaces.some(w => w.id === wsId);
     if (!isVerified) return null;
     return query(collection(db, 'workspaces', wsId, 'projects'));
@@ -81,7 +80,6 @@ export function useNexusStore() {
   
   const { data: projectsData, isLoading: isProjectsLoading } = useCollection<Project>(projectsQuery);
   
-  // Scoped project list: Admins see everything, Members only see allowed projects
   const projects = useMemo(() => {
     if (!projectsData) return [];
     if (isAdmin) return projectsData;
@@ -105,7 +103,6 @@ export function useNexusStore() {
     const wsId = activeWorkspace?.id;
     if (!globalTasksData || !wsId) return [];
     
-    // Filter tasks based on project visibility
     return globalTasksData.filter(t => {
       if (t.workspaceId !== wsId) return false;
       if (isAdmin) return true;
@@ -140,8 +137,10 @@ export function useNexusStore() {
   const membersQuery = useMemoFirebase(() => {
     const wsId = activeWorkspace?.id;
     if (!db || !user?.uid || !wsId) return null;
+    const isVerified = workspaces.some(w => w.id === wsId);
+    if (!isVerified) return null;
     return query(collection(db, 'workspaces', wsId, 'members'));
-  }, [db, user?.uid, activeWorkspace?.id]);
+  }, [db, user?.uid, activeWorkspace?.id, workspaces]);
   
   const { data: membersData } = useCollection<WorkspaceMember>(membersQuery);
   const profiles = useMemo(() => membersData || [], [membersData]);
@@ -186,10 +185,12 @@ export function useNexusStore() {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    setDocumentNonBlocking(wsRef, wsData, { merge: true });
+    
+    // Crucial: Await the workspace creation so sequential project creation doesn't fail security rules
+    await setDocumentNonBlocking(wsRef, wsData, { merge: true });
     
     const memberRef = doc(db, 'workspaces', wsRef.id, 'members', user.uid);
-    setDocumentNonBlocking(memberRef, {
+    await setDocumentNonBlocking(memberRef, {
       id: user.uid,
       workspaceId: wsRef.id,
       userId: user.uid,
@@ -201,7 +202,7 @@ export function useNexusStore() {
     return wsRef.id;
   }, [db, user]);
 
-  const createInviteLink = useCallback((options: { role: 'member' | 'lead', expiresDays: number | 'never', maxUses: number | 'unlimited', targetProjectIds?: string[] }) => {
+  const createInviteLink = useCallback(async (options: { role: 'member' | 'lead', expiresDays: number | 'never', maxUses: number | 'unlimited', targetProjectIds?: string[] }) => {
     const wsId = activeWorkspace?.id;
     if (!db || !wsId || !isOwner) return;
     
@@ -223,7 +224,7 @@ export function useNexusStore() {
       createdAt: new Date().toISOString(),
       expiresAt,
     };
-    setDocumentNonBlocking(inviteRef, inviteData, { merge: true });
+    await setDocumentNonBlocking(inviteRef, inviteData, { merge: true });
     return inviteRef.id;
   }, [db, activeWorkspace, isOwner, user]);
 
@@ -231,7 +232,6 @@ export function useNexusStore() {
     if (!db || !emailQuery || emailQuery.length < 2) return [];
     try {
       const lowerQuery = emailQuery.toLowerCase();
-      // Simple prefix match for email
       const q = query(
         collection(db, 'users'),
         where('email', '>=', lowerQuery),
@@ -250,16 +250,14 @@ export function useNexusStore() {
     const wsId = activeWorkspace?.id;
     if (!db || !wsId || !isAdmin || !targetUser) return;
     
-    // 1. Update Workspace Roles
     const wsRef = doc(db, 'workspaces', wsId);
-    updateDocumentNonBlocking(wsRef, {
+    await updateDocumentNonBlocking(wsRef, {
       [`memberRoles.${targetUser.id}`]: role,
       updatedAt: new Date().toISOString()
     });
 
-    // 2. Create Member Profile in subcollection
     const memberRef = doc(db, 'workspaces', wsId, 'members', targetUser.id);
-    setDocumentNonBlocking(memberRef, {
+    await setDocumentNonBlocking(memberRef, {
       id: targetUser.id,
       workspaceId: wsId,
       userId: targetUser.id,
@@ -269,7 +267,7 @@ export function useNexusStore() {
     }, { merge: true });
   }, [db, activeWorkspace, isAdmin]);
 
-  const createProject = useCallback((wsId: string, name: string, description: string) => {
+  const createProject = useCallback(async (wsId: string, name: string, description: string) => {
     if (!db || !wsId) return null;
     const projRef = doc(collection(db, 'workspaces', wsId, 'projects'));
     const projData: Project = {
@@ -278,22 +276,22 @@ export function useNexusStore() {
       name,
       description: description || '',
       color: '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0'),
-      allowedUserIds: [user?.uid || ''], // Creator always has access
+      allowedUserIds: [user?.uid || ''],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    setDocumentNonBlocking(projRef, projData, { merge: true });
+    await setDocumentNonBlocking(projRef, projData, { merge: true });
     return projRef.id;
   }, [db, user?.uid]);
 
-  const updateProjectMembers = useCallback((projectId: string, allowedUserIds: string[]) => {
+  const updateProjectMembers = useCallback(async (projectId: string, allowedUserIds: string[]) => {
     const wsId = activeWorkspace?.id;
     if (!db || !wsId || !projectId || !isAdmin) return;
     const ref = doc(db, 'workspaces', wsId, 'projects', projectId);
-    updateDocumentNonBlocking(ref, { allowedUserIds, updatedAt: new Date().toISOString() });
+    await updateDocumentNonBlocking(ref, { allowedUserIds, updatedAt: new Date().toISOString() });
   }, [db, activeWorkspace?.id, isAdmin]);
 
-  const createTask = useCallback((wsId: string, projectId: string, data: any) => {
+  const createTask = useCallback(async (wsId: string, projectId: string, data: any) => {
     if (!db || !wsId || !projectId) return null;
     const taskRef = doc(collection(db, 'workspaces', wsId, 'projects', projectId, 'tasks'));
     const taskData = {
@@ -304,7 +302,7 @@ export function useNexusStore() {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    setDocumentNonBlocking(taskRef, taskData, { merge: true });
+    await setDocumentNonBlocking(taskRef, taskData, { merge: true });
     return taskRef.id;
   }, [db]);
 

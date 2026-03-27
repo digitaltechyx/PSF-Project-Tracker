@@ -6,31 +6,32 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function getWorkspace(wsId) {
+    function getWorkspaceData(wsId) {
       return get(/databases/$(database)/documents/workspaces/$(wsId)).data;
     }
 
     function isWorkspaceMember(wsId) {
-      let ws = getWorkspace(wsId);
-      return isSignedIn() && (
+      let ws = getWorkspaceData(wsId);
+      return isSignedIn() && ws != null && (
         ws.ownerUserId == request.auth.uid || 
         (ws.memberRoles != null && ws.memberRoles[request.auth.uid] != null)
       );
     }
 
     function isWorkspaceAdmin(wsId) {
-      let ws = getWorkspace(wsId);
-      let role = ws.memberRoles[request.auth.uid];
-      return isSignedIn() && (
+      let ws = getWorkspaceData(wsId);
+      return isSignedIn() && ws != null && (
         ws.ownerUserId == request.auth.uid || 
-        role == 'lead' || 
-        role == 'owner'
+        (ws.memberRoles != null && (
+          ws.memberRoles[request.auth.uid] == 'lead' || 
+          ws.memberRoles[request.auth.uid] == 'owner'
+        ))
       );
     }
 
     function isWorkspaceOwner(wsId) {
-      let ws = getWorkspace(wsId);
-      return isSignedIn() && ws.ownerUserId == request.auth.uid;
+      let ws = getWorkspaceData(wsId);
+      return isSignedIn() && ws != null && ws.ownerUserId == request.auth.uid;
     }
 
     function canSeeProject(wsId, projectData) {
@@ -60,7 +61,7 @@ service cloud.firestore {
     match /invitations/{inviteId} {
       allow read: if true;
       allow create: if isSignedIn();
-      allow update: if isSignedIn(); // Allow joining user to increment usageCount
+      allow update: if isSignedIn();
       allow delete: if isSignedIn() && isWorkspaceOwner(resource.data.workspaceId);
     }
 
@@ -69,7 +70,7 @@ service cloud.firestore {
       allow get: if isSignedIn();
       allow create: if isSignedIn();
       allow delete: if isWorkspaceOwner(workspaceId);
-      allow update: if isSignedIn(); // Allow joining users to update memberRoles
+      allow update: if isSignedIn();
 
       match /members/{memberUserId} {
         allow read: if isSignedIn();
@@ -81,7 +82,7 @@ service cloud.firestore {
         allow write: if isWorkspaceAdmin(workspaceId);
 
         match /tasks/{taskId} {
-          allow read: if isWorkspaceMember(workspaceId) && canSeeProject(workspaceId, get(/databases/$(database)/documents/workspaces/$(workspaceId)/projects/$(projectId)).data);
+          allow read: if isWorkspaceMember(workspaceId);
           allow write: if isWorkspaceAdmin(workspaceId);
 
           match /comments/{commentId} {
