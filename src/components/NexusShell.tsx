@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useEffect } from 'react';
@@ -83,8 +84,9 @@ export function NexusShell() {
   };
 
   const handleCreateProject = () => {
-    if (newProjName) {
-      store.createProject(newProjName, newProjDesc);
+    if (newProjName && store.activeWorkspace?.id) {
+      // Pass the active workspace ID as the first argument
+      store.createProject(store.activeWorkspace.id, newProjName, newProjDesc);
       setNewProjName('');
       setNewProjDesc('');
       setIsProjDialogOpen(false);
