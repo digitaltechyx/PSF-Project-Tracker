@@ -19,9 +19,12 @@ import {
   getDocs,
   limit,
   serverTimestamp,
-  orderBy
+  orderBy,
+  addDoc
 } from 'firebase/firestore';
 import { Workspace, Project, Task, WorkspaceMember, User, Invitation } from '@/lib/types';
+import { errorEmitter } from '@/firebase/error-emitter';
+import { FirestorePermissionError } from '@/firebase/errors';
 
 export function useNexusStore() {
   const { user } = useUser();
@@ -72,7 +75,6 @@ export function useNexusStore() {
   const projectsQuery = useMemoFirebase(() => {
     const wsId = activeWorkspace?.id;
     if (!db || !user?.uid || !wsId) return null;
-    // Only fetch if we are verified as a member
     const isVerified = workspaces.some(w => w.id === wsId);
     if (!isVerified) return null;
     return query(collection(db, 'workspaces', wsId, 'projects'));
@@ -186,20 +188,25 @@ export function useNexusStore() {
       updatedAt: new Date().toISOString(),
     };
     
-    // Crucial: Await the workspace creation so sequential project creation doesn't fail security rules
-    await setDocumentNonBlocking(wsRef, wsData, { merge: true });
-    
-    const memberRef = doc(db, 'workspaces', wsRef.id, 'members', user.uid);
-    await setDocumentNonBlocking(memberRef, {
-      id: user.uid,
-      workspaceId: wsRef.id,
-      userId: user.uid,
-      displayName: user.displayName || 'User',
-      email: user.email?.toLowerCase() || '',
-      avatarUrl: user.photoURL || null,
-    }, { merge: true });
-    
-    return wsRef.id;
+    // Crucial: We must await this write so sequential operations (like createProject)
+    // find the workspace already existing on the server for security rules.
+    try {
+      await setDocumentNonBlocking(wsRef, wsData, { merge: true });
+      
+      const memberRef = doc(db, 'workspaces', wsRef.id, 'members', user.uid);
+      await setDocumentNonBlocking(memberRef, {
+        id: user.uid,
+        workspaceId: wsRef.id,
+        userId: user.uid,
+        displayName: user.displayName || 'User',
+        email: user.email?.toLowerCase() || '',
+        avatarUrl: user.photoURL || null,
+      }, { merge: true });
+      
+      return wsRef.id;
+    } catch (e) {
+      return null;
+    }
   }, [db, user]);
 
   const createInviteLink = useCallback(async (options: { role: 'member' | 'lead', expiresDays: number | 'never', maxUses: number | 'unlimited', targetProjectIds?: string[] }) => {
@@ -280,8 +287,13 @@ export function useNexusStore() {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    await setDocumentNonBlocking(projRef, projData, { merge: true });
-    return projRef.id;
+    try {
+      // Must await to ensure security rules verify parent existence
+      await setDocumentNonBlocking(projRef, projData, { merge: true });
+      return projRef.id;
+    } catch (e) {
+      return null;
+    }
   }, [db, user?.uid]);
 
   const updateProjectMembers = useCallback(async (projectId: string, allowedUserIds: string[]) => {
@@ -302,8 +314,12 @@ export function useNexusStore() {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    await setDocumentNonBlocking(taskRef, taskData, { merge: true });
-    return taskRef.id;
+    try {
+      await setDocumentNonBlocking(taskRef, taskData, { merge: true });
+      return taskRef.id;
+    } catch (e) {
+      return null;
+    }
   }, [db]);
 
   return {
@@ -349,6 +365,38 @@ export function useNexusStore() {
         const ref = doc(db, 'workspaces', t.workspaceId, 'projects', t.projectId, 'tasks', t.id);
         deleteDocumentNonBlocking(ref);
       }
+    },
+    addComment: async (taskId: string, body: string) => {
+      if (!db || !user || !taskId) return;
+      const task = allWorkspaceTasks.find(t => t.id === taskId);
+      if (!task) return;
+      
+      const commentRef = doc(collection(db, 'workspaces', task.workspaceId, 'projects', task.projectId, 'tasks', task.id, 'comments'));
+      const commentData = {
+        id: commentRef.id,
+        taskId: task.id,
+        authorUserId: user.uid,
+        body,
+        createdAt: new Date().toISOString()
+      };
+      
+      await setDocumentNonBlocking(commentRef, commentData, { merge: true });
+    },
+    removeMember: async (userId: string) => {
+      const wsId = activeWorkspace?.id;
+      if (!db || !wsId || !isAdmin || userId === user?.uid) return;
+      
+      const wsRef = doc(db, 'workspaces', wsId);
+      const roles = { ...activeWorkspace!.memberRoles };
+      delete roles[userId];
+      
+      await updateDocumentNonBlocking(wsRef, {
+        memberRoles: roles,
+        updatedAt: new Date().toISOString()
+      });
+
+      const memberRef = doc(db, 'workspaces', wsId, 'members', userId);
+      await deleteDocumentNonBlocking(memberRef);
     }
   };
 }
