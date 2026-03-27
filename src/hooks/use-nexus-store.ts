@@ -69,7 +69,7 @@ export function useNexusStore() {
     return activeWorkspace?.memberRoles?.[user?.uid || ''] || null;
   }, [activeWorkspace, user?.uid, isOwner]);
 
-  const isAdmin = useMemo(() => isOwner || currentRole === 'lead' || currentRole === 'owner', [isOwner, currentRole]);
+  const isAdmin = useMemo(() => isOwner || currentRole === 'lead' || currentRole === 'owner' || currentRole === 'admin', [isOwner, currentRole]);
 
   // 2. Fetch projects for the active workspace
   const projectsQuery = useMemoFirebase(() => {
@@ -188,9 +188,8 @@ export function useNexusStore() {
       updatedAt: new Date().toISOString(),
     };
     
-    // Crucial: We must await this write so sequential operations (like createProject)
-    // find the workspace already existing on the server for security rules.
     try {
+      // Must await for the workspace to exist before sub-collections can be added reliably
       await setDocumentNonBlocking(wsRef, wsData, { merge: true });
       
       const memberRef = doc(db, 'workspaces', wsRef.id, 'members', user.uid);
@@ -205,6 +204,7 @@ export function useNexusStore() {
       
       return wsRef.id;
     } catch (e) {
+      console.error("Failed to create workspace:", e);
       return null;
     }
   }, [db, user]);
@@ -288,10 +288,10 @@ export function useNexusStore() {
       updatedAt: new Date().toISOString(),
     };
     try {
-      // Must await to ensure security rules verify parent existence
       await setDocumentNonBlocking(projRef, projData, { merge: true });
       return projRef.id;
     } catch (e) {
+      console.error("Failed to create project:", e);
       return null;
     }
   }, [db, user?.uid]);
@@ -318,6 +318,7 @@ export function useNexusStore() {
       await setDocumentNonBlocking(taskRef, taskData, { merge: true });
       return taskRef.id;
     } catch (e) {
+      console.error("Failed to create task:", e);
       return null;
     }
   }, [db]);

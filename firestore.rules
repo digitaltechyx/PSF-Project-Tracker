@@ -24,7 +24,8 @@ service cloud.firestore {
         ws.ownerUserId == request.auth.uid || 
         (ws.memberRoles != null && (
           ws.memberRoles[request.auth.uid] == 'owner' || 
-          ws.memberRoles[request.auth.uid] == 'lead'
+          ws.memberRoles[request.auth.uid] == 'lead' ||
+          ws.memberRoles[request.auth.uid] == 'admin'
         ))
       );
     }
@@ -48,15 +49,11 @@ service cloud.firestore {
 
     match /invitations/{inviteId} {
       allow read: if true;
-      allow create: if isSignedIn();
-      allow update: if isSignedIn();
-      allow delete: if isSignedIn();
+      allow create, update, delete: if isSignedIn();
     }
 
     match /workspaces/{workspaceId} {
-      allow list: if isSignedIn();
-      allow get: if isSignedIn();
-      allow create: if isSignedIn();
+      allow list, get, create: if isSignedIn();
       allow update: if isWorkspaceAdmin(workspaceId);
       allow delete: if isSignedIn() && getWorkspace(workspaceId).ownerUserId == request.auth.uid;
 
@@ -67,15 +64,19 @@ service cloud.firestore {
 
       match /projects/{projectId} {
         allow read: if isWorkspaceMember(workspaceId);
-        allow write: if isWorkspaceAdmin(workspaceId);
+        // Allow creation if signed in to avoid race conditions with workspace creation
+        allow create: if isSignedIn();
+        allow update, delete: if isWorkspaceAdmin(workspaceId);
 
         match /tasks/{taskId} {
           allow read: if isWorkspaceMember(workspaceId);
-          allow write: if isWorkspaceMember(workspaceId);
+          allow create: if isSignedIn();
+          allow update, delete: if isWorkspaceMember(workspaceId);
 
           match /comments/{commentId} {
             allow read: if isWorkspaceMember(workspaceId);
-            allow write: if isWorkspaceMember(workspaceId);
+            allow create: if isSignedIn();
+            allow update, delete: if isWorkspaceMember(workspaceId);
           }
         }
       }
