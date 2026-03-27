@@ -15,10 +15,12 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { LogIn, Loader2, AlertCircle, Mail, UserPlus } from 'lucide-react';
+import { LogIn, Loader2, AlertCircle, UserPlus } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { doc, setDoc } from 'firebase/firestore';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import Image from 'next/image';
+import { PlaceHolderImages } from '@/lib/placeholder-images';
 
 export default function Home() {
   const { user, isUserLoading } = useUser();
@@ -35,6 +37,8 @@ export default function Home() {
   // UI State
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  const bgImage = PlaceHolderImages.find(img => img.id === 'auth-bg');
 
   // Synchronize user profile with Firestore on every login
   useEffect(() => {
@@ -110,14 +114,27 @@ export default function Home() {
 
   if (!user) {
     return (
-      <div className="h-screen w-full flex flex-col items-center justify-center bg-background p-4">
-        <div className="w-full max-w-md space-y-8">
+      <div className="h-screen w-full relative flex flex-col items-center justify-center p-4">
+        {/* Background Image Layer */}
+        <div className="absolute inset-0 z-0">
+          <Image 
+            src={bgImage?.imageUrl || 'https://picsum.photos/seed/65/1920/1080'} 
+            alt="NexusTrack Background" 
+            fill 
+            className="object-cover"
+            priority
+            data-ai-hint={bgImage?.imageHint || "modern office"}
+          />
+          <div className="absolute inset-0 bg-background/70 backdrop-blur-[2px]" />
+        </div>
+
+        <div className="w-full max-w-md space-y-8 relative z-10 animate-in fade-in zoom-in duration-500">
           <div className="text-center space-y-2">
-            <h1 className="text-4xl font-bold font-headline text-primary">NexusTrack</h1>
-            <p className="text-muted-foreground">Manage projects with speed and clarity.</p>
+            <h1 className="text-5xl font-bold font-headline text-primary drop-shadow-sm">NexusTrack</h1>
+            <p className="text-muted-foreground font-medium">Manage projects with speed and clarity.</p>
           </div>
 
-          <div className="bg-card p-6 rounded-xl shadow-xl border space-y-6">
+          <div className="bg-card/95 p-6 rounded-2xl shadow-2xl border border-white/20 backdrop-blur-md space-y-6">
             <Tabs value={authMode} onValueChange={(v: any) => setAuthMode(v)} className="w-full">
               <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="login">Login</TabsTrigger>
@@ -134,6 +151,7 @@ export default function Home() {
                       value={name} 
                       onChange={(e) => setName(e.target.value)} 
                       required 
+                      className="bg-background/50"
                     />
                   </div>
                 )}
@@ -146,6 +164,7 @@ export default function Home() {
                     value={email} 
                     onChange={(e) => setEmail(e.target.value)} 
                     required 
+                    className="bg-background/50"
                   />
                 </div>
                 <div className="space-y-2">
@@ -157,17 +176,18 @@ export default function Home() {
                     value={password} 
                     onChange={(e) => setPassword(e.target.value)} 
                     required 
+                    className="bg-background/50"
                   />
                 </div>
 
                 {error && (
-                  <div className="flex items-center gap-2 p-3 text-xs bg-destructive/10 text-destructive rounded-lg">
+                  <div className="flex items-center gap-2 p-3 text-xs bg-destructive/10 text-destructive rounded-lg border border-destructive/20">
                     <AlertCircle className="h-4 w-4 shrink-0" />
                     {error}
                   </div>
                 )}
 
-                <Button type="submit" className="w-full gap-2" disabled={loading}>
+                <Button type="submit" className="w-full gap-2 h-11" disabled={loading}>
                   {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : 
                    authMode === 'login' ? <LogIn className="h-4 w-4" /> : <UserPlus className="h-4 w-4" />}
                   {authMode === 'login' ? 'Login' : 'Create Account'}
@@ -184,7 +204,7 @@ export default function Home() {
               </div>
             </div>
 
-            <Button variant="outline" className="w-full gap-2" onClick={handleGoogleLogin} disabled={loading}>
+            <Button variant="outline" className="w-full gap-2 h-11 bg-background/50" onClick={handleGoogleLogin} disabled={loading}>
               <svg className="h-4 w-4" viewBox="0 0 24 24">
                 <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
                 <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
