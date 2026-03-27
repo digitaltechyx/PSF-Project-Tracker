@@ -7,7 +7,8 @@ import {
   Plus, 
   Calendar,
   Tag as TagIcon,
-  Loader2
+  Loader2,
+  Users
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -34,11 +35,13 @@ import {
 } from '@/components/ui/select';
 import { Status, Priority } from '@/lib/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Checkbox } from '@/components/ui/checkbox';
 
 export function ProjectView({ store }: { store: any }) {
   const [view, setView] = useState<'list' | 'kanban'>('list');
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [isCreateTaskOpen, setIsCreateTaskOpen] = useState(false);
+  const [isMembersOpen, setIsMembersOpen] = useState(false);
 
   // Form State
   const [newTaskTitle, setNewTaskTitle] = useState('');
@@ -52,7 +55,6 @@ export function ProjectView({ store }: { store: any }) {
   const activeProject = store.activeProject;
   const filteredTasks = store.projectTasks;
 
-  // Initialize assignee to current user when dialog opens
   useEffect(() => {
     if (isCreateTaskOpen && store.currentUser) {
       setNewTaskAssignee(store.currentUser.id);
@@ -63,7 +65,7 @@ export function ProjectView({ store }: { store: any }) {
     if (newTaskTitle && activeProject) {
       const tagsArray = newTaskTags.split(',').map(tag => tag.trim()).filter(tag => tag !== '');
       
-      store.createTask(activeProject.id, {
+      store.createTask(activeProject.workspaceId, activeProject.id, {
         title: newTaskTitle,
         description: newTaskDesc,
         status: newTaskStatus,
@@ -73,7 +75,6 @@ export function ProjectView({ store }: { store: any }) {
         tags: tagsArray,
       });
 
-      // Reset Form
       setNewTaskTitle('');
       setNewTaskDesc('');
       setNewTaskStatus('todo');
@@ -85,10 +86,13 @@ export function ProjectView({ store }: { store: any }) {
     }
   };
 
-  const openCreateTaskWithStatus = (status: Status) => {
-    if (!store.isAdmin) return;
-    setNewTaskStatus(status);
-    setIsCreateTaskOpen(true);
+  const handleToggleMember = (userId: string) => {
+    if (!activeProject) return;
+    const current = activeProject.allowedUserIds || [];
+    const updated = current.includes(userId)
+      ? current.filter(id => id !== userId)
+      : [...current, userId];
+    store.updateProjectMembers(activeProject.id, updated);
   };
 
   if (!activeProject) return null;
@@ -119,9 +123,53 @@ export function ProjectView({ store }: { store: any }) {
 
         <div className="flex items-center gap-2">
           {store.isAdmin && (
+            <Dialog open={isMembersOpen} onOpenChange={setIsMembersOpen}>
+              <DialogTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-2 h-8">
+                  <Users className="h-4 w-4" />
+                  Project Team
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-[400px]">
+                <DialogHeader>
+                  <DialogTitle>Project Access</DialogTitle>
+                  <DialogDescription>Assign members who can see this project.</DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 py-4 max-h-[400px] overflow-y-auto">
+                  {store.workspaceMembers.map((m: any) => {
+                    // Admins always have access
+                    const isSystemAdmin = m.role === 'owner' || m.role === 'lead';
+                    const hasAccess = isSystemAdmin || (activeProject.allowedUserIds || []).includes(m.userId);
+                    
+                    return (
+                      <div key={m.userId} className="flex items-center justify-between p-2 rounded-lg hover:bg-muted/50 transition-colors">
+                        <div className="flex items-center gap-3">
+                          <Avatar className="h-8 w-8">
+                            <AvatarImage src={m.avatarUrl} />
+                            <AvatarFallback>{m.displayName?.charAt(0)}</AvatarFallback>
+                          </Avatar>
+                          <div className="flex flex-col">
+                            <span className="text-sm font-medium">{m.displayName}</span>
+                            <span className="text-[10px] text-muted-foreground uppercase">{m.role}</span>
+                          </div>
+                        </div>
+                        <Checkbox 
+                          checked={hasAccess} 
+                          disabled={isSystemAdmin}
+                          onCheckedChange={() => handleToggleMember(m.userId)}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              </DialogContent>
+            </Dialog>
+          )}
+
+          {store.isAdmin && (
             <Dialog open={isCreateTaskOpen} onOpenChange={setIsCreateTaskOpen}>
               <DialogTrigger asChild>
-                <Button size="sm" className="gap-2 h-8" onClick={() => setNewTaskStatus('todo')}>
+                <Button size="sm" className="gap-2 h-8">
                   <Plus className="h-4 w-4" />
                   Add Task
                 </Button>
@@ -259,7 +307,12 @@ export function ProjectView({ store }: { store: any }) {
             tasks={filteredTasks} 
             onTaskClick={(id) => setSelectedTaskId(id)} 
             updateTask={store.updateTask}
-            onAddTask={openCreateTaskWithStatus}
+            onAddTask={(status) => {
+              if (store.isAdmin) {
+                setNewTaskStatus(status);
+                setIsCreateTaskOpen(true);
+              }
+            }}
             readOnly={!store.isAdmin}
           />
         )}

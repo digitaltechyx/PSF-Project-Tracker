@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useEffect } from 'react';
@@ -28,10 +27,13 @@ import {
   Check, 
   Loader2, 
   UserPlus,
+  Box
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 export function InviteMembersModal({ 
   isOpen, 
@@ -51,6 +53,7 @@ export function InviteMembersModal({
   const [role, setRole] = useState<'member' | 'lead'>('member');
   const [expires, setExpires] = useState<string>('7');
   const [maxUses, setMaxUses] = useState<string>('unlimited');
+  const [selectedProjects, setSelectedProjects] = useState<string[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
 
   // Search State
@@ -58,7 +61,6 @@ export function InviteMembersModal({
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<any[]>([]);
 
-  // Real-time search effect
   useEffect(() => {
     if (activeTab !== 'email' || !searchEmail.trim()) {
       setSearchResults([]);
@@ -88,7 +90,8 @@ export function InviteMembersModal({
       const inviteId = await store.createInviteLink({
         role,
         expiresDays: expires === 'never' ? 'never' : parseInt(expires),
-        maxUses: maxUses === 'unlimited' ? 'unlimited' : parseInt(maxUses)
+        maxUses: maxUses === 'unlimited' ? 'unlimited' : parseInt(maxUses),
+        targetProjectIds: selectedProjects
       });
       const link = `${window.location.origin}/join/${inviteId}`;
       setInviteLink(link);
@@ -98,6 +101,12 @@ export function InviteMembersModal({
     } finally {
       setIsGenerating(false);
     }
+  };
+
+  const handleToggleProject = (id: string) => {
+    setSelectedProjects(prev => 
+      prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id]
+    );
   };
 
   const handleAddDirect = async (user: any, targetRole: 'member' | 'lead') => {
@@ -176,6 +185,33 @@ export function InviteMembersModal({
                     </Select>
                   </div>
                 </div>
+
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-1.5">
+                    <Box className="h-3 w-3" /> Target Projects (Optional)
+                  </Label>
+                  <p className="text-[10px] text-muted-foreground pb-2">If role is Member, they will only see these projects.</p>
+                  <ScrollArea className="h-[120px] rounded-md border p-2">
+                    <div className="space-y-2">
+                      {store.workspaceProjects.map((p: any) => (
+                        <div key={p.id} className="flex items-center space-x-2">
+                          <Checkbox 
+                            id={`proj-${p.id}`} 
+                            checked={selectedProjects.includes(p.id)} 
+                            onCheckedChange={() => handleToggleProject(p.id)}
+                          />
+                          <label 
+                            htmlFor={`proj-${p.id}`} 
+                            className="text-xs font-medium leading-none cursor-pointer"
+                          >
+                            {p.name}
+                          </label>
+                        </div>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                </div>
+
                 <div className="space-y-2">
                   <Label>Max Uses</Label>
                   <Select value={maxUses} onValueChange={setMaxUses}>

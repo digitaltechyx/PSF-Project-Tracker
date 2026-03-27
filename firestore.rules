@@ -33,6 +33,13 @@ service cloud.firestore {
       return isSignedIn() && ws.ownerUserId == request.auth.uid;
     }
 
+    function canSeeProject(wsId, projectData) {
+      return isWorkspaceAdmin(wsId) || (
+        projectData.allowedUserIds != null && 
+        request.auth.uid in projectData.allowedUserIds
+      );
+    }
+
     // --- COLLECTION GROUP RULES ---
     
     match /{path=**}/tasks/{taskId} {
@@ -53,18 +60,16 @@ service cloud.firestore {
     match /invitations/{inviteId} {
       allow read: if true;
       allow create: if isSignedIn();
-      allow update: if isSignedIn();
+      allow update: if isSignedIn(); // Allow joining user to increment usageCount
       allow delete: if isSignedIn() && isWorkspaceOwner(resource.data.workspaceId);
     }
 
     match /workspaces/{workspaceId} {
-      // Allow any signed in user to list/get workspace metadata for discovery/joining
       allow list: if isSignedIn();
       allow get: if isSignedIn();
       allow create: if isSignedIn();
       allow delete: if isWorkspaceOwner(workspaceId);
-      // Allow update for joining (adding roles) or admin management
-      allow update: if isSignedIn();
+      allow update: if isSignedIn(); // Allow joining users to update memberRoles
 
       match /members/{memberUserId} {
         allow read: if isSignedIn();
@@ -72,11 +77,11 @@ service cloud.firestore {
       }
 
       match /projects/{projectId} {
-        allow read: if isWorkspaceMember(workspaceId);
+        allow read: if isWorkspaceMember(workspaceId) && canSeeProject(workspaceId, resource.data);
         allow write: if isWorkspaceAdmin(workspaceId);
 
         match /tasks/{taskId} {
-          allow read: if isWorkspaceMember(workspaceId);
+          allow read: if isWorkspaceMember(workspaceId) && canSeeProject(workspaceId, get(/databases/$(database)/documents/workspaces/$(workspaceId)/projects/$(projectId)).data);
           allow write: if isWorkspaceAdmin(workspaceId);
 
           match /comments/{commentId} {

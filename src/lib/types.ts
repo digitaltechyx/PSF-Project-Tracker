@@ -35,6 +35,7 @@ export interface Project {
   name: string;
   description: string;
   color: string;
+  allowedUserIds?: string[]; // List of member UIDs who can see this project (if not Admin)
   createdAt: string;
   updatedAt: string;
 }
@@ -73,6 +74,7 @@ export interface Invitation {
   status: 'active' | 'accepted' | 'expired' | 'cancelled';
   usageCount: number;
   maxUses: number | 'unlimited';
+  targetProjectIds?: string[]; // Optional: Projects the user is added to upon joining
   createdAt: string;
   expiresAt: string | null;
 }
