@@ -18,7 +18,10 @@ import {
   where,
   getDocs,
   limit,
-  getDoc
+  getDoc,
+  orderBy,
+  startAt,
+  endAt
 } from 'firebase/firestore';
 import { Workspace, Project, Task, WorkspaceMember, User, Invitation } from '@/lib/types';
 
@@ -224,6 +227,48 @@ export function useNexusStore() {
     return inviteRef.id;
   }, [db, activeWorkspace, isOwner, user]);
 
+  const searchUsersByEmail = useCallback(async (emailQuery: string) => {
+    if (!db || !emailQuery || emailQuery.length < 2) return [];
+    try {
+      const lowerQuery = emailQuery.toLowerCase();
+      // Simple prefix match for email
+      const q = query(
+        collection(db, 'users'),
+        where('email', '>=', lowerQuery),
+        where('email', '<=', lowerQuery + '\uf8ff'),
+        limit(5)
+      );
+      const snapshot = await getDocs(q);
+      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    } catch (error) {
+      console.error("User search failed:", error);
+      return [];
+    }
+  }, [db]);
+
+  const directAddMember = useCallback(async (targetUser: any, role: 'member' | 'lead') => {
+    const wsId = activeWorkspace?.id;
+    if (!db || !wsId || !isAdmin || !targetUser) return;
+    
+    // 1. Update Workspace Roles
+    const wsRef = doc(db, 'workspaces', wsId);
+    updateDocumentNonBlocking(wsRef, {
+      [`memberRoles.${targetUser.id}`]: role,
+      updatedAt: new Date().toISOString()
+    });
+
+    // 2. Create Member Profile in subcollection
+    const memberRef = doc(db, 'workspaces', wsId, 'members', targetUser.id);
+    setDocumentNonBlocking(memberRef, {
+      id: targetUser.id,
+      workspaceId: wsId,
+      userId: targetUser.id,
+      displayName: targetUser.name || 'User',
+      email: targetUser.email?.toLowerCase() || '',
+      avatarUrl: targetUser.avatarUrl || null,
+    }, { merge: true });
+  }, [db, activeWorkspace, isAdmin]);
+
   const createProject = useCallback((wsId: string, name: string, description: string) => {
     if (!db || !wsId) return null;
     const projRef = doc(collection(db, 'workspaces', wsId, 'projects'));
@@ -289,6 +334,8 @@ export function useNexusStore() {
     updateProjectMembers,
     createTask,
     createInviteLink,
+    searchUsersByEmail,
+    directAddMember,
     updateTask: (taskId: string, data: Partial<Task>) => {
       if (!db || !isAdmin) return;
       const t = allWorkspaceTasks.find(x => x.id === taskId);
