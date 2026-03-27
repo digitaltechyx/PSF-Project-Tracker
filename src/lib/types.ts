@@ -7,6 +7,7 @@ export interface User {
   email: string;
   avatarUrl?: string | null;
   updatedAt?: string;
+  lastActiveWorkspaceId?: string | null;
 }
 
 export interface Workspace {

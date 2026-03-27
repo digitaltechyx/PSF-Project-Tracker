@@ -17,6 +17,7 @@ import {
   collectionGroup,
   where,
   getDocs,
+  getDoc,
   limit,
   serverTimestamp,
   orderBy,
@@ -27,36 +28,65 @@ import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
 
 export function useNexusStore() {
-  const { user } = useUser();
+  const { user, isAuthReady } = useUser();
   const db = useFirestore();
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
+  const [isPrefsLoading, setIsPrefsLoading] = useState(true);
+
+  // Load active workspace ID from user document on mount
+  useEffect(() => {
+    if (isAuthReady && user?.uid && db) {
+      const loadUserPrefs = async () => {
+        try {
+          const userRef = doc(db, 'users', user.uid);
+          const userSnap = await getDoc(userRef);
+          if (userSnap.exists()) {
+            const data = userSnap.data();
+            if (data.lastActiveWorkspaceId) {
+              setActiveWorkspaceId(data.lastActiveWorkspaceId);
+            }
+          }
+        } catch (err) {
+          console.error("Store: Error loading user prefs:", err);
+        } finally {
+          setIsPrefsLoading(false);
+        }
+      };
+      loadUserPrefs();
+    } else if (isAuthReady && !user) {
+      setIsPrefsLoading(false);
+    }
+  }, [isAuthReady, user?.uid, db]);
 
   // 1. Fetch all workspaces the user has access to
   const workspacesQuery = useMemoFirebase(() => {
-    if (!db || !user?.uid) return null;
-    return query(collection(db, 'workspaces'));
-  }, [db, user?.uid]);
+    if (!db || !user?.uid || !isAuthReady) return null;
+    // Specific query to avoid listing all workspaces which improves performance and avoids race conditions
+    return query(
+      collection(db, 'workspaces'),
+      where(`memberRoles.${user.uid}`, '!=', null)
+    );
+  }, [db, user?.uid, isAuthReady]);
   
   const { data: workspacesData, isLoading: isWorkspacesLoading } = useCollection<Workspace>(workspacesQuery);
   
-  const workspaces = useMemo(() => {
-    if (!workspacesData || !user?.uid) return [];
-    return workspacesData.filter(w => 
-      w.ownerUserId === user.uid || (w.memberRoles && w.memberRoles[user.uid])
-    );
-  }, [workspacesData, user?.uid]);
+  const workspaces = useMemo(() => workspacesData || [], [workspacesData]);
 
   const activeWorkspace = useMemo(() => {
     if (workspaces.length === 0) return null;
+    
     if (activeWorkspaceId) {
       const found = workspaces.find(w => w.id === activeWorkspaceId);
-      return found || workspaces[0];
+      if (found) return found;
     }
+    
+    // Default to the first one available if prefs not loaded or active ID not found
     return workspaces[0];
   }, [workspaces, activeWorkspaceId]);
 
+  // Sync state if it falls back
   useEffect(() => {
     if (activeWorkspace && activeWorkspace.id !== activeWorkspaceId) {
       setActiveWorkspaceId(activeWorkspace.id);
@@ -74,11 +104,9 @@ export function useNexusStore() {
   // 2. Fetch projects for the active workspace
   const projectsQuery = useMemoFirebase(() => {
     const wsId = activeWorkspace?.id;
-    if (!db || !user?.uid || !wsId) return null;
-    const isVerified = workspaces.some(w => w.id === wsId);
-    if (!isVerified) return null;
+    if (!db || !user?.uid || !wsId || !isAuthReady) return null;
     return query(collection(db, 'workspaces', wsId, 'projects'));
-  }, [db, user?.uid, activeWorkspace?.id, workspaces]);
+  }, [db, user?.uid, activeWorkspace?.id, isAuthReady]);
   
   const { data: projectsData, isLoading: isProjectsLoading } = useCollection<Project>(projectsQuery);
   
@@ -95,9 +123,9 @@ export function useNexusStore() {
 
   // 3. Fetch tasks
   const globalTasksQuery = useMemoFirebase(() => {
-    if (!db || !user?.uid) return null;
+    if (!db || !user?.uid || !isAuthReady) return null;
     return query(collectionGroup(db, 'tasks'));
-  }, [db, user?.uid]);
+  }, [db, user?.uid, isAuthReady]);
   
   const { data: globalTasksData, isLoading: isTasksLoading } = useCollection<Task>(globalTasksQuery);
   
@@ -138,11 +166,9 @@ export function useNexusStore() {
   // 4. Members
   const membersQuery = useMemoFirebase(() => {
     const wsId = activeWorkspace?.id;
-    if (!db || !user?.uid || !wsId) return null;
-    const isVerified = workspaces.some(w => w.id === wsId);
-    if (!isVerified) return null;
+    if (!db || !user?.uid || !wsId || !isAuthReady) return null;
     return query(collection(db, 'workspaces', wsId, 'members'));
-  }, [db, user?.uid, activeWorkspace?.id, workspaces]);
+  }, [db, user?.uid, activeWorkspace?.id, isAuthReady]);
   
   const { data: membersData } = useCollection<WorkspaceMember>(membersQuery);
   const profiles = useMemo(() => membersData || [], [membersData]);
@@ -168,7 +194,13 @@ export function useNexusStore() {
     setActiveWorkspaceId(id);
     setActiveProjectId(null); 
     setGlobalSearchQuery('');
-  }, []);
+    
+    // Persist to user doc
+    if (user?.uid && db) {
+      const userRef = doc(db, 'users', user.uid);
+      updateDocumentNonBlocking(userRef, { lastActiveWorkspaceId: id });
+    }
+  }, [user?.uid, db]);
 
   const selectProject = useCallback((id: string | null) => {
     setActiveProjectId(id);
@@ -189,7 +221,6 @@ export function useNexusStore() {
     };
     
     try {
-      // Must await for the workspace to exist before sub-collections can be added reliably
       await setDocumentNonBlocking(wsRef, wsData, { merge: true });
       
       const memberRef = doc(db, 'workspaces', wsRef.id, 'members', user.uid);
@@ -201,6 +232,11 @@ export function useNexusStore() {
         email: user.email?.toLowerCase() || '',
         avatarUrl: user.photoURL || null,
       }, { merge: true });
+      
+      // Auto-select newly created workspace and persist
+      setActiveWorkspaceId(wsRef.id);
+      const userRef = doc(db, 'users', user.uid);
+      await updateDocumentNonBlocking(userRef, { lastActiveWorkspaceId: wsRef.id });
       
       return wsRef.id;
     } catch (e) {
@@ -337,7 +373,7 @@ export function useNexusStore() {
     globalSearchQuery,
     isTasksLoading,
     isProjectsLoading,
-    isWorkspacesLoading,
+    isWorkspacesLoading: isWorkspacesLoading || isPrefsLoading,
     isAdmin,
     isOwner,
     currentRole,

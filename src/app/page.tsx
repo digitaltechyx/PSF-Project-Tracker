@@ -1,4 +1,3 @@
-
 "use client";
 
 import { NexusShell } from '@/components/NexusShell';
@@ -23,9 +22,8 @@ import Image from 'next/image';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
 
 export default function Home() {
-  const { user, isUserLoading } = useUser();
+  const { user, isUserLoading, isAuthReady } = useUser();
   const auth = useAuth();
-  const db = useFirestore();
   const store = useNexusStore();
   
   // Form State
@@ -39,22 +37,6 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
 
   const bgImage = PlaceHolderImages.find(img => img.id === 'auth-bg');
-
-  // Synchronize user profile with Firestore on every login
-  useEffect(() => {
-    if (user && db) {
-      const userRef = doc(db, 'users', user.uid);
-      setDoc(userRef, {
-        id: user.uid,
-        name: user.displayName || 'User',
-        email: user.email?.toLowerCase() || '',
-        avatarUrl: user.photoURL || null,
-        updatedAt: new Date().toISOString()
-      }, { merge: true }).catch(err => {
-        // Silently handle profile sync errors to avoid UI disruption
-      });
-    }
-  }, [user, db]);
 
   const handleGoogleLogin = async () => {
     setError(null);
@@ -104,7 +86,7 @@ export default function Home() {
     }
   };
 
-  if (isUserLoading) {
+  if (isUserLoading || !isAuthReady) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
