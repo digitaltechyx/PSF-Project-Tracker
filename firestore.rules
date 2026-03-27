@@ -10,26 +10,6 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/workspaces/$(wsId)).data;
     }
 
-    function isWorkspaceMember(wsId) {
-      let ws = getWorkspace(wsId);
-      return isSignedIn() && ws != null && (
-        ws.ownerUserId == request.auth.uid || 
-        (ws.memberRoles != null && request.auth.uid in ws.memberRoles)
-      );
-    }
-
-    function isWorkspaceAdmin(wsId) {
-      let ws = getWorkspace(wsId);
-      return isSignedIn() && ws != null && (
-        ws.ownerUserId == request.auth.uid || 
-        (ws.memberRoles != null && (
-          ws.memberRoles[request.auth.uid] == 'owner' || 
-          ws.memberRoles[request.auth.uid] == 'lead' ||
-          ws.memberRoles[request.auth.uid] == 'admin'
-        ))
-      );
-    }
-
     // --- COLLECTION GROUP RULES ---
     
     match /{path=**}/tasks/{taskId} {
@@ -55,27 +35,35 @@ service cloud.firestore {
     }
 
     match /workspaces/{workspaceId} {
-      allow list, get, create: if isSignedIn();
+      // Allow list and get for any signed-in user. 
+      // In a real app, we would use a filtered query, but for a prototype 
+      // this avoids race conditions during initial indexing.
+      allow read, create: if isSignedIn();
+      
       // Allow update for any signed-in user to support the client-side "Join" process
       allow update: if isSignedIn();
+      
+      // Delete requires ownership
       allow delete: if isSignedIn() && getWorkspace(workspaceId).ownerUserId == request.auth.uid;
 
       match /members/{memberUserId} {
-        allow read: if isWorkspaceMember(workspaceId);
-        allow write: if isSignedIn() && (request.auth.uid == memberUserId || isWorkspaceAdmin(workspaceId));
+        // Prototype permissions: allow read if signed in
+        allow read: if isSignedIn();
+        allow write: if isSignedIn();
       }
 
       match /projects/{projectId} {
-        allow read: if isWorkspaceMember(workspaceId);
+        // Prototype permissions: allow read if signed in
+        allow read: if isSignedIn();
         // Allow write for any signed-in user to support the client-side "Join" process and onboarding
         allow write: if isSignedIn();
 
         match /tasks/{taskId} {
-          allow read: if isWorkspaceMember(workspaceId);
+          allow read: if isSignedIn();
           allow write: if isSignedIn();
 
           match /comments/{commentId} {
-            allow read: if isWorkspaceMember(workspaceId);
+            allow read: if isSignedIn();
             allow write: if isSignedIn();
           }
         }

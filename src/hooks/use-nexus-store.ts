@@ -63,7 +63,6 @@ export function useNexusStore() {
   // 1. Fetch all workspaces the user has access to
   const workspacesQuery = useMemoFirebase(() => {
     if (!db || !user?.uid || !isAuthReady) return null;
-    // Specific query to avoid listing all workspaces which improves performance and avoids race conditions
     return query(
       collection(db, 'workspaces'),
       where(`memberRoles.${user.uid}`, '!=', null)
@@ -82,13 +81,12 @@ export function useNexusStore() {
       if (found) return found;
     }
     
-    // Default to the first one available if prefs not loaded or active ID not found
     return workspaces[0];
   }, [workspaces, activeWorkspaceId]);
 
   // Sync state if it falls back
   useEffect(() => {
-    if (activeWorkspace && activeWorkspace.id !== activeWorkspaceId) {
+    if (activeWorkspace && activeWorkspace.id && activeWorkspace.id !== activeWorkspaceId) {
       setActiveWorkspaceId(activeWorkspace.id);
     }
   }, [activeWorkspace, activeWorkspaceId]);
@@ -104,7 +102,8 @@ export function useNexusStore() {
   // 2. Fetch projects for the active workspace
   const projectsQuery = useMemoFirebase(() => {
     const wsId = activeWorkspace?.id;
-    if (!db || !user?.uid || !wsId || !isAuthReady) return null;
+    // Don't fire if no workspace, or if it's the placeholder "Loading..."
+    if (!db || !user?.uid || !wsId || wsId === '' || !isAuthReady) return null;
     return query(collection(db, 'workspaces', wsId, 'projects'));
   }, [db, user?.uid, activeWorkspace?.id, isAuthReady]);
   
@@ -166,7 +165,7 @@ export function useNexusStore() {
   // 4. Members
   const membersQuery = useMemoFirebase(() => {
     const wsId = activeWorkspace?.id;
-    if (!db || !user?.uid || !wsId || !isAuthReady) return null;
+    if (!db || !user?.uid || !wsId || wsId === '' || !isAuthReady) return null;
     return query(collection(db, 'workspaces', wsId, 'members'));
   }, [db, user?.uid, activeWorkspace?.id, isAuthReady]);
   
@@ -221,6 +220,8 @@ export function useNexusStore() {
     };
     
     try {
+      // Use await to ensure the workspace and member profile exist before finishing.
+      // This helps satisfy security rules for subsequent creation calls (like project/task).
       await setDocumentNonBlocking(wsRef, wsData, { merge: true });
       
       const memberRef = doc(db, 'workspaces', wsRef.id, 'members', user.uid);
