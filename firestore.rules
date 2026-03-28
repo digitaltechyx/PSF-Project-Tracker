@@ -1,13 +1,10 @@
+
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
     function isSignedIn() {
       return request.auth != null;
-    }
-
-    function getWorkspace(wsId) {
-      return get(/databases/$(database)/documents/workspaces/$(wsId)).data;
     }
 
     // --- COLLECTION GROUP RULES ---
@@ -29,33 +26,33 @@ service cloud.firestore {
       allow write: if isSignedIn() && request.auth.uid == userId;
     }
 
+    match /notifications/{notificationId} {
+      // Users can only read their own notifications
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      // Anyone can create a notification for another user
+      allow create: if isSignedIn();
+      // Users can mark their own notifications as read
+      allow update: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
     match /invitations/{inviteId} {
       allow read: if true;
       allow create, update, delete: if isSignedIn();
     }
 
     match /workspaces/{workspaceId} {
-      // Allow list and get for any signed-in user. 
-      // In a real app, we would use a filtered query, but for a prototype 
-      // this avoids race conditions during initial indexing.
       allow read, create: if isSignedIn();
-      
-      // Allow update for any signed-in user to support the client-side "Join" process
       allow update: if isSignedIn();
-      
-      // Delete requires ownership
-      allow delete: if isSignedIn() && getWorkspace(workspaceId).ownerUserId == request.auth.uid;
+      allow delete: if isSignedIn() && get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.ownerUserId == request.auth.uid;
 
       match /members/{memberUserId} {
-        // Prototype permissions: allow read if signed in
         allow read: if isSignedIn();
         allow write: if isSignedIn();
       }
 
       match /projects/{projectId} {
-        // Prototype permissions: allow read if signed in
         allow read: if isSignedIn();
-        // Allow write for any signed-in user to support the client-side "Join" process and onboarding
         allow write: if isSignedIn();
 
         match /tasks/{taskId} {

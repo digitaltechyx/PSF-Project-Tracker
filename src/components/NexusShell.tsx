@@ -41,6 +41,7 @@ import { MembersView } from './views/MembersView';
 import { MyTasksView } from './views/MyTasksView';
 import { NotificationsView } from './views/NotificationsView';
 import { InviteMembersModal } from './invitations/InviteMembersModal';
+import { NotificationBell } from './notifications/NotificationBell';
 
 type ViewType = 'dashboard' | 'project' | 'members' | 'my-tasks' | 'notifications';
 
@@ -74,6 +75,17 @@ export function NexusShell() {
     setCurrentView(view);
   };
 
+  const handleNavigateToTask = (wsId: string, projId: string, taskId: string) => {
+    if (store.activeWorkspace?.id !== wsId) {
+      store.switchWorkspace(wsId);
+    }
+    store.selectProject(projId);
+    setCurrentView('project');
+    // TaskDetailPanel will open if taskId is set elsewhere or passed.
+    // In our simplified shell, setting selectProject and view is usually enough
+    // but the store could also track a "currentlyExpandedTaskId".
+  };
+
   const handleCreateWorkspace = () => {
     if (newWsName) {
       store.createWorkspace(newWsName, newWsDesc);
@@ -85,7 +97,6 @@ export function NexusShell() {
 
   const handleCreateProject = () => {
     if (newProjName && store.activeWorkspace?.id) {
-      // Pass the active workspace ID as the first argument
       store.createProject(store.activeWorkspace.id, newProjName, newProjDesc);
       setNewProjName('');
       setNewProjDesc('');
@@ -168,7 +179,7 @@ export function NexusShell() {
               onClick={() => handleNavClick('notifications')}
             >
               <Bell className="h-4 w-4" />
-              Notifications
+              Activity Feed
             </Button>
             <Button 
               variant={currentView === 'members' ? 'secondary' : 'ghost'} 
@@ -253,6 +264,10 @@ export function NexusShell() {
                 />
               </div>
             )}
+            <NotificationBell 
+              onNavigateToTask={handleNavigateToTask} 
+              markAsRead={store.markNotificationAsRead} 
+            />
           </div>
         </header>
 

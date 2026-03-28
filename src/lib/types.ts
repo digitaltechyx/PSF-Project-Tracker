@@ -1,3 +1,4 @@
+
 export type Priority = 'low' | 'medium' | 'high' | 'urgent';
 export type Status = 'todo' | 'in_progress' | 'done';
 
@@ -78,4 +79,21 @@ export interface Invitation {
   targetProjectIds?: string[]; // Optional: Projects the user is added to upon joining
   createdAt: string;
   expiresAt: string | null;
+}
+
+export type NotificationType = 'task_assigned' | 'task_updated' | 'comment_added';
+
+export interface Notification {
+  id: string;
+  userId: string;
+  actorId: string;
+  actorName: string;
+  type: NotificationType;
+  title: string;
+  message: string;
+  read: boolean;
+  workspaceId?: string;
+  projectId?: string;
+  taskId?: string;
+  createdAt: string;
 }

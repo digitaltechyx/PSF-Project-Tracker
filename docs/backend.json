@@ -191,17 +191,11 @@
         },
         "status": {
           "type": "string",
-          "description": "The current status of the task.",
-          "items": {
-            "type": "string"
-          }
+          "description": "The current status of the task."
         },
         "priority": {
           "type": "string",
-          "description": "The priority level of the task.",
-          "items": {
-            "type": "string"
-          }
+          "description": "The priority level of the task."
         },
         "dueDate": {
           "type": "string",
@@ -276,6 +270,27 @@
         "body",
         "createdAt"
       ]
+    },
+    "Notification": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Notification",
+      "type": "object",
+      "description": "An in-app notification for a specific user.",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string", "description": "The recipient of the notification." },
+        "actorId": { "type": "string", "description": "The user who triggered the notification." },
+        "actorName": { "type": "string" },
+        "type": { "type": "string", "enum": ["task_assigned", "task_updated", "comment_added"] },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "read": { "type": "boolean" },
+        "workspaceId": { "type": "string" },
+        "projectId": { "type": "string" },
+        "taskId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "actorId", "type", "title", "message", "read", "createdAt"]
     }
   },
   "auth": {
@@ -294,11 +309,27 @@
           "schema": {
             "$ref": "#/backend/entities/User"
           },
-          "description": "Stores user profile information, such as name, email, and avatar URL. The document ID `{userId}` must match `request.auth.uid` for path-based ownership and access control.",
+          "description": "Stores user profile information.",
           "params": [
             {
               "name": "userId",
-              "description": "The unique identifier of the user, matching `request.auth.uid`."
+              "description": "The unique identifier of the user."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/notifications/{notificationId}",
+        "definition": {
+          "entityName": "Notification",
+          "schema": {
+            "$ref": "#/backend/entities/Notification"
+          },
+          "description": "Stores user notifications.",
+          "params": [
+            {
+              "name": "notificationId",
+              "description": "The unique identifier for the notification."
             }
           ]
         }
@@ -310,7 +341,7 @@
           "schema": {
             "$ref": "#/backend/entities/Workspace"
           },
-          "description": "Stores details about a workspace. Each document includes `ownerUserId` and a denormalized `memberRoles` map (`{ [uid: string]: 'owner' | 'admin' | 'member' }`) to enable authorization independence for the workspace and its nested documents. Access is granted if `request.auth.uid` is in `memberRoles` or matches `ownerUserId`.",
+          "description": "Stores details about a workspace.",
           "params": [
             {
               "name": "workspaceId",
@@ -326,7 +357,7 @@
           "schema": {
             "$ref": "#/backend/entities/WorkspaceMember"
           },
-          "description": "Contains specific details about a user's membership within a workspace (e.g., their display name or avatar specific to this workspace). The document ID `{userId}` matches the member's user ID. Access is controlled by the `memberRoles` map on the parent `Workspace` document.",
+          "description": "Contains specific details about a user's membership within a workspace.",
           "params": [
             {
               "name": "workspaceId",
@@ -346,7 +377,7 @@
           "schema": {
             "$ref": "#/backend/entities/Project"
           },
-          "description": "Stores details about a project, nested within a specific workspace. Each document includes denormalized `workspaceId` and the `memberRoles` map from its parent `Workspace` for authorization independence. Access is granted if `request.auth.uid` is in `resource.data.memberRoles`.",
+          "description": "Stores details about a project.",
           "params": [
             {
               "name": "workspaceId",
@@ -366,7 +397,7 @@
           "schema": {
             "$ref": "#/backend/entities/Task"
           },
-          "description": "Stores details about a task, nested within a project. Each document includes denormalized `workspaceId`, `projectId`, and the `memberRoles` map from the parent `Workspace` for authorization independence. Access is granted if `request.auth.uid` is in `resource.data.memberRoles`.",
+          "description": "Stores details about a task.",
           "params": [
             {
               "name": "workspaceId",
@@ -390,7 +421,7 @@
           "schema": {
             "$ref": "#/backend/entities/Comment"
           },
-          "description": "Stores comments associated with a task. Each document includes denormalized `workspaceId`, `projectId`, `taskId`, `authorUserId`, and the `memberRoles` map from the parent `Workspace` for authorization independence. Access is granted if `request.auth.uid` is in `resource.data.memberRoles`.",
+          "description": "Stores comments associated with a task.",
           "params": [
             {
               "name": "workspaceId",
@@ -414,5 +445,3 @@
     ]
   }
 }
-
-    

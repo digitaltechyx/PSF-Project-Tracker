@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useCallback, useMemo, useEffect } from 'react';
@@ -24,8 +25,7 @@ import {
   addDoc
 } from 'firebase/firestore';
 import { Workspace, Project, Task, WorkspaceMember, User, Invitation } from '@/lib/types';
-import { errorEmitter } from '@/firebase/error-emitter';
-import { FirestorePermissionError } from '@/firebase/errors';
+import { notifyTaskAssigned, notifyTaskUpdated } from '@/lib/notifications';
 
 export function useNexusStore() {
   const { user, isAuthReady } = useUser();
@@ -60,7 +60,6 @@ export function useNexusStore() {
     }
   }, [isAuthReady, user?.uid, db]);
 
-  // 1. Fetch all workspaces the user has access to
   const workspacesQuery = useMemoFirebase(() => {
     if (!db || !user?.uid || !isAuthReady) return null;
     return query(
@@ -75,16 +74,13 @@ export function useNexusStore() {
 
   const activeWorkspace = useMemo(() => {
     if (workspaces.length === 0) return null;
-    
     if (activeWorkspaceId) {
       const found = workspaces.find(w => w.id === activeWorkspaceId);
       if (found) return found;
     }
-    
     return workspaces[0];
   }, [workspaces, activeWorkspaceId]);
 
-  // Sync state if it falls back
   useEffect(() => {
     if (activeWorkspace && activeWorkspace.id && activeWorkspace.id !== activeWorkspaceId) {
       setActiveWorkspaceId(activeWorkspace.id);
@@ -99,10 +95,8 @@ export function useNexusStore() {
 
   const isAdmin = useMemo(() => isOwner || currentRole === 'lead' || currentRole === 'owner' || currentRole === 'admin', [isOwner, currentRole]);
 
-  // 2. Fetch projects for the active workspace
   const projectsQuery = useMemoFirebase(() => {
     const wsId = activeWorkspace?.id;
-    // Don't fire if no workspace, or if it's the placeholder "Loading..."
     if (!db || !user?.uid || !wsId || wsId === '' || !isAuthReady) return null;
     return query(collection(db, 'workspaces', wsId, 'projects'));
   }, [db, user?.uid, activeWorkspace?.id, isAuthReady]);
@@ -120,7 +114,6 @@ export function useNexusStore() {
     [projects, activeProjectId]
   );
 
-  // 3. Fetch tasks
   const globalTasksQuery = useMemoFirebase(() => {
     if (!db || !user?.uid || !isAuthReady) return null;
     return query(collectionGroup(db, 'tasks'));
@@ -131,7 +124,6 @@ export function useNexusStore() {
   const allWorkspaceTasks = useMemo(() => {
     const wsId = activeWorkspace?.id;
     if (!globalTasksData || !wsId) return [];
-    
     return globalTasksData.filter(t => {
       if (t.workspaceId !== wsId) return false;
       if (isAdmin) return true;
@@ -162,7 +154,6 @@ export function useNexusStore() {
     );
   }, [allWorkspaceTasks, activeProject, globalSearchQuery]);
 
-  // 4. Members
   const membersQuery = useMemoFirebase(() => {
     const wsId = activeWorkspace?.id;
     if (!db || !user?.uid || !wsId || wsId === '' || !isAuthReady) return null;
@@ -193,8 +184,6 @@ export function useNexusStore() {
     setActiveWorkspaceId(id);
     setActiveProjectId(null); 
     setGlobalSearchQuery('');
-    
-    // Persist to user doc
     if (user?.uid && db) {
       const userRef = doc(db, 'users', user.uid);
       updateDocumentNonBlocking(userRef, { lastActiveWorkspaceId: id });
@@ -218,12 +207,8 @@ export function useNexusStore() {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    
     try {
-      // Use await to ensure the workspace and member profile exist before finishing.
-      // This helps satisfy security rules for subsequent creation calls (like project/task).
       await setDocumentNonBlocking(wsRef, wsData, { merge: true });
-      
       const memberRef = doc(db, 'workspaces', wsRef.id, 'members', user.uid);
       await setDocumentNonBlocking(memberRef, {
         id: user.uid,
@@ -233,12 +218,9 @@ export function useNexusStore() {
         email: user.email?.toLowerCase() || '',
         avatarUrl: user.photoURL || null,
       }, { merge: true });
-      
-      // Auto-select newly created workspace and persist
       setActiveWorkspaceId(wsRef.id);
       const userRef = doc(db, 'users', user.uid);
       await updateDocumentNonBlocking(userRef, { lastActiveWorkspaceId: wsRef.id });
-      
       return wsRef.id;
     } catch (e) {
       console.error("Failed to create workspace:", e);
@@ -249,10 +231,8 @@ export function useNexusStore() {
   const createInviteLink = useCallback(async (options: { role: 'member' | 'lead', expiresDays: number | 'never', maxUses: number | 'unlimited', targetProjectIds?: string[] }) => {
     const wsId = activeWorkspace?.id;
     if (!db || !wsId || !isOwner) return;
-    
     const inviteRef = doc(collection(db, 'invitations'));
     const expiresAt = options.expiresDays === 'never' ? null : new Date(Date.now() + options.expiresDays * 24 * 60 * 60 * 1000).toISOString();
-    
     const inviteData: Invitation = {
       id: inviteRef.id,
       workspaceId: wsId,
@@ -293,15 +273,11 @@ export function useNexusStore() {
   const directAddMember = useCallback(async (targetUser: any, role: 'member' | 'lead', targetProjectIds?: string[]) => {
     const wsId = activeWorkspace?.id;
     if (!db || !wsId || !isAdmin || !targetUser) return;
-    
-    // 1. Add to workspace roles
     const wsRef = doc(db, 'workspaces', wsId);
     await updateDocumentNonBlocking(wsRef, {
       [`memberRoles.${targetUser.id}`]: role,
       updatedAt: new Date().toISOString()
     });
-
-    // 2. Create workspace member profile
     const memberRef = doc(db, 'workspaces', wsId, 'members', targetUser.id);
     await setDocumentNonBlocking(memberRef, {
       id: targetUser.id,
@@ -311,8 +287,6 @@ export function useNexusStore() {
       email: targetUser.email?.toLowerCase() || '',
       avatarUrl: targetUser.avatarUrl || null,
     }, { merge: true });
-
-    // 3. Grant access to selected projects
     if (targetProjectIds && targetProjectIds.length > 0) {
       for (const projId of targetProjectIds) {
         const projRef = doc(db, 'workspaces', wsId, 'projects', projId);
@@ -359,7 +333,7 @@ export function useNexusStore() {
   }, [db, activeWorkspace?.id, isAdmin]);
 
   const createTask = useCallback(async (wsId: string, projectId: string, data: any) => {
-    if (!db || !wsId || !projectId) return null;
+    if (!db || !wsId || !projectId || !user) return null;
     const taskRef = doc(collection(db, 'workspaces', wsId, 'projects', projectId, 'tasks'));
     const taskData = {
       id: taskRef.id,
@@ -371,12 +345,62 @@ export function useNexusStore() {
     };
     try {
       await setDocumentNonBlocking(taskRef, taskData, { merge: true });
+      
+      // Notify if assigned
+      if (data.assigneeUserId && data.assigneeUserId !== user.uid) {
+        notifyTaskAssigned(db, data.assigneeUserId, { id: user.uid, name: user.displayName || 'User' }, {
+          id: taskRef.id,
+          title: data.title,
+          workspaceId: wsId,
+          projectId
+        });
+      }
+      
       return taskRef.id;
     } catch (e) {
       console.error("Failed to create task:", e);
       return null;
     }
-  }, [db]);
+  }, [db, user]);
+
+  const updateTask = useCallback((taskId: string, data: Partial<Task>) => {
+    if (!db || !isAdmin || !user) return;
+    const t = allWorkspaceTasks.find(x => x.id === taskId);
+    if (t) {
+      const ref = doc(db, 'workspaces', t.workspaceId, 'projects', t.projectId, 'tasks', t.id);
+      updateDocumentNonBlocking(ref, { ...data, updatedAt: new Date().toISOString() });
+
+      // Identify changes for notification
+      const changes: string[] = [];
+      if (data.title && data.title !== t.title) changes.push('title');
+      if (data.description && data.description !== t.description) changes.push('description');
+      if (data.status && data.status !== t.status) changes.push('status');
+      if (data.priority && data.priority !== t.priority) changes.push('priority');
+      if (data.dueDate !== undefined && data.dueDate !== t.dueDate) changes.push('due date');
+
+      const recipientId = data.assigneeUserId || t.assigneeUserId;
+      
+      // If assignment changed
+      if (data.assigneeUserId && data.assigneeUserId !== t.assigneeUserId) {
+        if (data.assigneeUserId !== user.uid) {
+          notifyTaskAssigned(db, data.assigneeUserId, { id: user.uid, name: user.displayName || 'User' }, {
+            id: t.id,
+            title: data.title || t.title,
+            workspaceId: t.workspaceId,
+            projectId: t.projectId
+          });
+        }
+      } else if (recipientId && recipientId !== user.uid && changes.length > 0) {
+        // If content changed and there is an assignee to notify
+        notifyTaskUpdated(db, recipientId, { id: user.uid, name: user.displayName || 'User' }, {
+          id: t.id,
+          title: t.title,
+          workspaceId: t.workspaceId,
+          projectId: t.projectId
+        }, changes);
+      }
+    }
+  }, [db, allWorkspaceTasks, isAdmin, user]);
 
   return {
     currentUser: user ? { id: user.uid, name: user.displayName || 'User', email: user.email || '', avatarUrl: user.photoURL || null } : null,
@@ -388,7 +412,6 @@ export function useNexusStore() {
     projectTasks,
     myTasks,
     workspaceMembers,
-    workspaceNotifications: [],
     globalSearchQuery,
     isTasksLoading,
     isProjectsLoading,
@@ -406,13 +429,11 @@ export function useNexusStore() {
     createInviteLink,
     searchUsersByEmail,
     directAddMember,
-    updateTask: (taskId: string, data: Partial<Task>) => {
-      if (!db || !isAdmin) return;
-      const t = allWorkspaceTasks.find(x => x.id === taskId);
-      if (t) {
-        const ref = doc(db, 'workspaces', t.workspaceId, 'projects', t.projectId, 'tasks', t.id);
-        updateDocumentNonBlocking(ref, { ...data, updatedAt: new Date().toISOString() });
-      }
+    updateTask,
+    markNotificationAsRead: async (notifId: string) => {
+      if (!db || !user) return;
+      const ref = doc(db, 'notifications', notifId);
+      updateDocumentNonBlocking(ref, { read: true });
     },
     deleteTask: (taskId: string) => {
       if (!db || !isAdmin) return;
@@ -437,22 +458,48 @@ export function useNexusStore() {
       };
       
       await setDocumentNonBlocking(commentRef, commentData, { merge: true });
+
+      // Notify assignee about the comment
+      if (task.assigneeUserId && task.assigneeUserId !== user.uid) {
+        createNotification(db, {
+          userId: task.assigneeUserId,
+          actorId: user.uid,
+          actorName: user.displayName || 'User',
+          type: 'comment_added',
+          title: 'New Comment',
+          message: `${user.displayName} commented on "${task.title}"`,
+          workspaceId: task.workspaceId,
+          projectId: task.projectId,
+          taskId: task.id
+        });
+      }
     },
     removeMember: async (userId: string) => {
       const wsId = activeWorkspace?.id;
       if (!db || !wsId || !isAdmin || userId === user?.uid) return;
-      
       const wsRef = doc(db, 'workspaces', wsId);
       const roles = { ...activeWorkspace!.memberRoles };
       delete roles[userId];
-      
       await updateDocumentNonBlocking(wsRef, {
         memberRoles: roles,
         updatedAt: new Date().toISOString()
       });
-
       const memberRef = doc(db, 'workspaces', wsId, 'members', userId);
       await deleteDocumentNonBlocking(memberRef);
     }
   };
+}
+
+async function createNotification(
+  db: any,
+  data: any
+) {
+  if (data.userId === data.actorId) return;
+  const notifRef = doc(collection(db, 'notifications'));
+  await setDocumentNonBlocking(notifRef, {
+    ...data,
+    id: notifRef.id,
+    read: false,
+    createdAt: new Date().toISOString(),
+  }, { merge: true });
 }
