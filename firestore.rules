@@ -9,20 +9,15 @@ service cloud.firestore {
 
     // --- NOTIFICATIONS RULES ---
     match /notifications/{notificationId} {
-      // Allow single document reads if the user is the recipient
-      allow get: if isSignedIn() && resource.data.userId == request.auth.uid;
+      // Standard pattern for user-owned data:
+      // This covers both 'get' (single doc) and 'list' (collection queries).
+      // For 'list', the client must filter by userId == auth.uid.
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
       
-      // Allow collection queries (list) if they are filtered by the user's own ID
-      // Firestore requires the query to have a matching .where("userId", "==", auth.uid) filter
-      allow list: if isSignedIn() && (
-        request.query.limit <= 100 && 
-        resource.data.userId == request.auth.uid
-      );
-      
-      // Allow creation by any authenticated user (actor)
+      // Allow any authenticated user to create a notification for another user
       allow create: if isSignedIn() && request.resource.data.actorId == request.auth.uid;
       
-      // Allow updates (mark as read) and deletes by the recipient only
+      // Only the recipient can update (mark as read) or delete their notifications
       allow update, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
     }
 

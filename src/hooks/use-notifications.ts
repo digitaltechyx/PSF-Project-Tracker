@@ -15,13 +15,13 @@ export function useNotifications(max: number = 50) {
   const { user, isAuthReady } = useUser();
 
   const notificationsQuery = useMemoFirebase(() => {
-    // CRITICAL: We only construct the query if the user is fully authenticated.
-    // The query MUST include the 'userId' filter to satisfy the 'list' security rule.
+    // CRITICAL: We only construct the query if the user is fully authenticated and ready.
+    // The query MUST include the 'userId' filter to satisfy the 'read' security rule.
     if (!db || !isAuthReady || !user?.uid) {
       return null;
     }
     
-    // Safety check: Ensure uid is a valid non-empty string
+    // Safety check: Ensure uid is a valid non-empty string before creating the query reference.
     if (typeof user.uid !== 'string' || user.uid.length === 0) {
       return null;
     }
@@ -34,7 +34,7 @@ export function useNotifications(max: number = 50) {
     );
   }, [db, user?.uid, isAuthReady, max]);
 
-  // useCollection will handle the real-time subscription.
+  // useCollection handles the real-time subscription.
   const { data, isLoading, error } = useCollection<Notification>(notificationsQuery);
 
   const unreadCount = useMemo(() => {
