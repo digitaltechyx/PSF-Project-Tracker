@@ -104,7 +104,6 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
             
             setUserAuthState({ user: firebaseUser, isUserLoading: false, isAuthReady: true, userError: null });
           } catch (error: any) {
-            console.error("FirebaseProvider: User doc sync error:", error);
             setUserAuthState({ user: firebaseUser, isUserLoading: false, isAuthReady: true, userError: null });
           }
         } else {
@@ -112,7 +111,6 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
         }
       },
       (error) => {
-        console.error("FirebaseProvider: onAuthStateChanged error:", error);
         setUserAuthState({ user: null, isUserLoading: false, isAuthReady: true, userError: error });
       }
     );

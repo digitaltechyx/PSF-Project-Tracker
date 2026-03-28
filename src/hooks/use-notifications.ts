@@ -1,5 +1,5 @@
 
-"use client";
+'use client';
 
 import { useMemo } from 'react';
 import { query, collection, where, orderBy, limit } from 'firebase/firestore';
@@ -26,6 +26,8 @@ export function useNotifications(max: number = 50) {
       return null;
     }
 
+    // Creating a query that specifically targets the authenticated user's notifications.
+    // This query structure is required by the firestore.rules to allow the 'list' operation.
     return query(
       collection(db, 'notifications'),
       where('userId', '==', user.uid),

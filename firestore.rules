@@ -9,9 +9,10 @@ service cloud.firestore {
 
     // --- NOTIFICATIONS RULES ---
     match /notifications/{notificationId} {
-      // Users can only read notifications where they are the recipient.
-      // The 'userId' filter in the client-side query MUST match the auth.uid.
-      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      // Split read into get and list for better clarity.
+      // List queries MUST filter by userId matching the authenticated UID.
+      allow get: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow list: if isSignedIn() && request.query.limit <= 100 && resource.data.userId == request.auth.uid;
       
       // Allow any authenticated user to create a notification for another user
       allow create: if isSignedIn() && request.resource.data.actorId == request.auth.uid;
