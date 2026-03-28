@@ -7,6 +7,19 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    // --- NOTIFICATIONS RULES ---
+    match /notifications/{notificationId} {
+      // Users can only read notifications where they are the recipient.
+      // Collection queries MUST include a filter: where("userId", "==", request.auth.uid)
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      
+      // Any signed-in user can create a notification for someone else.
+      allow create: if isSignedIn() && request.resource.data.actorId == request.auth.uid;
+      
+      // Users can only update/delete their own notifications (e.g., mark as read).
+      allow update, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
     // --- COLLECTION GROUP RULES ---
     
     match /{path=**}/tasks/{taskId} {
@@ -24,21 +37,6 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if isSignedIn();
       allow write: if isSignedIn() && request.auth.uid == userId;
-    }
-
-    match /notifications/{notificationId} {
-      // Users can only read their own notifications
-      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
-      // Anyone can create a notification for another user
-      allow create: if isSignedIn();
-      // Users can mark their own notifications as read
-      allow update: if isSignedIn() && resource.data.userId == request.auth.uid;
-      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
-    }
-
-    match /invitations/{inviteId} {
-      allow read: if true;
-      allow create, update, delete: if isSignedIn();
     }
 
     match /workspaces/{workspaceId} {

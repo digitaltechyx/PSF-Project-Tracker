@@ -37,7 +37,7 @@ export interface Project {
   name: string;
   description: string;
   color: string;
-  allowedUserIds?: string[]; // List of member UIDs who can see this project (if not Admin)
+  allowedUserIds?: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -76,12 +76,17 @@ export interface Invitation {
   status: 'active' | 'accepted' | 'expired' | 'cancelled';
   usageCount: number;
   maxUses: number | 'unlimited';
-  targetProjectIds?: string[]; // Optional: Projects the user is added to upon joining
+  targetProjectIds?: string[];
   createdAt: string;
   expiresAt: string | null;
 }
 
-export type NotificationType = 'task_assigned' | 'task_updated' | 'comment_added';
+export type NotificationType = 
+  | 'task_assigned' 
+  | 'task_unassigned' 
+  | 'task_updated' 
+  | 'task_status_changed' 
+  | 'comment_added';
 
 export interface Notification {
   id: string;

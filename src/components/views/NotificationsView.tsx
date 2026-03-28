@@ -3,7 +3,7 @@
 
 import React from 'react';
 import { Card, CardContent } from '@/components/ui/card';
-import { Bell, UserPlus, Edit, MessageSquare, Circle } from 'lucide-react';
+import { Bell, UserPlus, Edit, MessageSquare, Circle, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useNotifications } from '@/hooks/use-notifications';
 import { formatDistanceToNow } from 'date-fns';
@@ -17,7 +17,7 @@ const iconMap = {
 
 export function NotificationsView({ store }: { store: any }) {
   const { notifications, isLoading } = useNotifications(50);
-  const { markNotificationAsRead } = useNexusStore();
+  const { markNotificationAsRead } = store;
 
   return (
     <div className="space-y-6 max-w-3xl mx-auto animate-in fade-in slide-in-from-bottom-2 duration-500">
@@ -28,12 +28,12 @@ export function NotificationsView({ store }: { store: any }) {
           </div>
           <h2 className="text-2xl font-bold font-headline">Activity Feed</h2>
         </div>
-        {notifications.length > 0 && (
+        {!isLoading && notifications.length > 0 && (
           <p className="text-xs text-muted-foreground">{notifications.length} recent events</p>
         )}
       </div>
 
-      <Card className="border-none shadow-sm overflow-hidden">
+      <Card className="border-none shadow-sm overflow-hidden bg-card">
         <CardContent className="p-0">
           <div className="divide-y">
             {notifications.map((notif: any) => (
@@ -79,7 +79,7 @@ export function NotificationsView({ store }: { store: any }) {
             ))}
           </div>
           
-          {notifications.length === 0 && !isLoading && (
+          {!isLoading && notifications.length === 0 && (
             <div className="p-16 text-center text-muted-foreground space-y-4">
               <div className="h-16 w-16 bg-muted/50 rounded-full flex items-center justify-center mx-auto">
                 <Bell className="h-8 w-8 opacity-20" />
@@ -94,7 +94,7 @@ export function NotificationsView({ store }: { store: any }) {
           {isLoading && (
             <div className="p-20 flex justify-center">
               <div className="flex flex-col items-center gap-3">
-                <div className="h-8 w-8 border-4 border-primary/20 border-t-primary rounded-full animate-spin" />
+                <Loader2 className="h-8 w-8 animate-spin text-primary opacity-50" />
                 <span className="text-xs text-muted-foreground font-medium">Syncing activity...</span>
               </div>
             </div>

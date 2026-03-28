@@ -8,17 +8,20 @@ import { Notification } from '@/lib/types';
 
 export function useNotifications(max: number = 20) {
   const db = useFirestore();
-  const { user } = useUser();
+  const { user, isAuthReady } = useUser();
 
+  // CRITICAL: The query MUST filter by userId to satisfy the Security Rule:
+  // allow read: if resource.data.userId == request.auth.uid;
   const notificationsQuery = useMemoFirebase(() => {
-    if (!db || !user?.uid) return null;
+    if (!db || !user?.uid || !isAuthReady) return null;
+    
     return query(
       collection(db, 'notifications'),
       where('userId', '==', user.uid),
       orderBy('createdAt', 'desc'),
       limit(max)
     );
-  }, [db, user?.uid, max]);
+  }, [db, user?.uid, isAuthReady, max]);
 
   const { data, isLoading, error } = useCollection<Notification>(notificationsQuery);
 
@@ -29,7 +32,7 @@ export function useNotifications(max: number = 20) {
   return {
     notifications: data || [],
     unreadCount,
-    isLoading,
+    isLoading: !isAuthReady || isLoading,
     error
   };
 }
