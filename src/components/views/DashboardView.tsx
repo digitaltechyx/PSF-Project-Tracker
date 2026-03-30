@@ -7,6 +7,7 @@ import {
   FolderKanban, 
   CheckCircle2, 
   Clock, 
+  PauseCircle,
   AlertCircle,
   CalendarDays,
   Loader2
@@ -33,6 +34,7 @@ export function DashboardView({ store, onNavigateToProject }: { store: any, onNa
       doneTasks: tasks.filter((t: any) => t.status === 'done').length,
       inProgress: tasks.filter((t: any) => t.status === 'in_progress').length,
       todo: tasks.filter((t: any) => t.status === 'todo').length,
+      onHold: tasks.filter((t: any) => t.status === 'on_hold').length,
       overdue: tasks.filter((t: any) => t.dueDate && new Date(t.dueDate) < now && t.status !== 'done').length,
       urgent: tasks.filter((t: any) => t.priority === 'urgent').length,
     };
@@ -96,11 +98,11 @@ export function DashboardView({ store, onNavigateToProject }: { store: any, onNa
         </Card>
         <Card className="bg-card shadow-sm border-none">
           <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-            <CardTitle className="text-sm font-medium">Upcoming Tasks</CardTitle>
+            <CardTitle className="text-sm font-medium">Planned Tasks</CardTitle>
             <CalendarDays className="h-4 w-4 text-accent" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.todo + stats.inProgress}</div>
+            <div className="text-2xl font-bold">{stats.todo + stats.inProgress + stats.onHold}</div>
             <p className="text-xs text-muted-foreground mt-1">Needs attention</p>
           </CardContent>
         </Card>
@@ -131,6 +133,8 @@ export function DashboardView({ store, onNavigateToProject }: { store: any, onNa
                       <CheckCircle2 className="h-5 w-5 text-green-500" />
                     ) : task.status === 'in_progress' ? (
                       <Clock className="h-5 w-5 text-accent" />
+                    ) : task.status === 'on_hold' ? (
+                      <PauseCircle className="h-5 w-5 text-amber-600" />
                     ) : (
                       <div className="h-5 w-5 rounded-full border-2" />
                     )}

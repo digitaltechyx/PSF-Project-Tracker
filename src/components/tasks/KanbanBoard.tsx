@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 const columns: { id: Status, title: string, color: string }[] = [
   { id: 'todo', title: 'To Do', color: 'bg-slate-200' },
   { id: 'in_progress', title: 'In Progress', color: 'bg-accent/20' },
+  { id: 'on_hold', title: 'On Hold', color: 'bg-amber-100' },
   { id: 'done', title: 'Done', color: 'bg-green-100' },
 ];
 

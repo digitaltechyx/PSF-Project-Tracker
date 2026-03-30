@@ -1,6 +1,6 @@
 
 export type Priority = 'low' | 'medium' | 'high' | 'urgent';
-export type Status = 'todo' | 'in_progress' | 'done';
+export type Status = 'todo' | 'in_progress' | 'on_hold' | 'done';
 
 export interface User {
   id: string;

@@ -34,12 +34,15 @@ export function OnboardingFlow({ store }: OnboardingFlowProps) {
       const wsId = await store.createWorkspace(wsName, wsDesc);
       if (!wsId) throw new Error("Failed to create workspace");
 
-      // 2. Create Project
-      const projId = await store.createProject(wsId, projName, projDesc);
-      if (!projId) throw new Error("Failed to create project");
+      // 2. Create Project (optional)
+      let projId: string | null = null;
+      if (projName.trim()) {
+        projId = await store.createProject(wsId, projName, projDesc);
+        if (!projId) throw new Error("Failed to create project");
+      }
 
       // 3. Create Task (optional)
-      if (taskTitle.trim()) {
+      if (projId && taskTitle.trim()) {
         await store.createTask(wsId, projId, {
           title: taskTitle.trim(),
           status: 'todo',
@@ -58,6 +61,8 @@ export function OnboardingFlow({ store }: OnboardingFlowProps) {
 
   const nextStep = () => setStep(s => s + 1);
   const prevStep = () => setStep(s => s - 1);
+  const hasProjectName = Boolean(projName.trim());
+  const canCreateTask = hasProjectName && Boolean(taskTitle.trim());
 
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-background p-4 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/5 via-background to-background">
@@ -94,7 +99,7 @@ export function OnboardingFlow({ store }: OnboardingFlowProps) {
             </CardTitle>
             <CardDescription>
               {step === 1 && "Workspaces are top-level containers for your team and projects."}
-              {step === 2 && "Projects help you organize specific goals and sets of tasks."}
+              {step === 2 && "Projects are optional. You can skip and add them later."}
               {step === 3 && "Break down your work into manageable tasks (optional)."}
             </CardDescription>
           </CardHeader>
@@ -176,10 +181,11 @@ export function OnboardingFlow({ store }: OnboardingFlowProps) {
               {step < 3 ? (
                 <Button 
                   onClick={nextStep} 
-                  disabled={step === 1 ? !wsName.trim() : !projName.trim()}
+                  disabled={step === 1 ? !wsName.trim() : false}
                   className="gap-2"
                 >
-                  Continue <ChevronRight className="w-4 h-4" />
+                  {step === 2 && !hasProjectName ? 'Skip Project & Continue' : 'Continue'}{' '}
+                  <ChevronRight className="w-4 h-4" />
                 </Button>
               ) : (
                 <Button 
@@ -188,7 +194,7 @@ export function OnboardingFlow({ store }: OnboardingFlowProps) {
                   className="gap-2"
                 >
                   {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Rocket className="w-4 h-4" />}
-                  {taskTitle.trim() ? "Create & Launch" : "Skip Task & Launch"}
+                  {canCreateTask ? 'Create & Launch' : 'Skip Task & Launch'}
                 </Button>
               )}
             </div>

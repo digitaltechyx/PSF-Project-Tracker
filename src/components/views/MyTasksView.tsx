@@ -24,6 +24,7 @@ export function MyTasksView({ store }: { store: any }) {
   const stats = {
     todo: visibleTasks.filter((t: any) => t.status === 'todo').length,
     inProgress: visibleTasks.filter((t: any) => t.status === 'in_progress').length,
+    onHold: visibleTasks.filter((t: any) => t.status === 'on_hold').length,
     done: visibleTasks.filter((t: any) => t.status === 'done').length,
   };
 
@@ -44,7 +45,7 @@ export function MyTasksView({ store }: { store: any }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card className="border-none shadow-sm bg-card">
           <CardHeader className="pb-2">
             <CardTitle className="text-xs font-bold text-muted-foreground uppercase tracking-wider">To Do</CardTitle>
@@ -59,6 +60,14 @@ export function MyTasksView({ store }: { store: any }) {
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold text-accent">{stats.inProgress}</div>
+          </CardContent>
+        </Card>
+        <Card className="border-none shadow-sm bg-card">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs font-bold text-muted-foreground uppercase tracking-wider">On Hold</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold text-amber-600">{stats.onHold}</div>
           </CardContent>
         </Card>
         <Card className="border-none shadow-sm bg-card">

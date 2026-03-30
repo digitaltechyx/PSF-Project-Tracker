@@ -16,6 +16,7 @@ import { Task, Priority, Status } from '@/lib/types';
 import { 
   Clock, 
   CheckCircle2, 
+  PauseCircle,
   MoreVertical 
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -30,6 +31,7 @@ const priorityColors: Record<Priority, string> = {
 const statusIcons: Record<Status, React.ReactNode> = {
   todo: <div className="h-4 w-4 rounded-full border-2 border-muted-foreground/30" />,
   in_progress: <Clock className="h-4 w-4 text-accent animate-pulse" />,
+  on_hold: <PauseCircle className="h-4 w-4 text-amber-600" />,
   done: <CheckCircle2 className="h-4 w-4 text-green-500" />,
 };
 
