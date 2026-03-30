@@ -24,8 +24,9 @@ import {
   orderBy,
   addDoc
 } from 'firebase/firestore';
-import { Workspace, Project, Task, WorkspaceMember, User, Invitation } from '@/lib/types';
+import { Workspace, Project, Task, WorkspaceMember, Invitation } from '@/lib/types';
 import { createNotification, notifyTaskAssigned, notifyTaskUpdated } from '@/lib/notifications';
+import { sendWorkspaceInviteEmail } from '@/app/actions/send-workspace-invite-email';
 
 export function useNexusStore() {
   const { user, isAuthReady } = useUser();
@@ -272,6 +273,142 @@ export function useNexusStore() {
     }
   }, [db, allWorkspaceTasks, isAdmin, user]);
 
+  const searchUsersByEmail = useCallback(
+    async (searchTerm: string) => {
+      if (!db || !searchTerm.trim()) return [];
+      const term = searchTerm.trim().toLowerCase();
+      if (term.length < 2) return [];
+      const usersQuery = query(
+        collection(db, 'users'),
+        where('email', '>=', term),
+        where('email', '<=', term + '\uf8ff'),
+        limit(25)
+      );
+      const snap = await getDocs(usersQuery);
+      return snap.docs
+        .map((d) => ({ id: d.id, ...(d.data() as Record<string, unknown>) }))
+        .filter((u) => u.id !== user?.uid) as {
+        id: string;
+        name?: string;
+        email?: string;
+        avatarUrl?: string | null;
+      }[];
+    },
+    [db, user?.uid]
+  );
+
+  const sendEmailInvite = useCallback(
+    async (params: {
+      recipientEmail: string;
+      role: 'member' | 'lead';
+      expiresDays: number | 'never';
+      maxUses: number | 'unlimited';
+      targetProjectIds: string[];
+      joinUrl: string;
+    }) => {
+      if (!db || !user || !activeWorkspace?.id || activeWorkspace.id === '' || !isAdmin) {
+        throw new Error('You do not have permission to send invitations.');
+      }
+      const ws = activeWorkspace;
+      const normalized = params.recipientEmail.trim().toLowerCase();
+      if (!normalized) throw new Error('Email is required.');
+      if (user.email?.toLowerCase() === normalized) {
+        throw new Error('You cannot invite your own email address.');
+      }
+
+      const inviteRef = doc(collection(db, 'invitations'));
+      const expiresAt =
+        params.expiresDays === 'never'
+          ? null
+          : new Date(Date.now() + params.expiresDays * 86400000).toISOString();
+
+      const inviteData: Invitation = {
+        id: inviteRef.id,
+        workspaceId: ws.id,
+        workspaceName: ws.name,
+        role: params.role,
+        invitedBy: user.uid,
+        invitedByName: user.displayName || 'Someone',
+        type: 'email',
+        status: 'active',
+        usageCount: 0,
+        maxUses: params.maxUses === 'unlimited' ? 'unlimited' : params.maxUses,
+        targetProjectIds: params.targetProjectIds,
+        createdAt: new Date().toISOString(),
+        expiresAt,
+        invitedEmail: normalized,
+      };
+
+      await setDocumentNonBlocking(inviteRef, inviteData, { merge: true });
+
+      await sendWorkspaceInviteEmail({
+        to: normalized,
+        workspaceName: ws.name,
+        inviterName: inviteData.invitedByName,
+        joinUrl: `${params.joinUrl.replace(/\/$/, '')}/join/${inviteRef.id}`,
+      });
+
+      return inviteRef.id;
+    },
+    [db, user, activeWorkspace, isAdmin]
+  );
+
+  const directAddMember = useCallback(
+    async (
+      targetUser: {
+        id: string;
+        name?: string;
+        email?: string;
+        avatarUrl?: string | null;
+      },
+      targetRole: 'member' | 'lead',
+      projectIds: string[]
+    ) => {
+      const wsId = activeWorkspace?.id;
+      if (!db || !wsId || !user || !isAdmin) {
+        throw new Error('You do not have permission to add members.');
+      }
+      if (targetUser.id === user.uid) throw new Error('You are already in this workspace.');
+      if (activeWorkspace?.memberRoles?.[targetUser.id]) {
+        throw new Error('This user is already a member.');
+      }
+
+      const wsRef = doc(db, 'workspaces', wsId);
+      await updateDocumentNonBlocking(wsRef, {
+        [`memberRoles.${targetUser.id}`]: targetRole,
+        updatedAt: new Date().toISOString(),
+      });
+
+      const memberRef = doc(db, 'workspaces', wsId, 'members', targetUser.id);
+      await setDocumentNonBlocking(
+        memberRef,
+        {
+          id: targetUser.id,
+          workspaceId: wsId,
+          userId: targetUser.id,
+          displayName: targetUser.name || 'User',
+          email: (targetUser.email || '').toLowerCase(),
+          avatarUrl: targetUser.avatarUrl ?? null,
+        },
+        { merge: true }
+      );
+
+      for (const projId of projectIds) {
+        const projRef = doc(db, 'workspaces', wsId, 'projects', projId);
+        const projSnap = await getDoc(projRef);
+        if (projSnap.exists()) {
+          const projData = projSnap.data() as Project;
+          const allowedIds = [...(projData.allowedUserIds || []), targetUser.id];
+          await updateDocumentNonBlocking(projRef, {
+            allowedUserIds: Array.from(new Set(allowedIds)),
+            updatedAt: new Date().toISOString(),
+          });
+        }
+      }
+    },
+    [db, user, activeWorkspace, isAdmin]
+  );
+
   return {
     currentUser: user ? { id: user.uid, name: user.displayName || 'User', email: user.email || '', avatarUrl: user.photoURL || null } : null,
     workspaces,
@@ -372,6 +509,9 @@ export function useNexusStore() {
       });
       const memberRef = doc(db, 'workspaces', wsId, 'members', userId);
       await deleteDocumentNonBlocking(memberRef);
-    }
+    },
+    searchUsersByEmail,
+    sendEmailInvite,
+    directAddMember,
   };
 }

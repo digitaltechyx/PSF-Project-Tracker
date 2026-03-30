@@ -21,10 +21,7 @@ import {
 } from '@/components/ui/select';
 import { 
   Search, 
-  Link as LinkIcon, 
   Mail, 
-  Copy, 
-  Check, 
   Loader2, 
   UserPlus,
   Box
@@ -45,18 +42,17 @@ export function InviteMembersModal({
   store: any 
 }) {
   const { toast } = useToast();
-  const [activeTab, setActiveTab] = useState('link');
-  const [copying, setCopying] = useState(false);
-  const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState('send-email');
   
   // Selection State (Shared between tabs)
   const [role, setRole] = useState<'member' | 'lead'>('member');
   const [selectedProjects, setSelectedProjects] = useState<string[]>([]);
 
-  // Link State
+  // Email invite
+  const [inviteEmail, setInviteEmail] = useState('');
   const [expires, setExpires] = useState<string>('7');
   const [maxUses, setMaxUses] = useState<string>('unlimited');
-  const [isGenerating, setIsGenerating] = useState(false);
+  const [isSending, setIsSending] = useState(false);
 
   // Search State
   const [searchEmail, setSearchEmail] = useState('');
@@ -64,7 +60,7 @@ export function InviteMembersModal({
   const [searchResults, setSearchResults] = useState<any[]>([]);
 
   useEffect(() => {
-    if (activeTab !== 'email' || !searchEmail.trim()) {
+    if (activeTab !== 'find-user' || !searchEmail.trim()) {
       setSearchResults([]);
       return;
     }
@@ -86,22 +82,26 @@ export function InviteMembersModal({
     return () => clearTimeout(delayDebounceFn);
   }, [searchEmail, activeTab, store]);
 
-  const handleCreateLink = async () => {
-    setIsGenerating(true);
+  const handleSendEmailInvite = async () => {
+    setIsSending(true);
     try {
-      const inviteId = await store.createInviteLink({
+      await store.sendEmailInvite({
+        recipientEmail: inviteEmail,
         role,
-        expiresDays: expires === 'never' ? 'never' : parseInt(expires),
-        maxUses: maxUses === 'unlimited' ? 'unlimited' : parseInt(maxUses),
-        targetProjectIds: selectedProjects
+        expiresDays: expires === 'never' ? 'never' : parseInt(expires, 10),
+        maxUses: maxUses === 'unlimited' ? 'unlimited' : parseInt(maxUses, 10),
+        targetProjectIds: selectedProjects,
+        joinUrl: typeof window !== 'undefined' ? window.location.origin : '',
       });
-      const link = `${window.location.origin}/join/${inviteId}`;
-      setInviteLink(link);
-      toast({ title: 'Invite link created!' });
+      toast({ 
+        title: 'Invitation sent',
+        description: `We emailed ${inviteEmail.trim()} with a link to join.`,
+      });
+      setInviteEmail('');
     } catch (error: any) {
-      toast({ variant: 'destructive', title: 'Error', description: error.message });
+      toast({ variant: 'destructive', title: 'Could not send invite', description: error.message || 'Try again.' });
     } finally {
-      setIsGenerating(false);
+      setIsSending(false);
     }
   };
 
@@ -158,15 +158,6 @@ export function InviteMembersModal({
     </div>
   );
 
-  const copyLink = () => {
-    if (inviteLink) {
-      navigator.clipboard.writeText(inviteLink);
-      setCopying(true);
-      setTimeout(() => setCopying(false), 2000);
-      toast({ title: 'Link copied to clipboard' });
-    }
-  };
-
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[500px]">
@@ -176,94 +167,96 @@ export function InviteMembersModal({
             Invite Members
           </DialogTitle>
           <DialogDescription>
-            Grow your team by sharing a link or adding them directly.
+            Send an email invitation or add someone who already uses NexusTrack.
           </DialogDescription>
         </DialogHeader>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-4">
           <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="link" className="gap-2">
-              <LinkIcon className="h-4 w-4" />
-              Invite Link
-            </TabsTrigger>
-            <TabsTrigger value="email" className="gap-2">
+            <TabsTrigger value="send-email" className="gap-2">
               <Mail className="h-4 w-4" />
-              Add by Email
+              Email invite
+            </TabsTrigger>
+            <TabsTrigger value="find-user" className="gap-2">
+              <Search className="h-4 w-4" />
+              Find user
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="link" className="space-y-6 py-4">
-            {!inviteLink ? (
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Assign Role</Label>
-                    <Select value={role} onValueChange={(v: any) => setRole(v)}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="member">Member</SelectItem>
-                        <SelectItem value="lead">Lead</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Expires In</Label>
-                    <Select value={expires} onValueChange={setExpires}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="1">1 Day</SelectItem>
-                        <SelectItem value="7">7 Days</SelectItem>
-                        <SelectItem value="30">30 Days</SelectItem>
-                        <SelectItem value="never">Never</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
+          <TabsContent value="send-email" className="space-y-6 py-4">
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="invite-email">Recipient email</Label>
+                <Input
+                  id="invite-email"
+                  type="email"
+                  placeholder="colleague@company.com"
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                  className="bg-background/50"
+                />
+                <p className="text-[10px] text-muted-foreground">
+                  They will receive a message with a link to sign in and join this workspace (same as before).
+                </p>
+              </div>
 
-                <ProjectSelection />
-
+              <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Max Uses</Label>
-                  <Select value={maxUses} onValueChange={setMaxUses}>
+                  <Label>Assign Role</Label>
+                  <Select value={role} onValueChange={(v: any) => setRole(v)}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="1">1 Use</SelectItem>
-                      <SelectItem value="5">5 Uses</SelectItem>
-                      <SelectItem value="25">25 Uses</SelectItem>
-                      <SelectItem value="unlimited">Unlimited</SelectItem>
+                      <SelectItem value="member">Member</SelectItem>
+                      <SelectItem value="lead">Lead</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
-                <Button className="w-full" onClick={handleCreateLink} disabled={isGenerating}>
-                  {isGenerating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Create Invite Link
-                </Button>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="p-4 bg-muted rounded-lg border space-y-2">
-                  <Label className="text-xs uppercase font-bold text-muted-foreground">Shareable Link</Label>
-                  <div className="flex gap-2">
-                    <Input readOnly value={inviteLink} className="bg-background" />
-                    <Button variant="outline" size="icon" onClick={copyLink}>
-                      {copying ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
-                    </Button>
-                  </div>
-                </div>
-                <div className="flex justify-center">
-                  <Button variant="link" onClick={() => setInviteLink(null)}>Create another link</Button>
+                <div className="space-y-2">
+                  <Label>Expires In</Label>
+                  <Select value={expires} onValueChange={setExpires}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1">1 Day</SelectItem>
+                      <SelectItem value="7">7 Days</SelectItem>
+                      <SelectItem value="30">30 Days</SelectItem>
+                      <SelectItem value="never">Never</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
-            )}
+
+              <ProjectSelection />
+
+              <div className="space-y-2">
+                <Label>Max Uses</Label>
+                <Select value={maxUses} onValueChange={setMaxUses}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">1 Use</SelectItem>
+                    <SelectItem value="5">5 Uses</SelectItem>
+                    <SelectItem value="25">25 Uses</SelectItem>
+                    <SelectItem value="unlimited">Unlimited</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button 
+                className="w-full" 
+                onClick={handleSendEmailInvite} 
+                disabled={isSending || !inviteEmail.trim()}
+              >
+                {isSending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Send invitation email
+              </Button>
+            </div>
           </TabsContent>
 
-          <TabsContent value="email" className="space-y-6 py-4">
+          <TabsContent value="find-user" className="space-y-6 py-4">
             <div className="space-y-6">
               <ProjectSelection />
               

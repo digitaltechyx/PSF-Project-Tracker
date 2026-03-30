@@ -72,13 +72,15 @@ export interface Invitation {
   role: 'member' | 'lead';
   invitedBy: string;
   invitedByName: string;
-  type: 'link' | 'direct';
+  type: 'link' | 'direct' | 'email';
   status: 'active' | 'accepted' | 'expired' | 'cancelled';
   usageCount: number;
   maxUses: number | 'unlimited';
   targetProjectIds?: string[];
   createdAt: string;
   expiresAt: string | null;
+  /** When set (email invites), only this address may accept the invitation. */
+  invitedEmail?: string | null;
 }
 
 export type NotificationType = 

@@ -141,8 +141,23 @@ export default function JoinWorkspacePage() {
     }
   };
 
+  const invitedEmailNorm = invitation?.invitedEmail?.toLowerCase().trim();
+  const userEmailNorm = user?.email?.toLowerCase().trim();
+  const emailMismatch = Boolean(
+    invitedEmailNorm && userEmailNorm && userEmailNorm !== invitedEmailNorm
+  );
+
   const handleJoinWorkspace = async () => {
     if (!user || !invitation || !db) return;
+    if (invitation.invitedEmail) {
+      const u = user.email?.toLowerCase().trim();
+      if (!u || u !== invitation.invitedEmail.toLowerCase().trim()) {
+        setInviteError(
+          'This invitation was sent to a different email address. Sign in with the account that received the invite.'
+        );
+        return;
+      }
+    }
     setJoining(true);
     try {
       const workspaceRef = doc(db, 'workspaces', invitation.workspaceId);
@@ -292,6 +307,11 @@ export default function JoinWorkspacePage() {
                 </div>
               ) : (
                 <div className="space-y-4">
+                  {emailMismatch && invitation?.invitedEmail && (
+                    <div className="p-3 text-sm border border-amber-500/30 bg-amber-500/10 text-amber-900 dark:text-amber-100 rounded-lg">
+                      This invite was sent to <strong>{invitation.invitedEmail}</strong>. Sign out and sign in with that email to join.
+                    </div>
+                  )}
                   <div className="flex items-center gap-3 p-3 border rounded-lg bg-background/50">
                     <img src={user.photoURL || `https://picsum.photos/seed/${user.uid}/100/100`} className="h-10 w-10 rounded-full" alt="" />
                     <div className="flex flex-col overflow-hidden">
@@ -299,7 +319,7 @@ export default function JoinWorkspacePage() {
                       <span className="text-xs text-muted-foreground truncate">{user.email}</span>
                     </div>
                   </div>
-                  <Button className="w-full h-11" onClick={handleJoinWorkspace} disabled={joining}>
+                  <Button className="w-full h-11" onClick={handleJoinWorkspace} disabled={joining || emailMismatch}>
                     {joining ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : `Join ${invitation?.workspaceName}`}
                   </Button>
                 </div>
