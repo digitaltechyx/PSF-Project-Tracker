@@ -65,6 +65,21 @@ export function TaskDetailPanel({
     return store.allWorkspaceTasks?.find((t: any) => t.id === taskId);
   }, [taskId, store.allWorkspaceTasks]);
 
+  const taskProject = useMemo(() => {
+    if (!task) return null;
+    return store.workspaceProjects?.find((p: any) => p.id === task.projectId) || null;
+  }, [task, store.workspaceProjects]);
+
+  const eligibleAssignees = useMemo(() => {
+    if (!taskProject) return store.workspaceMembers || [];
+    const allowed = new Set<string>(taskProject.allowedUserIds || []);
+    return (store.workspaceMembers || []).filter((m: any) => {
+      const isWorkspaceAdmin = m.role === 'owner' || m.role === 'lead';
+      const canSeeProject = isWorkspaceAdmin || allowed.has(m.userId);
+      return canSeeProject;
+    });
+  }, [store.workspaceMembers, taskProject]);
+
   const commentsQuery = useMemoFirebase(() => {
     if (!db || !task) return null;
     return query(
@@ -216,7 +231,7 @@ export function TaskDetailPanel({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="unassigned">Unassigned</SelectItem>
-                  {store.workspaceMembers.map((m: any) => (
+                  {eligibleAssignees.map((m: any) => (
                     <SelectItem key={m.userId} value={m.userId}>
                       <div className="flex items-center gap-2">
                         <Avatar className="h-5 w-5">

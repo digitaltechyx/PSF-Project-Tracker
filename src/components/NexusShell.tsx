@@ -225,7 +225,7 @@ export function NexusShell() {
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 overflow-hidden">
               <Avatar className="h-8 w-8">
-                <AvatarImage src={store.currentUser.avatarUrl} />
+                <AvatarImage src={store.currentUser.avatarUrl ?? undefined} />
                 <AvatarFallback>{store.currentUser.name?.charAt(0)}</AvatarFallback>
               </Avatar>
               <div className="flex flex-col overflow-hidden">

@@ -7,10 +7,7 @@ import { Button } from '@/components/ui/button';
 import { 
   DropdownMenu, 
   DropdownMenuContent, 
-  DropdownMenuTrigger,
-  DropdownMenuHeader,
-  DropdownMenuLabel,
-  DropdownMenuSeparator
+  DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu';
 import { useNotifications } from '@/hooks/use-notifications';
 import { NotificationItem } from './NotificationItem';

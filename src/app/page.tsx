@@ -101,7 +101,7 @@ export default function Home() {
         <div className="absolute inset-0 z-0">
           <Image 
             src={bgImage?.imageUrl || 'https://picsum.photos/seed/65/1920/1080'} 
-            alt="NexusTrack Background" 
+            alt="PSF Project Tracker background" 
             fill 
             className="object-cover"
             priority
@@ -112,7 +112,7 @@ export default function Home() {
 
         <div className="w-full max-w-md space-y-8 relative z-10 animate-in fade-in zoom-in duration-500">
           <div className="text-center space-y-2">
-            <h1 className="text-5xl font-bold font-headline text-primary drop-shadow-sm">NexusTrack</h1>
+            <h1 className="text-5xl font-bold font-headline text-primary drop-shadow-sm">PSF Project Tracker</h1>
             <p className="text-muted-foreground font-medium">Manage projects with speed and clarity.</p>
           </div>
 

@@ -1,4 +1,4 @@
-# **App Name**: NexusTrack
+# **App Name**: PSF Project Tracker
 
 ## Core Features:
 

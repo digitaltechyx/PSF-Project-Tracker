@@ -4,8 +4,8 @@ import {Toaster} from '@/components/ui/toaster';
 import {FirebaseClientProvider} from '@/firebase/client-provider';
 
 export const metadata: Metadata = {
-  title: 'NexusTrack | Modern Project Management',
-  description: 'A workspace-based project management prototype inspired by ClickUp.',
+  title: 'PSF Project Tracker',
+  description: 'Workspace-based project tracking for teams.',
 };
 
 export default function RootLayout({

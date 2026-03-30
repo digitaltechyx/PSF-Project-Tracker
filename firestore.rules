@@ -6,6 +6,32 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function workspaceDoc(workspaceId) {
+      return get(/databases/$(database)/documents/workspaces/$(workspaceId));
+    }
+
+    function projectDoc(workspaceId, projectId) {
+      return get(/databases/$(database)/documents/workspaces/$(workspaceId)/projects/$(projectId));
+    }
+
+    function isWorkspaceMember(workspaceId) {
+      return isSignedIn() && workspaceDoc(workspaceId).data.memberRoles[request.auth.uid] != null;
+    }
+
+    function isWorkspaceAdmin(workspaceId) {
+      return isSignedIn() && (
+        workspaceDoc(workspaceId).data.ownerUserId == request.auth.uid ||
+        (workspaceDoc(workspaceId).data.memberRoles[request.auth.uid] in ['owner', 'lead'])
+      );
+    }
+
+    function canAccessProject(workspaceId, projectId) {
+      let proj = projectDoc(workspaceId, projectId);
+      return isWorkspaceAdmin(workspaceId) ||
+        (proj.data.allowedUserIds != null &&
+         proj.data.allowedUserIds.hasAny([request.auth.uid]));
+    }
+
     // --- NOTIFICATIONS RULES (FIXED) ---
     match /notifications/{notificationId} {
       // Read: user can only read their own notifications
@@ -21,18 +47,6 @@ service cloud.firestore {
       allow update, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
     }
 
-    // --- COLLECTION GROUP RULES ---
-    
-    match /{path=**}/tasks/{taskId} {
-      allow read: if isSignedIn();
-      allow write: if isSignedIn();
-    }
-
-    match /{path=**}/comments/{commentId} {
-      allow read: if isSignedIn();
-      allow write: if isSignedIn();
-    }
-
     // --- HIERARCHICAL RULES ---
 
     match /users/{userId} {
@@ -41,26 +55,30 @@ service cloud.firestore {
     }
 
     match /workspaces/{workspaceId} {
-      allow read, create: if isSignedIn();
-      allow update: if isSignedIn();
+      // Read/Create: any signed-in user can create; read only if a member.
+      allow create: if isSignedIn();
+      allow read: if isWorkspaceMember(workspaceId);
+      // Update: admins only (prevents arbitrary users from editing workspace membership/roles)
+      allow update: if isWorkspaceAdmin(workspaceId);
       allow delete: if isSignedIn() && get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.ownerUserId == request.auth.uid;
 
       match /members/{memberUserId} {
-        allow read: if isSignedIn();
-        allow write: if isSignedIn();
+        allow read: if isWorkspaceMember(workspaceId);
+        allow write: if isWorkspaceAdmin(workspaceId);
       }
 
       match /projects/{projectId} {
-        allow read: if isSignedIn();
-        allow write: if isSignedIn();
+        allow read: if isWorkspaceMember(workspaceId) && canAccessProject(workspaceId, projectId);
+        allow create, update, delete: if isWorkspaceAdmin(workspaceId);
 
         match /tasks/{taskId} {
-          allow read: if isSignedIn();
-          allow write: if isSignedIn();
+          allow read: if isWorkspaceMember(workspaceId) && canAccessProject(workspaceId, projectId);
+          allow create, update, delete: if isWorkspaceAdmin(workspaceId);
 
           match /comments/{commentId} {
-            allow read: if isSignedIn();
-            allow write: if isSignedIn();
+            allow read: if isWorkspaceMember(workspaceId) && canAccessProject(workspaceId, projectId);
+            // Let any project member comment, but keep membership enforced.
+            allow create, update, delete: if isWorkspaceMember(workspaceId) && canAccessProject(workspaceId, projectId);
           }
         }
       }
@@ -69,8 +87,10 @@ service cloud.firestore {
     // --- INVITATIONS ---
     match /invitations/{invitationId} {
       allow read: if true;
-      allow create: if isSignedIn();
-      allow update, delete: if isSignedIn();
+      // Creation/updating invites should be done by admins (enforced by client + rules).
+      // Note: invite docs include workspaceId, so we can validate admin status.
+      allow create: if isSignedIn() && isWorkspaceAdmin(request.resource.data.workspaceId);
+      allow update, delete: if isSignedIn() && isWorkspaceAdmin(resource.data.workspaceId);
     }
   }
 }

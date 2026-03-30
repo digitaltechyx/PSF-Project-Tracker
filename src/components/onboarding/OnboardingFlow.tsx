@@ -66,7 +66,7 @@ export function OnboardingFlow({ store }: OnboardingFlowProps) {
           <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-primary/10 text-primary mb-2">
             <Rocket className="w-6 h-6" />
           </div>
-          <h1 className="text-3xl font-bold font-headline">Welcome to NexusTrack</h1>
+          <h1 className="text-3xl font-bold font-headline">Welcome to PSF Project Tracker</h1>
           <p className="text-muted-foreground">Let's set up your first workspace to get you started.</p>
         </div>
 

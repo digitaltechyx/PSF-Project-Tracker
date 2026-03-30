@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { TaskList } from '../tasks/TaskList';
 import { TaskDetailPanel } from '../tasks/TaskDetailPanel';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -10,10 +10,21 @@ export function MyTasksView({ store }: { store: any }) {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const { myTasks, isTasksLoading, updateTask } = store;
 
+  const visibleTasks = useMemo(() => {
+    const q = (store.globalSearchQuery || '').trim().toLowerCase();
+    if (!q) return myTasks;
+
+    return (myTasks || []).filter((t: any) => {
+      const title = (t.title || '').toLowerCase();
+      const tags = (t.tags || []).map((x: string) => x.toLowerCase());
+      return title.includes(q) || tags.some((tag: string) => tag.includes(q));
+    });
+  }, [myTasks, store.globalSearchQuery]);
+
   const stats = {
-    todo: myTasks.filter((t: any) => t.status === 'todo').length,
-    inProgress: myTasks.filter((t: any) => t.status === 'in_progress').length,
-    done: myTasks.filter((t: any) => t.status === 'done').length,
+    todo: visibleTasks.filter((t: any) => t.status === 'todo').length,
+    inProgress: visibleTasks.filter((t: any) => t.status === 'in_progress').length,
+    done: visibleTasks.filter((t: any) => t.status === 'done').length,
   };
 
   return (
@@ -61,9 +72,9 @@ export function MyTasksView({ store }: { store: any }) {
       </div>
 
       <div className="bg-card rounded-xl border-none shadow-sm overflow-hidden min-h-[400px]">
-        {myTasks.length > 0 ? (
+        {visibleTasks.length > 0 ? (
           <TaskList 
-            tasks={myTasks} 
+            tasks={visibleTasks} 
             onTaskClick={(id) => setSelectedTaskId(id)} 
             updateTask={updateTask}
           />
@@ -80,7 +91,9 @@ export function MyTasksView({ store }: { store: any }) {
             <div>
               <h3 className="font-semibold text-lg">No tasks assigned to you</h3>
               <p className="text-muted-foreground max-w-xs mx-auto">
-                Tasks assigned to you in this workspace will appear here. Try creating a task and assigning it to yourself!
+                {store.globalSearchQuery?.trim()
+                  ? `No matching tasks for "${store.globalSearchQuery}".`
+                  : 'Tasks assigned to you in this workspace will appear here. Try creating a task and assigning it to yourself!'}
               </p>
             </div>
           </div>

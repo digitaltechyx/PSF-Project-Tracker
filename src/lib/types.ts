@@ -38,6 +38,8 @@ export interface Project {
   description: string;
   color: string;
   allowedUserIds?: string[];
+  /** The user who created the project (used to mark them as project admin in UI). */
+  createdByUserId?: string | null;
   createdAt: string;
   updatedAt: string;
 }

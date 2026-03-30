@@ -167,7 +167,7 @@ export function InviteMembersModal({
             Invite Members
           </DialogTitle>
           <DialogDescription>
-            Send an email invitation or add someone who already uses NexusTrack.
+            Send an email invitation or add someone who already uses PSF Project Tracker.
           </DialogDescription>
         </DialogHeader>
 

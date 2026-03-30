@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { 
   LayoutList, 
   Kanban, 
@@ -36,8 +36,10 @@ import {
 import { Status, Priority } from '@/lib/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Checkbox } from '@/components/ui/checkbox';
+import { useToast } from '@/hooks/use-toast';
 
 export function ProjectView({ store }: { store: any }) {
+  const { toast } = useToast();
   const [view, setView] = useState<'list' | 'kanban'>('list');
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [isCreateTaskOpen, setIsCreateTaskOpen] = useState(false);
@@ -53,7 +55,26 @@ export function ProjectView({ store }: { store: any }) {
   const [newTaskTags, setNewTaskTags] = useState('');
 
   const activeProject = store.activeProject;
-  const filteredTasks = store.projectTasks;
+  const filteredTasks = useMemo(() => {
+    const q = (store.globalSearchQuery || '').trim().toLowerCase();
+    if (!q) return store.projectTasks;
+
+    return (store.projectTasks || []).filter((t: any) => {
+      const title = (t.title || '').toLowerCase();
+      const tags = (t.tags || []).map((x: string) => x.toLowerCase());
+      return title.includes(q) || tags.some((tag: string) => tag.includes(q));
+    });
+  }, [store.projectTasks, store.globalSearchQuery]);
+
+  const eligibleAssignees = useMemo(() => {
+    if (!activeProject) return [];
+    const allowed = new Set<string>(activeProject.allowedUserIds || []);
+    return (store.workspaceMembers || []).filter((m: any) => {
+      const isWorkspaceAdmin = m.role === 'owner' || m.role === 'lead';
+      const canSeeProject = isWorkspaceAdmin || allowed.has(m.userId);
+      return canSeeProject;
+    });
+  }, [store.workspaceMembers, activeProject]);
 
   useEffect(() => {
     if (isCreateTaskOpen && store.currentUser) {
@@ -61,19 +82,28 @@ export function ProjectView({ store }: { store: any }) {
     }
   }, [isCreateTaskOpen, store.currentUser]);
 
-  const handleCreateTask = () => {
+  const handleCreateTask = async () => {
     if (newTaskTitle && activeProject) {
       const tagsArray = newTaskTags.split(',').map(tag => tag.trim()).filter(tag => tag !== '');
       
-      store.createTask(activeProject.workspaceId, activeProject.id, {
-        title: newTaskTitle,
-        description: newTaskDesc,
-        status: newTaskStatus,
-        priority: newTaskPriority,
-        dueDate: newTaskDueDate ? new Date(newTaskDueDate).toISOString() : null,
-        assigneeUserId: newTaskAssignee || store.currentUser?.id,
-        tags: tagsArray,
-      });
+      try {
+        await store.createTask(activeProject.workspaceId, activeProject.id, {
+          title: newTaskTitle,
+          description: newTaskDesc,
+          status: newTaskStatus,
+          priority: newTaskPriority,
+          dueDate: newTaskDueDate ? new Date(newTaskDueDate).toISOString() : null,
+          assigneeUserId: newTaskAssignee || store.currentUser?.id,
+          tags: tagsArray,
+        });
+      } catch (error: any) {
+        toast({
+          variant: 'destructive',
+          title: 'Could not create task',
+          description: error?.message || 'Please try again.',
+        });
+        return;
+      }
 
       setNewTaskTitle('');
       setNewTaskDesc('');
@@ -88,9 +118,15 @@ export function ProjectView({ store }: { store: any }) {
 
   const handleToggleMember = (userId: string) => {
     if (!activeProject) return;
-    const current = activeProject.allowedUserIds || [];
+    const member = store.workspaceMembers?.find((m: any) => m.userId === userId);
+    const isSystemAdmin = member?.role === 'owner' || member?.role === 'lead';
+    const isProjectAdmin = Boolean(
+      activeProject.createdByUserId && userId === activeProject.createdByUserId
+    );
+    if (isSystemAdmin || isProjectAdmin) return;
+    const current: string[] = activeProject.allowedUserIds || [];
     const updated = current.includes(userId)
-      ? current.filter(id => id !== userId)
+      ? current.filter((id: string) => id !== userId)
       : [...current, userId];
     store.updateProjectMembers(activeProject.id, updated);
   };
@@ -137,9 +173,15 @@ export function ProjectView({ store }: { store: any }) {
                 </DialogHeader>
                 <div className="space-y-4 py-4 max-h-[400px] overflow-y-auto">
                   {store.workspaceMembers.map((m: any) => {
-                    // Admins always have access
+                    // "Admin" in the Project Team UI:
+                    // - Workspace owners/leads are always project admins
+                    // - The user who created the project is also treated as an admin for that project
                     const isSystemAdmin = m.role === 'owner' || m.role === 'lead';
-                    const hasAccess = isSystemAdmin || (activeProject.allowedUserIds || []).includes(m.userId);
+                    const isProjectAdmin = Boolean(
+                      activeProject.createdByUserId && m.userId === activeProject.createdByUserId
+                    );
+                    const projectAdmin = isSystemAdmin || isProjectAdmin;
+                    const hasAccess = projectAdmin || (activeProject.allowedUserIds || []).includes(m.userId);
                     
                     return (
                       <div key={m.userId} className="flex items-center justify-between p-2 rounded-lg hover:bg-muted/50 transition-colors">
@@ -150,12 +192,14 @@ export function ProjectView({ store }: { store: any }) {
                           </Avatar>
                           <div className="flex flex-col">
                             <span className="text-sm font-medium">{m.displayName}</span>
-                            <span className="text-[10px] text-muted-foreground uppercase">{m.role}</span>
+                            <span className="text-[10px] text-muted-foreground uppercase">
+                              {projectAdmin ? 'admin' : 'member'}
+                            </span>
                           </div>
                         </div>
                         <Checkbox 
                           checked={hasAccess} 
-                          disabled={isSystemAdmin}
+                          disabled={projectAdmin}
                           onCheckedChange={() => handleToggleMember(m.userId)}
                         />
                       </div>
@@ -240,7 +284,7 @@ export function ProjectView({ store }: { store: any }) {
                           <SelectValue placeholder="Unassigned" />
                         </SelectTrigger>
                         <SelectContent>
-                          {store.workspaceMembers.map((m: any) => (
+                          {eligibleAssignees.map((m: any) => (
                             <SelectItem key={m.userId} value={m.userId}>
                               <div className="flex items-center gap-2">
                                 <Avatar className="h-4 w-4">

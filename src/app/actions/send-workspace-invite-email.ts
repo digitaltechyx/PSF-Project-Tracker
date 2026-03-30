@@ -31,7 +31,7 @@ export async function sendWorkspaceInviteEmail(input: SendWorkspaceInviteEmailIn
   }
 
   const from =
-    process.env.INVITE_FROM_EMAIL?.trim() || 'NexusTrack <onboarding@resend.dev>';
+    process.env.INVITE_FROM_EMAIL?.trim() || 'PSF Project Tracker <onboarding@resend.dev>';
 
   const subject = `${input.inviterName} invited you to ${input.workspaceName}`;
   const safeWs = escapeHtml(input.workspaceName);
@@ -42,7 +42,7 @@ export async function sendWorkspaceInviteEmail(input: SendWorkspaceInviteEmailIn
 <!DOCTYPE html>
 <html>
 <body style="font-family: Inter, system-ui, sans-serif; line-height: 1.5; color: #111;">
-  <p>You've been invited to join <strong>${safeWs}</strong> on NexusTrack.</p>
+  <p>You've been invited to join <strong>${safeWs}</strong> on PSF Project Tracker.</p>
   <p><strong>${safeInviter}</strong> sent this invitation.</p>
   <p><a href="${safeUrl}" style="display:inline-block;padding:10px 16px;background:#452ED2;color:#fff;text-decoration:none;border-radius:8px;">Accept invitation</a></p>
   <p style="font-size:12px;color:#666;">If the button does not work, copy and paste this link:<br/>${safeUrl}</p>

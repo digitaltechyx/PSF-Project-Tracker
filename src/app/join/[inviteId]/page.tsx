@@ -233,7 +233,7 @@ export default function JoinWorkspacePage() {
   return (
     <div className="h-screen w-full relative flex items-center justify-center p-4">
       <div className="absolute inset-0 z-0">
-        <Image src={bgImage?.imageUrl || 'https://picsum.photos/seed/65/1920/1080'} alt="NexusTrack" fill className="object-cover" priority data-ai-hint="modern office" />
+        <Image src={bgImage?.imageUrl || 'https://picsum.photos/seed/65/1920/1080'} alt="PSF Project Tracker" fill className="object-cover" priority data-ai-hint="modern office" />
         <div className="absolute inset-0 bg-background/70 backdrop-blur-[2px]" />
       </div>
 

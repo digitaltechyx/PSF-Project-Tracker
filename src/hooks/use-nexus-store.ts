@@ -87,7 +87,10 @@ export function useNexusStore() {
     return activeWorkspace?.memberRoles?.[user?.uid || ''] || null;
   }, [activeWorkspace, user?.uid, isOwner]);
 
-  const isAdmin = useMemo(() => isOwner || currentRole === 'lead' || currentRole === 'owner' || currentRole === 'admin', [isOwner, currentRole]);
+  const isAdmin = useMemo(
+    () => isOwner || currentRole === 'lead' || currentRole === 'owner',
+    [isOwner, currentRole]
+  );
 
   const projectsQuery = useMemoFirebase(() => {
     const wsId = activeWorkspace?.id;
@@ -109,9 +112,11 @@ export function useNexusStore() {
   );
 
   const globalTasksQuery = useMemoFirebase(() => {
-    if (!db || !user?.uid || !isAuthReady) return null;
-    return query(collectionGroup(db, 'tasks'));
-  }, [db, user?.uid, isAuthReady]);
+    const wsId = activeWorkspace?.id;
+    if (!db || !user?.uid || !isAuthReady || !wsId) return null;
+    // Important: constrain the collectionGroup query so we don't read every task in the database.
+    return query(collectionGroup(db, 'tasks'), where('workspaceId', '==', wsId));
+  }, [db, user?.uid, isAuthReady, activeWorkspace?.id]);
   
   const { data: globalTasksData, isLoading: isTasksLoading } = useCollection<Task>(globalTasksQuery);
   
@@ -209,6 +214,7 @@ export function useNexusStore() {
 
   const createTask = useCallback(async (wsId: string, projectId: string, data: any) => {
     if (!db || !wsId || !projectId || !user) return null;
+    if (!isAdmin) throw new Error('Only admins can create tasks.');
     const taskRef = doc(collection(db, 'workspaces', wsId, 'projects', projectId, 'tasks'));
     const taskData = {
       id: taskRef.id,
@@ -235,7 +241,7 @@ export function useNexusStore() {
       console.error("Failed to create task:", e);
       return null;
     }
-  }, [db, user]);
+  }, [db, user, isAdmin]);
 
   const updateTask = useCallback((taskId: string, data: Partial<Task>) => {
     if (!db || !isAdmin || !user) return;
@@ -432,13 +438,15 @@ export function useNexusStore() {
     createProject: (wsId: string, name: string, description: string) => {
       if (!db || !wsId) return null;
       const projRef = doc(collection(db, 'workspaces', wsId, 'projects'));
+      const creatorId = user?.uid || null;
       const projData: Project = {
         id: projRef.id,
         workspaceId: wsId,
         name,
         description: description || '',
         color: '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0'),
-        allowedUserIds: [user?.uid || ''],
+        allowedUserIds: creatorId ? [creatorId] : [],
+        createdByUserId: creatorId,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
