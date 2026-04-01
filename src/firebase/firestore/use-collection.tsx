@@ -97,19 +97,22 @@ export function useCollection<T = any>(
       },
       (error: FirestoreError) => {
         console.error('[useCollection] Error for:', path, error.message);
+        const isPermissionError = error.code === 'permission-denied';
+        const surfacedError = isPermissionError
+          ? new FirestorePermissionError({
+              operation: 'list',
+              path: path || 'collectionGroup',
+            })
+          : error;
 
-        // Construct the rich, contextual permission error.
-        const contextualError = new FirestorePermissionError({
-          operation: 'list',
-          path: path || 'collectionGroup',
-        });
-
-        setError(contextualError);
+        setError(surfacedError);
         setData(null);
         setIsLoading(false);
 
-        // Global propagation for developer-friendly error fixing
-        errorEmitter.emit('permission-error', contextualError);
+        // Only emit rule-debugging errors for genuine permission failures.
+        if (isPermissionError) {
+          errorEmitter.emit('permission-error', surfacedError as FirestorePermissionError);
+        }
       }
     );
 

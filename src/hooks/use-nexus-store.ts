@@ -180,6 +180,28 @@ export function useNexusStore() {
     setActiveProjectId(id);
   }, []);
 
+  const hasWorkspaceAdminAccess = useCallback(async (wsId: string) => {
+    if (!db || !user?.uid || !wsId) return false;
+
+    if (activeWorkspace?.id === wsId) {
+      return isOwner || currentRole === 'lead' || currentRole === 'owner';
+    }
+
+    try {
+      const wsSnap = await getDoc(doc(db, 'workspaces', wsId));
+      if (!wsSnap.exists()) return false;
+
+      const wsData = wsSnap.data() as Workspace;
+      if (wsData.ownerUserId === user.uid) return true;
+
+      const role = wsData.memberRoles?.[user.uid];
+      return role === 'owner' || role === 'lead';
+    } catch (error) {
+      console.error('Failed to verify workspace permissions:', error);
+      return false;
+    }
+  }, [db, user?.uid, activeWorkspace?.id, isOwner, currentRole]);
+
   const createWorkspace = useCallback(async (name: string, description: string) => {
     if (!db || !user) return null;
     const wsRef = doc(collection(db, 'workspaces'));
@@ -214,7 +236,8 @@ export function useNexusStore() {
 
   const createTask = useCallback(async (wsId: string, projectId: string, data: any) => {
     if (!db || !wsId || !projectId || !user) return null;
-    if (!isAdmin) throw new Error('Only admins can create tasks.');
+    const canCreateTask = await hasWorkspaceAdminAccess(wsId);
+    if (!canCreateTask) throw new Error('Only admins can create tasks.');
     const taskRef = doc(collection(db, 'workspaces', wsId, 'projects', projectId, 'tasks'));
     const taskData = {
       id: taskRef.id,
@@ -241,7 +264,7 @@ export function useNexusStore() {
       console.error("Failed to create task:", e);
       return null;
     }
-  }, [db, user, isAdmin]);
+  }, [db, user, hasWorkspaceAdminAccess]);
 
   const updateTask = useCallback((taskId: string, data: Partial<Task>) => {
     if (!db || !isAdmin || !user) return;
@@ -344,12 +367,17 @@ export function useNexusStore() {
 
       await setDocumentNonBlocking(inviteRef, inviteData, { merge: true });
 
-      await sendWorkspaceInviteEmail({
+      const emailResult = await sendWorkspaceInviteEmail({
         to: normalized,
         workspaceName: ws.name,
         inviterName: inviteData.invitedByName,
         joinUrl: `${params.joinUrl.replace(/\/$/, '')}/join/${inviteRef.id}`,
       });
+
+      if (!emailResult.ok) {
+        await deleteDocumentNonBlocking(inviteRef);
+        throw new Error(emailResult.error);
+      }
 
       return inviteRef.id;
     },
@@ -432,7 +460,7 @@ export function useNexusStore() {
     switchWorkspace,
     selectProject,
     createWorkspace,
-    createProject: (wsId: string, name: string, description: string) => {
+    createProject: async (wsId: string, name: string, description: string) => {
       if (!db || !wsId) return null;
       const projRef = doc(collection(db, 'workspaces', wsId, 'projects'));
       const creatorId = user?.uid || null;
@@ -447,7 +475,7 @@ export function useNexusStore() {
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
-      setDocumentNonBlocking(projRef, projData, { merge: true });
+      await setDocumentNonBlocking(projRef, projData, { merge: true });
       return projRef.id;
     },
     updateProjectMembers: (projectId: string, allowedUserIds: string[]) => {
