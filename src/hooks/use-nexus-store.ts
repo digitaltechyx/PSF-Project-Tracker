@@ -358,11 +358,13 @@ export function useNexusStore() {
         status: 'active',
         usageCount: 0,
         maxUses,
-        // If none selected: member invites should grant access to all workspace projects on join.
-        targetProjectIds: params.targetProjectIds.length > 0 ? params.targetProjectIds : undefined,
         createdAt: new Date().toISOString(),
         expiresAt,
         invitedEmail: normalized,
+        // If none selected: member invites should grant access to all workspace projects on join.
+        ...(params.targetProjectIds.length > 0
+          ? { targetProjectIds: params.targetProjectIds }
+          : {}),
       };
 
       await setDocumentNonBlocking(inviteRef, inviteData, { merge: true });
