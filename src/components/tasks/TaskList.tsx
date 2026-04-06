@@ -12,6 +12,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
+import { Progress } from '@/components/ui/progress';
 import { Task, Priority, Status } from '@/lib/types';
 import { 
   Clock, 
@@ -39,12 +40,14 @@ export function TaskList({
   tasks, 
   onTaskClick, 
   updateTask,
-  readOnly = false
+  readOnly = false,
+  subtasks = []
 }: { 
   tasks: Task[], 
   onTaskClick: (id: string) => void,
   updateTask: any,
-  readOnly?: boolean
+  readOnly?: boolean,
+  subtasks?: any[]
 }) {
   const [mounted, setMounted] = useState(false);
 
@@ -98,6 +101,18 @@ export function TaskList({
                       ))}
                     </div>
                   )}
+                  {(() => {
+                    const st = (subtasks || []).filter(s => s.taskId === task.id);
+                    if (st.length === 0) return null;
+                    const done = st.filter(s => s.status === 'done').length;
+                    return (
+                      <div className="flex items-center gap-1 text-[10px] text-muted-foreground mt-1 font-medium">
+                        <CheckCircle2 className="h-3 w-3" />
+                        <span>{done}/{st.length} subtasks</span>
+                        <Progress value={(done/st.length)*100} className="h-1 w-12 ml-1" />
+                      </div>
+                    );
+                  })()}
                 </div>
               </TableCell>
               <TableCell>

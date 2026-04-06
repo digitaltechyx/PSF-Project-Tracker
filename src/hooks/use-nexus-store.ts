@@ -24,8 +24,8 @@ import {
   orderBy,
   addDoc
 } from 'firebase/firestore';
-import { Workspace, Project, Task, WorkspaceMember, Invitation } from '@/lib/types';
-import { createNotification, notifyTaskAssigned, notifyTaskUpdated } from '@/lib/notifications';
+import { Workspace, Project, Task, WorkspaceMember, Invitation, Subtask } from '@/lib/types';
+import { createNotification, notifyTaskAssigned, notifyTaskUpdated, notifySubtaskAssigned } from '@/lib/notifications';
 import { sendWorkspaceInviteEmail } from '@/app/actions/send-workspace-invite-email';
 
 export function useNexusStore() {
@@ -119,6 +119,15 @@ export function useNexusStore() {
   }, [db, user?.uid, isAuthReady, activeWorkspace?.id]);
   
   const { data: globalTasksData, isLoading: isTasksLoading } = useCollection<Task>(globalTasksQuery);
+
+  const globalSubtasksQuery = useMemoFirebase(() => {
+    const wsId = activeWorkspace?.id;
+    if (!db || !user?.uid || !isAuthReady || !wsId) return null;
+    return query(collectionGroup(db, 'subtasks'), where('workspaceId', '==', wsId));
+  }, [db, user?.uid, isAuthReady, activeWorkspace?.id]);
+  
+  const { data: globalSubtasksData } = useCollection<Subtask>(globalSubtasksQuery);
+  const allWorkspaceSubtasks = useMemo(() => globalSubtasksData || [], [globalSubtasksData]);
   
   const allWorkspaceTasks = useMemo(() => {
     const wsId = activeWorkspace?.id;
@@ -302,6 +311,64 @@ export function useNexusStore() {
     }
   }, [db, allWorkspaceTasks, isAdmin, user]);
 
+  const createSubtask = useCallback(async (taskId: string, projectId: string, data: Partial<Subtask>) => {
+    const wsId = activeWorkspace?.id;
+    if (!db || !wsId || !projectId || !taskId || !user || !isAdmin) return null;
+    const subtaskRef = doc(collection(db, 'workspaces', wsId, 'projects', projectId, 'tasks', taskId, 'subtasks'));
+    const taskObj = allWorkspaceTasks.find(t => t.id === taskId);
+    const subtaskData = {
+      id: subtaskRef.id,
+      workspaceId: wsId,
+      projectId,
+      taskId,
+      ...data,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    try {
+      await setDocumentNonBlocking(subtaskRef, subtaskData, { merge: true });
+      if (data.assigneeUserId && data.assigneeUserId !== user.uid) {
+        notifySubtaskAssigned(db, data.assigneeUserId, { id: user.uid, name: user.displayName || 'User' }, {
+          id: taskId,
+          title: taskObj?.title || 'Task',
+          workspaceId: wsId,
+          projectId
+        }, data.title || 'Untitled');
+      }
+      return subtaskRef.id;
+    } catch (e) {
+      console.error("Failed to create subtask:", e);
+      return null;
+    }
+  }, [db, user, isAdmin, activeWorkspace?.id, allWorkspaceTasks]);
+
+  const updateSubtask = useCallback((taskId: string, subtaskId: string, data: Partial<Subtask>) => {
+    if (!db || !isAdmin || !user) return;
+    const s = allWorkspaceSubtasks.find(x => x.id === subtaskId);
+    if (s) {
+      const ref = doc(db, 'workspaces', s.workspaceId, 'projects', s.projectId, 'tasks', s.taskId, 'subtasks', s.id);
+      updateDocumentNonBlocking(ref, { ...data, updatedAt: new Date().toISOString() });
+      if (data.assigneeUserId && data.assigneeUserId !== s.assigneeUserId && data.assigneeUserId !== user.uid) {
+        const taskObj = allWorkspaceTasks.find(t => t.id === s.taskId);
+        notifySubtaskAssigned(db, data.assigneeUserId, { id: user.uid, name: user.displayName || 'User' }, {
+          id: s.taskId,
+          title: taskObj?.title || 'Task',
+          workspaceId: s.workspaceId,
+          projectId: s.projectId
+        }, data.title || s.title);
+      }
+    }
+  }, [db, isAdmin, user, allWorkspaceSubtasks, allWorkspaceTasks]);
+
+  const deleteSubtask = useCallback((taskId: string, subtaskId: string) => {
+    if (!db || !isAdmin) return;
+    const s = allWorkspaceSubtasks.find(x => x.id === subtaskId);
+    if (s) {
+      const ref = doc(db, 'workspaces', s.workspaceId, 'projects', s.projectId, 'tasks', s.taskId, 'subtasks', s.id);
+      deleteDocumentNonBlocking(ref);
+    }
+  }, [db, isAdmin, allWorkspaceSubtasks]);
+
   const searchUsersByEmail = useCallback(
     async (searchTerm: string) => {
       if (!db || !searchTerm.trim()) return [];
@@ -449,6 +516,7 @@ export function useNexusStore() {
     workspaceProjects: projects,
     activeProject,
     allWorkspaceTasks,
+    allWorkspaceSubtasks,
     projectTasks,
     myTasks,
     workspaceMembers,
@@ -488,17 +556,29 @@ export function useNexusStore() {
     },
     createTask,
     updateTask,
+    createSubtask,
+    updateSubtask,
+    deleteSubtask,
     markNotificationAsRead: async (notifId: string) => {
       if (!db || !user) return;
       const ref = doc(db, 'notifications', notifId);
       updateDocumentNonBlocking(ref, { read: true });
     },
-    deleteTask: (taskId: string) => {
+    deleteTask: async (taskId: string) => {
       if (!db || !isAdmin) return;
       const t = allWorkspaceTasks.find(x => x.id === taskId);
       if (t) {
         const ref = doc(db, 'workspaces', t.workspaceId, 'projects', t.projectId, 'tasks', t.id);
         deleteDocumentNonBlocking(ref);
+        try {
+          const subtasksCol = collection(db, 'workspaces', t.workspaceId, 'projects', t.projectId, 'tasks', t.id, 'subtasks');
+          const subtasksSnap = await getDocs(subtasksCol);
+          subtasksSnap.docs.forEach(docSnap => {
+            deleteDocumentNonBlocking(docSnap.ref);
+          });
+        } catch (e) {
+          console.error("Failed to cascade delete subtasks", e);
+        }
       }
     },
     addComment: async (taskId: string, body: string) => {

@@ -346,6 +346,7 @@ export function ProjectView({ store }: { store: any }) {
             onTaskClick={(id) => setSelectedTaskId(id)} 
             updateTask={store.updateTask}
             readOnly={!store.isAdmin}
+            subtasks={store.allWorkspaceSubtasks}
           />
         ) : (
           <KanbanBoard 
@@ -359,6 +360,7 @@ export function ProjectView({ store }: { store: any }) {
               }
             }}
             readOnly={!store.isAdmin}
+            subtasks={store.allWorkspaceSubtasks}
           />
         )}
       </div>

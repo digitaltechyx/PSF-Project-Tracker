@@ -59,6 +59,21 @@ export interface Task {
   updatedAt: string;
 }
 
+export interface Subtask {
+  id: string;
+  workspaceId: string;
+  projectId: string;
+  taskId: string;
+  title: string;
+  status: Status;
+  priority: Priority;
+  dueDate?: string | null;
+  assigneeUserId?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+
 export interface Comment {
   id: string;
   taskId: string;
@@ -90,7 +105,8 @@ export type NotificationType =
   | 'task_unassigned' 
   | 'task_updated' 
   | 'task_status_changed' 
-  | 'comment_added';
+  | 'comment_added'
+  | 'subtask_assigned';
 
 export interface Notification {
   id: string;

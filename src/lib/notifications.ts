@@ -65,3 +65,23 @@ export async function notifyTaskUpdated(
     taskId: task.id,
   });
 }
+
+export async function notifySubtaskAssigned(
+  db: Firestore,
+  recipientId: string,
+  actor: { id: string; name: string },
+  task: { id: string; title: string; workspaceId: string; projectId: string },
+  subtaskTitle: string
+) {
+  return createNotification(db, {
+    userId: recipientId,
+    actorId: actor.id,
+    actorName: actor.name,
+    type: 'subtask_assigned',
+    title: 'New Subtask Assignment',
+    message: `${actor.name} assigned you a subtask "${subtaskTitle}" in "${task.title}"`,
+    workspaceId: task.workspaceId,
+    projectId: task.projectId,
+    taskId: task.id,
+  });
+}

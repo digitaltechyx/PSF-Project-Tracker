@@ -4,9 +4,10 @@ import React, { useState, useEffect } from 'react';
 import { Task, Status, Priority } from '@/lib/types';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
-import { Plus, Clock } from 'lucide-react';
+import { Plus, Clock, CheckCircle2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { Progress } from '@/components/ui/progress';
 
 const columns: { id: Status, title: string, color: string }[] = [
   { id: 'todo', title: 'To Do', color: 'bg-slate-200' },
@@ -27,13 +28,15 @@ export function KanbanBoard({
   onTaskClick, 
   updateTask,
   onAddTask,
-  readOnly = false
+  readOnly = false,
+  subtasks = []
 }: { 
   tasks: Task[], 
   onTaskClick: (id: string) => void,
   updateTask: (id: string, data: Partial<Task>) => void,
   onAddTask?: (status: Status) => void,
-  readOnly?: boolean
+  readOnly?: boolean,
+  subtasks?: any[]
 }) {
   const [mounted, setMounted] = useState(false);
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
@@ -150,6 +153,19 @@ export function KanbanBoard({
                         ))}
                       </div>
                     )}
+
+                    {(() => {
+                      const st = (subtasks || []).filter(s => s.taskId === task.id);
+                      if (st.length === 0) return null;
+                      const done = st.filter(s => s.status === 'done').length;
+                      return (
+                        <div className="flex items-center gap-1 text-[10px] text-muted-foreground font-medium pt-1">
+                          <CheckCircle2 className="h-3 w-3" />
+                          <span>{done}/{st.length} subtasks</span>
+                          <Progress value={(done/st.length)*100} className="h-1 w-12 ml-1" />
+                        </div>
+                      );
+                    })()}
 
                     <div className="flex items-center justify-between pt-2">
                       <div className="flex items-center gap-2 text-[10px] text-muted-foreground font-medium">

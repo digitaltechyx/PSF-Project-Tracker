@@ -11,6 +11,10 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Progress } from '@/components/ui/progress';
+import { Checkbox } from '@/components/ui/checkbox';
+import { cn } from '@/lib/utils';
 import { 
   Select, 
   SelectContent, 
@@ -36,6 +40,164 @@ import { useToast } from '@/hooks/use-toast';
 import { Separator } from '@/components/ui/separator';
 import { useFirestore, useCollection, useMemoFirebase, useUser } from '@/firebase';
 import { collection, query, orderBy } from 'firebase/firestore';
+
+function SubtaskRow({ subtask, store, projectMembers, isNew, onRemoveNew }: any) {
+  const isAdmin = store.isAdmin;
+  const [title, setTitle] = useState(subtask.title || '');
+  
+  useEffect(() => {
+    if (isNew) return;
+    const timer = setTimeout(() => {
+      if (title !== subtask.title) {
+        store.updateSubtask(subtask.taskId, subtask.id, { title });
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [title, subtask.title, subtask.id, subtask.taskId, store, isNew]);
+
+  const handleSaveNew = () => {
+    if (!title.trim()) {
+      onRemoveNew();
+    } else {
+      store.createSubtask(subtask.taskId, subtask.projectId, { title: title.trim(), status: 'todo', priority: 'medium' });
+      onRemoveNew();
+    }
+  };
+
+  return (
+    <div className="group border rounded-lg p-3 space-y-3 bg-card hover:border-border transition-colors relative">
+      <div className="flex items-center gap-3">
+        {!isNew && (
+          <Checkbox 
+            checked={subtask.status === 'done'} 
+            onCheckedChange={(c) => store.updateSubtask(subtask.taskId, subtask.id, { status: c ? 'done' : 'todo' })}
+            disabled={!isAdmin}
+          />
+        )}
+        <Input 
+          className={cn("h-8 flex-1 font-medium bg-transparent border-transparent hover:border-input focus-visible:ring-1", subtask.status === 'done' && !isNew && "line-through text-muted-foreground opacity-70")}
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="Subtask title..."
+          onBlur={isNew ? handleSaveNew : undefined}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.currentTarget.blur();
+            }
+          }}
+          autoFocus={isNew}
+          disabled={!isAdmin && !isNew}
+        />
+        {!isNew && isAdmin && (
+          <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100 text-destructive" onClick={() => {
+            if (confirm("Delete subtask?")) store.deleteSubtask(subtask.taskId, subtask.id);
+          }}>
+            <Trash2 className="h-3 w-3" />
+          </Button>
+        )}
+      </div>
+      {!isNew && (
+        <div className="flex flex-wrap gap-2 items-center pl-6">
+          <Select value={subtask.status} onValueChange={(val) => store.updateSubtask(subtask.taskId, subtask.id, { status: val })} disabled={!isAdmin}>
+            <SelectTrigger className="h-6 text-[10px] w-auto border-none bg-muted/50">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todo">To Do</SelectItem>
+              <SelectItem value="in_progress">In Progress</SelectItem>
+              <SelectItem value="on_hold">On Hold</SelectItem>
+              <SelectItem value="done">Done</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select value={subtask.priority} onValueChange={(val) => store.updateSubtask(subtask.taskId, subtask.id, { priority: val })} disabled={!isAdmin}>
+            <SelectTrigger className={cn("h-6 text-[10px] w-auto border-none", 
+              subtask.priority === 'urgent' ? 'bg-red-100 text-red-700' : 
+              subtask.priority === 'high' ? 'bg-orange-100 text-orange-700' :
+              subtask.priority === 'medium' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-700'
+            )}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="low">Low</SelectItem>
+              <SelectItem value="medium">Medium</SelectItem>
+              <SelectItem value="high">High</SelectItem>
+              <SelectItem value="urgent">Urgent</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <div className="relative">
+            <Calendar className="absolute left-2 top-1.5 h-3 w-3 text-muted-foreground" />
+            <Input 
+              type="date"
+              className="h-6 text-[10px] pl-6 w-auto border-none bg-muted/50"
+              value={subtask.dueDate ? subtask.dueDate.split('T')[0] : ''}
+              onChange={(e) => store.updateSubtask(subtask.taskId, subtask.id, { dueDate: e.target.value ? new Date(e.target.value).toISOString() : null })}
+              disabled={!isAdmin}
+            />
+          </div>
+
+          <Select value={subtask.assigneeUserId || 'unassigned'} onValueChange={(val) => store.updateSubtask(subtask.taskId, subtask.id, { assigneeUserId: val === 'unassigned' ? null : val })} disabled={!isAdmin}>
+            <SelectTrigger className="h-6 text-[10px] w-auto border-none bg-muted/50 max-w-[120px] truncate">
+              <SelectValue placeholder="Unassigned" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="unassigned">Unassigned</SelectItem>
+              {projectMembers.map((m: any) => (
+                <SelectItem key={m.userId} value={m.userId}>{m.displayName}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SubtasksTabContent({ task, store, projectMembers }: any) {
+  const [addingNew, setAddingNew] = useState(false);
+  const subtasks = store.allWorkspaceSubtasks?.filter((s: any) => s.taskId === task.id) || [];
+  
+  const completedCount = subtasks.filter((s: any) => s.status === 'done').length;
+  const totalCount = subtasks.length;
+  const progressPercent = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
+
+  return (
+    <div className="space-y-6 py-4">
+      <div className="space-y-2">
+        <div className="flex justify-between items-center text-sm font-medium">
+          <span>{totalCount > 0 ? `${completedCount}/${totalCount} completed` : '0 subtasks'}</span>
+          {store.isAdmin && (
+            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setAddingNew(true)} disabled={addingNew}>
+              <Plus className="h-3 w-3 mr-1" /> Add Subtask
+            </Button>
+          )}
+        </div>
+        <Progress value={progressPercent} className="h-2" />
+      </div>
+
+      {totalCount === 0 && !addingNew && (
+        <div className="text-center py-8 text-sm text-muted-foreground bg-muted/20 border border-dashed rounded-xl">
+          No subtasks yet. Click &apos;+ Add Subtask&apos; to break this task into smaller pieces.
+        </div>
+      )}
+
+      <div className="space-y-3">
+        {subtasks.map((st: any) => (
+          <SubtaskRow key={st.id} subtask={st} store={store} projectMembers={projectMembers} />
+        ))}
+        {addingNew && (
+          <SubtaskRow 
+            isNew 
+            onRemoveNew={() => setAddingNew(false)} 
+            subtask={{ taskId: task.id, projectId: task.projectId }} 
+            store={store} 
+          />
+        )}
+      </div>
+    </div>
+  );
+}
 
 export function TaskDetailPanel({ 
   taskId, 
@@ -168,8 +330,16 @@ export function TaskDetailPanel({
           />
         </SheetHeader>
 
-        <div className="space-y-8 py-6">
-          <div className="grid grid-cols-2 gap-6">
+        <Tabs defaultValue="details" className="flex-1 overflow-visible">
+          <div className="px-6 border-b">
+            <TabsList className="grid w-full max-w-[400px] grid-cols-2 bg-transparent justify-start">
+              <TabsTrigger value="details" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none shadow-none bg-transparent h-10">Details</TabsTrigger>
+              <TabsTrigger value="subtasks" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none shadow-none bg-transparent h-10">Subtasks</TabsTrigger>
+            </TabsList>
+          </div>
+
+          <TabsContent value="details" className="m-0 px-6 focus-visible:outline-none focus-visible:ring-0 space-y-8 py-6">
+            <div className="grid grid-cols-2 gap-6">
             <div className="space-y-2">
               <Label className="text-xs text-muted-foreground uppercase font-bold tracking-tight">Status</Label>
               <Select value={task.status} onValueChange={(val) => handleUpdate('status', val)} disabled={!isAdmin}>
@@ -357,8 +527,13 @@ export function TaskDetailPanel({
                 </div>
               </div>
             </div>
-          </div>
-        </div>
+            </div>
+          </TabsContent>
+          
+          <TabsContent value="subtasks" className="m-0 px-6 focus-visible:outline-none focus-visible:ring-0">
+            <SubtasksTabContent task={task} store={store} projectMembers={eligibleAssignees} />
+          </TabsContent>
+        </Tabs>
       </SheetContent>
     </Sheet>
   );
