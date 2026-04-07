@@ -1,11 +1,11 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { 
-  Sheet, 
-  SheetContent, 
-  SheetHeader, 
-  SheetTitle 
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle
 } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -15,22 +15,24 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
 import { Checkbox } from '@/components/ui/checkbox';
 import { cn } from '@/lib/utils';
-import { 
-  Select, 
-  SelectContent, 
-  SelectItem, 
-  SelectTrigger, 
-  SelectValue 
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
 } from '@/components/ui/select';
-import { 
-  Sparkles, 
-  Calendar, 
-  Trash2, 
+import {
+  Sparkles,
+  Calendar,
+  Trash2,
   X,
   Loader2,
   Plus,
   MessageSquare,
-  Send
+  Send,
+  Edit2,
+  List
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -41,10 +43,63 @@ import { Separator } from '@/components/ui/separator';
 import { useFirestore, useCollection, useMemoFirebase, useUser } from '@/firebase';
 import { collection, query, orderBy } from 'firebase/firestore';
 
+const renderCommentBody = (text: string) => {
+  if (!text) return null;
+  const lines = text.split('\n');
+  const result: React.ReactNode[] = [];
+  let currentList: React.ReactNode[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const bulletMatch = line.match(/^(\s*)([-*•])\s+(.*)/);
+    
+    if (bulletMatch) {
+      currentList.push(<li key={i} className="ml-4 list-disc">{bulletMatch[3]}</li>);
+    } else {
+      if (currentList.length > 0) {
+        result.push(<ul key={`ul-${i}`} className="my-1 space-y-1">{currentList}</ul>);
+        currentList = [];
+      }
+      result.push(<div key={`p-${i}`} className={line.trim() === '' ? 'h-4' : 'min-h-[1.25rem]'}>{line}</div>);
+    }
+  }
+  
+  if (currentList.length > 0) {
+    result.push(<ul key={`ul-end`} className="my-1 space-y-1">{currentList}</ul>);
+  }
+  
+  return <div className="text-sm">{result}</div>;
+};
+
+const handleKeyDownBullets = (e: React.KeyboardEvent<HTMLTextAreaElement>, value: string, setValue: (v: string) => void) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    const target = e.target as HTMLTextAreaElement;
+    const start = target.selectionStart;
+    const textBeforeCursor = value.substring(0, start);
+    const lines = textBeforeCursor.split('\n');
+    const currentLine = lines[lines.length - 1];
+    const bulletMatch = currentLine.match(/^(\s*)([-*•])\s+(.*)/);
+    
+    if (bulletMatch) {
+      e.preventDefault();
+      if (!bulletMatch[3].trim()) {
+        const newValue = value.substring(0, start - currentLine.length) + '\n' + value.substring(start);
+        setValue(newValue);
+        setTimeout(() => { target.selectionStart = target.selectionEnd = start - currentLine.length + 1; }, 0);
+      } else {
+        const prefix = bulletMatch[1] + (bulletMatch[2] === '•' ? '•' : '-') + ' ';
+        const newValue = value.substring(0, start) + '\n' + prefix + value.substring(start);
+        setValue(newValue);
+        setTimeout(() => { target.selectionStart = target.selectionEnd = start + prefix.length + 1; }, 0);
+      }
+    }
+  }
+};
+
 function SubtaskRow({ subtask, store, projectMembers, isNew, onRemoveNew }: any) {
   const isAdmin = store.isAdmin;
   const [title, setTitle] = useState(subtask.title || '');
-  
+
   useEffect(() => {
     if (isNew) return;
     const timer = setTimeout(() => {
@@ -68,13 +123,13 @@ function SubtaskRow({ subtask, store, projectMembers, isNew, onRemoveNew }: any)
     <div className="group border rounded-lg p-3 space-y-3 bg-card hover:border-border transition-colors relative">
       <div className="flex items-center gap-3">
         {!isNew && (
-          <Checkbox 
-            checked={subtask.status === 'done'} 
+          <Checkbox
+            checked={subtask.status === 'done'}
             onCheckedChange={(c) => store.updateSubtask(subtask.taskId, subtask.id, { status: c ? 'done' : 'todo' })}
             disabled={!isAdmin}
           />
         )}
-        <Input 
+        <Input
           className={cn("h-8 flex-1 font-medium bg-transparent border-transparent hover:border-input focus-visible:ring-1", subtask.status === 'done' && !isNew && "line-through text-muted-foreground opacity-70")}
           value={title}
           onChange={(e) => setTitle(e.target.value)}
@@ -111,10 +166,10 @@ function SubtaskRow({ subtask, store, projectMembers, isNew, onRemoveNew }: any)
           </Select>
 
           <Select value={subtask.priority} onValueChange={(val) => store.updateSubtask(subtask.taskId, subtask.id, { priority: val })} disabled={!isAdmin}>
-            <SelectTrigger className={cn("h-6 text-[10px] w-auto border-none", 
-              subtask.priority === 'urgent' ? 'bg-red-100 text-red-700' : 
-              subtask.priority === 'high' ? 'bg-orange-100 text-orange-700' :
-              subtask.priority === 'medium' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-700'
+            <SelectTrigger className={cn("h-6 text-[10px] w-auto border-none",
+              subtask.priority === 'urgent' ? 'bg-red-100 text-red-700' :
+                subtask.priority === 'high' ? 'bg-orange-100 text-orange-700' :
+                  subtask.priority === 'medium' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-700'
             )}>
               <SelectValue />
             </SelectTrigger>
@@ -128,7 +183,7 @@ function SubtaskRow({ subtask, store, projectMembers, isNew, onRemoveNew }: any)
 
           <div className="relative">
             <Calendar className="absolute left-2 top-1.5 h-3 w-3 text-muted-foreground" />
-            <Input 
+            <Input
               type="date"
               className="h-6 text-[10px] pl-6 w-auto border-none bg-muted/50"
               value={subtask.dueDate ? subtask.dueDate.split('T')[0] : ''}
@@ -157,7 +212,7 @@ function SubtaskRow({ subtask, store, projectMembers, isNew, onRemoveNew }: any)
 function SubtasksTabContent({ task, store, projectMembers }: any) {
   const [addingNew, setAddingNew] = useState(false);
   const subtasks = store.allWorkspaceSubtasks?.filter((s: any) => s.taskId === task.id) || [];
-  
+
   const completedCount = subtasks.filter((s: any) => s.status === 'done').length;
   const totalCount = subtasks.length;
   const progressPercent = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
@@ -187,11 +242,11 @@ function SubtasksTabContent({ task, store, projectMembers }: any) {
           <SubtaskRow key={st.id} subtask={st} store={store} projectMembers={projectMembers} />
         ))}
         {addingNew && (
-          <SubtaskRow 
-            isNew 
-            onRemoveNew={() => setAddingNew(false)} 
-            subtask={{ taskId: task.id, projectId: task.projectId }} 
-            store={store} 
+          <SubtaskRow
+            isNew
+            onRemoveNew={() => setAddingNew(false)}
+            subtask={{ taskId: task.id, projectId: task.projectId }}
+            store={store}
           />
         )}
       </div>
@@ -199,14 +254,14 @@ function SubtasksTabContent({ task, store, projectMembers }: any) {
   );
 }
 
-export function TaskDetailPanel({ 
-  taskId, 
-  isOpen, 
-  onClose, 
-  store 
-}: { 
-  taskId: string, 
-  isOpen: boolean, 
+export function TaskDetailPanel({
+  taskId,
+  isOpen,
+  onClose,
+  store
+}: {
+  taskId: string,
+  isOpen: boolean,
   onClose: () => void,
   store: any
 }) {
@@ -216,7 +271,14 @@ export function TaskDetailPanel({
   const [isGeneratingDesc, setIsGeneratingDesc] = useState(false);
   const [isSuggestingAttrs, setIsSuggestingAttrs] = useState(false);
   const [newComment, setNewComment] = useState('');
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editingCommentBody, setEditingCommentBody] = useState('');
   const [mounted, setMounted] = useState(false);
+  const [isAddingTag, setIsAddingTag] = useState(false);
+  const [newTagValue, setNewTagValue] = useState('');
+
+  const [localTitle, setLocalTitle] = useState('');
+  const [localDesc, setLocalDesc] = useState('');
 
   useEffect(() => {
     setMounted(true);
@@ -226,6 +288,13 @@ export function TaskDetailPanel({
     if (!taskId) return null;
     return store.allWorkspaceTasks?.find((t: any) => t.id === taskId);
   }, [taskId, store.allWorkspaceTasks]);
+
+  useEffect(() => {
+    if (task) {
+      setLocalTitle(task.title || '');
+      setLocalDesc(task.description || '');
+    }
+  }, [task?.id]); // Only true mount/switch resets the input, letting user edit smoothly
 
   const taskProject = useMemo(() => {
     if (!task) return null;
@@ -249,7 +318,7 @@ export function TaskDetailPanel({
       orderBy('createdAt', 'asc')
     );
   }, [db, task]);
-  
+
   const { data: commentsData } = useCollection(commentsQuery);
   const comments = useMemo(() => commentsData || [], [commentsData]);
 
@@ -262,11 +331,37 @@ export function TaskDetailPanel({
     store.updateTask(taskId, { [field]: value });
   };
 
+  const handleAddTag = () => {
+    if (newTagValue.trim()) {
+      const updatedTags = [...(task.tags || []), newTagValue.trim()];
+      handleUpdate('tags', Array.from(new Set(updatedTags)));
+    }
+    setNewTagValue('');
+    setIsAddingTag(false);
+  };
+
+  useEffect(() => {
+    if (!mounted || !task) return;
+    const timer = setTimeout(() => {
+      if (localTitle !== task.title) handleUpdate('title', localTitle);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [localTitle, task?.title]);
+
+  useEffect(() => {
+    if (!mounted || !task) return;
+    const timer = setTimeout(() => {
+      if (localDesc !== (task.description || '')) handleUpdate('description', localDesc);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [localDesc, task?.description]);
+
   const handleGenerateDescription = async () => {
     if (!isAdmin) return;
     setIsGeneratingDesc(true);
     try {
-      const result = await generateTaskDescription({ taskTitle: task.title });
+      const result = await generateTaskDescription({ taskTitle: localTitle || task.title });
+      setLocalDesc(result.taskDescription);
       handleUpdate('description', result.taskDescription);
       toast({ title: 'AI Description Generated' });
     } catch (error) {
@@ -322,10 +417,10 @@ export function TaskDetailPanel({
               )}
             </div>
           </div>
-          <Input 
+          <Input
             className="text-2xl font-bold border-none px-0 shadow-none focus-visible:ring-0 font-headline"
-            value={task.title}
-            onChange={(e) => handleUpdate('title', e.target.value)}
+            value={localTitle}
+            onChange={(e) => setLocalTitle(e.target.value)}
             disabled={!isAdmin}
           />
         </SheetHeader>
@@ -340,196 +435,265 @@ export function TaskDetailPanel({
 
           <TabsContent value="details" className="m-0 px-6 focus-visible:outline-none focus-visible:ring-0 space-y-8 py-6">
             <div className="grid grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <Label className="text-xs text-muted-foreground uppercase font-bold tracking-tight">Status</Label>
-              <Select value={task.status} onValueChange={(val) => handleUpdate('status', val)} disabled={!isAdmin}>
-                <SelectTrigger className="h-9">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todo">To Do</SelectItem>
-                  <SelectItem value="in_progress">In Progress</SelectItem>
-                  <SelectItem value="on_hold">On Hold</SelectItem>
-                  <SelectItem value="done">Done</SelectItem>
-                </SelectContent>
-              </Select>
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground uppercase font-bold tracking-tight">Status</Label>
+                <Select value={task.status} onValueChange={(val) => handleUpdate('status', val)} disabled={!isAdmin}>
+                  <SelectTrigger className="h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todo">To Do</SelectItem>
+                    <SelectItem value="in_progress">In Progress</SelectItem>
+                    <SelectItem value="on_hold">On Hold</SelectItem>
+                    <SelectItem value="done">Done</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <Label className="text-xs text-muted-foreground uppercase font-bold tracking-tight">Priority</Label>
+                  {isAdmin && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-5 w-5 text-primary"
+                      onClick={handleSuggestAttributes}
+                      disabled={isSuggestingAttrs}
+                    >
+                      {isSuggestingAttrs ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                    </Button>
+                  )}
+                </div>
+                <Select value={task.priority} onValueChange={(val) => handleUpdate('priority', val)} disabled={!isAdmin}>
+                  <SelectTrigger className="h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="low">Low</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="high">High</SelectItem>
+                    <SelectItem value="urgent">Urgent</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground uppercase font-bold tracking-tight">Due Date</Label>
+                <div className="relative">
+                  <Calendar className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    type="date"
+                    className="pl-9 h-9"
+                    value={task.dueDate ? task.dueDate.split('T')[0] : ''}
+                    onChange={(e) => handleUpdate('dueDate', e.target.value ? new Date(e.target.value).toISOString() : null)}
+                    disabled={!isAdmin}
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground uppercase font-bold tracking-tight">Assignee</Label>
+                <Select value={task.assigneeUserId || 'unassigned'} onValueChange={(val) => handleUpdate('assigneeUserId', val === 'unassigned' ? null : val)} disabled={!isAdmin}>
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="Unassigned" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="unassigned">Unassigned</SelectItem>
+                    {eligibleAssignees.map((m: any) => (
+                      <SelectItem key={m.userId} value={m.userId}>
+                        <div className="flex items-center gap-2">
+                          <Avatar className="h-5 w-5">
+                            <AvatarImage src={m.avatarUrl} />
+                            <AvatarFallback>{m.displayName?.charAt(0)}</AvatarFallback>
+                          </Avatar>
+                          {m.displayName}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-            <div className="space-y-2">
+
+            <div className="space-y-4">
               <div className="flex justify-between items-center">
-                <Label className="text-xs text-muted-foreground uppercase font-bold tracking-tight">Priority</Label>
+                <Label className="text-xs text-muted-foreground uppercase font-bold tracking-tight">
+                  Description
+                </Label>
                 {isAdmin && (
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    className="h-5 w-5 text-primary" 
-                    onClick={handleSuggestAttributes}
-                    disabled={isSuggestingAttrs}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-[10px] gap-1.5"
+                    onClick={handleGenerateDescription}
+                    disabled={isGeneratingDesc}
                   >
-                    {isSuggestingAttrs ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                    {isGeneratingDesc ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                    AI Generate
                   </Button>
                 )}
               </div>
-              <Select value={task.priority} onValueChange={(val) => handleUpdate('priority', val)} disabled={!isAdmin}>
-                <SelectTrigger className="h-9">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="low">Low</SelectItem>
-                  <SelectItem value="medium">Medium</SelectItem>
-                  <SelectItem value="high">High</SelectItem>
-                  <SelectItem value="urgent">Urgent</SelectItem>
-                </SelectContent>
-              </Select>
+              <Textarea
+                placeholder="Add details about this task..."
+                className="min-h-[120px] leading-relaxed resize-none"
+                value={localDesc}
+                onChange={(e) => setLocalDesc(e.target.value)}
+                disabled={!isAdmin}
+              />
             </div>
-            <div className="space-y-2">
-              <Label className="text-xs text-muted-foreground uppercase font-bold tracking-tight">Due Date</Label>
-              <div className="relative">
-                <Calendar className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input 
-                  type="date" 
-                  className="pl-9 h-9" 
-                  value={task.dueDate ? task.dueDate.split('T')[0] : ''}
-                  onChange={(e) => handleUpdate('dueDate', e.target.value ? new Date(e.target.value).toISOString() : null)}
-                  disabled={!isAdmin}
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label className="text-xs text-muted-foreground uppercase font-bold tracking-tight">Assignee</Label>
-              <Select value={task.assigneeUserId || 'unassigned'} onValueChange={(val) => handleUpdate('assigneeUserId', val === 'unassigned' ? null : val)} disabled={!isAdmin}>
-                <SelectTrigger className="h-9">
-                  <SelectValue placeholder="Unassigned" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="unassigned">Unassigned</SelectItem>
-                  {eligibleAssignees.map((m: any) => (
-                    <SelectItem key={m.userId} value={m.userId}>
-                      <div className="flex items-center gap-2">
-                        <Avatar className="h-5 w-5">
-                          <AvatarImage src={m.avatarUrl} />
-                          <AvatarFallback>{m.displayName?.charAt(0)}</AvatarFallback>
-                        </Avatar>
-                        {m.displayName}
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            <div className="flex justify-between items-center">
-              <Label className="text-xs text-muted-foreground uppercase font-bold tracking-tight">
-                Description
-              </Label>
-              {isAdmin && (
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  className="h-7 text-[10px] gap-1.5"
-                  onClick={handleGenerateDescription}
-                  disabled={isGeneratingDesc}
-                >
-                  {isGeneratingDesc ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
-                  AI Generate
-                </Button>
-              )}
-            </div>
-            <Textarea 
-              placeholder="Add details about this task..."
-              className="min-h-[120px] leading-relaxed resize-none"
-              value={task.description}
-              onChange={(e) => handleUpdate('description', e.target.value)}
-              disabled={!isAdmin}
-            />
-          </div>
-
-          <div className="space-y-4">
-            <Label className="text-xs text-muted-foreground uppercase font-bold tracking-tight">
-              Tags
-            </Label>
-            <div className="flex flex-wrap gap-2">
-              {task.tags?.map((tag: string) => (
-                <Badge key={tag} variant="secondary" className="gap-1 px-2 py-1">
-                  {tag}
-                  {isAdmin && (
-                    <X 
-                      className="h-3 w-3 cursor-pointer hover:text-destructive" 
-                      onClick={() => handleUpdate('tags', task.tags.filter((t: string) => t !== tag))}
-                    />
-                  )}
-                </Badge>
-              ))}
-              {isAdmin && (
-                <Button variant="ghost" size="sm" className="h-7 px-2 border border-dashed rounded-full text-xs">
-                  <Plus className="h-3 w-3 mr-1" /> Add Tag
-                </Button>
-              )}
-            </div>
-          </div>
-
-          <Separator />
-
-          {/* Comments Section */}
-          <div className="space-y-6">
-            <Label className="text-xs text-muted-foreground uppercase font-bold tracking-tight flex items-center gap-1.5">
-              <MessageSquare className="h-3 w-3" /> Comments ({comments.length})
-            </Label>
 
             <div className="space-y-4">
-              {comments.map((comment: any) => {
-                const author = store.workspaceMembers.find((m: any) => m.userId === comment.authorUserId);
-                return (
-                  <div key={comment.id} className="flex gap-3">
-                    <Avatar className="h-8 w-8">
-                      <AvatarImage src={author?.avatarUrl} />
-                      <AvatarFallback>{author?.displayName?.charAt(0) || '?'}</AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1 space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold">{author?.displayName || 'Unknown User'}</span>
-                        <span className="text-[10px] text-muted-foreground">
-                          {mounted ? new Date(comment.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '...'}
-                        </span>
-                      </div>
-                      <div className="text-sm bg-muted/40 p-3 rounded-lg border border-transparent hover:border-border transition-colors">
-                        {comment.body}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+              <Label className="text-xs text-muted-foreground uppercase font-bold tracking-tight">
+                Tags
+              </Label>
+              <div className="flex flex-wrap gap-2">
+                {task.tags?.map((tag: string) => (
+                  <Badge key={tag} variant="secondary" className="gap-1 px-2 py-1">
+                    {tag}
+                    {isAdmin && (
+                      <X
+                        className="h-3 w-3 cursor-pointer hover:text-destructive"
+                        onClick={() => handleUpdate('tags', task.tags.filter((t: string) => t !== tag))}
+                      />
+                    )}
+                  </Badge>
+                ))}
+                {isAdmin && !isAddingTag && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 border border-dashed rounded-full text-xs"
+                    onClick={() => setIsAddingTag(true)}
+                  >
+                    <Plus className="h-3 w-3 mr-1" /> Add Tag
+                  </Button>
+                )}
+                {isAdmin && isAddingTag && (
+                  <Input
+                    autoFocus
+                    className="h-7 text-xs w-24 px-2 py-0 border-dashed rounded-full"
+                    placeholder="New tag..."
+                    value={newTagValue}
+                    onChange={e => setNewTagValue(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') handleAddTag();
+                      if (e.key === 'Escape') {
+                        setIsAddingTag(false);
+                        setNewTagValue('');
+                      }
+                    }}
+                    onBlur={() => {
+                      if (newTagValue.trim()) {
+                        handleAddTag();
+                      } else {
+                        setIsAddingTag(false);
+                      }
+                    }}
+                  />
+                )}
+              </div>
             </div>
 
-            <div className="flex items-start gap-3 pt-2">
-              <Avatar className="h-8 w-8">
-                <AvatarImage src={store.currentUser?.avatarUrl} />
-                <AvatarFallback>{store.currentUser?.name?.charAt(0)}</AvatarFallback>
-              </Avatar>
-              <div className="flex-1 space-y-2">
-                <Textarea 
-                  placeholder="Write a comment..."
-                  className="min-h-[80px] text-sm"
-                  value={newComment}
-                  onChange={(e) => setNewComment(e.target.value)}
-                />
-                <div className="flex justify-end">
-                  <Button 
-                    size="sm" 
-                    className="gap-2 h-8"
-                    onClick={handlePostComment}
-                    disabled={!newComment.trim()}
-                  >
-                    <Send className="h-3.5 w-3.5" />
-                    Comment
-                  </Button>
+            <Separator />
+
+            {/* Comments Section */}
+            <div className="space-y-6">
+              <Label className="text-xs text-muted-foreground uppercase font-bold tracking-tight flex items-center gap-1.5">
+                <MessageSquare className="h-3 w-3" /> Comments ({comments.length})
+              </Label>
+
+              <div className="space-y-4">
+                {comments.map((comment: any) => {
+                  const author = store.workspaceMembers.find((m: any) => m.userId === comment.authorUserId);
+                  const isCommentAuthor = store.currentUser?.id === comment.authorUserId;
+                  const isEditing = editingCommentId === comment.id;
+
+                  return (
+                    <div key={comment.id} className="flex gap-3 group">
+                      <Avatar className="h-8 w-8">
+                        <AvatarImage src={author?.avatarUrl} />
+                        <AvatarFallback>{author?.displayName?.charAt(0) || '?'}</AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold">{author?.displayName || 'Unknown User'}</span>
+                          <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                            {mounted ? new Date(comment.createdAt).toLocaleString([], { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '...'}
+                            {comment.isEdited && <span className="italic ml-1">(edited)</span>}
+                          </span>
+                          {isCommentAuthor && !isEditing && (
+                            <div className="ml-auto opacity-0 group-hover:opacity-100 flex gap-1 transition-opacity">
+                              <Button variant="ghost" size="icon" className="h-5 w-5 text-muted-foreground hover:text-primary" onClick={() => { setEditingCommentId(comment.id); setEditingCommentBody(comment.body); }}>
+                                <Edit2 className="h-3 w-3" />
+                              </Button>
+                              <Button variant="ghost" size="icon" className="h-5 w-5 text-muted-foreground hover:text-destructive" onClick={() => { if (window.confirm('Delete comment?')) store.deleteComment(task.id, comment.id); }}>
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                        {isEditing ? (
+                          <div className="space-y-2 mt-1">
+                            <Textarea 
+                              value={editingCommentBody} 
+                              onChange={e => setEditingCommentBody(e.target.value)} 
+                              onKeyDown={e => handleKeyDownBullets(e, editingCommentBody, setEditingCommentBody)}
+                              className="min-h-[60px] text-sm" 
+                            />
+                            <div className="flex justify-between items-center mt-2">
+                              <Button variant="ghost" size="sm" className="h-6 px-2 text-muted-foreground gap-1.5" onClick={() => setEditingCommentBody(prev => (prev && !prev.endsWith('\n') ? prev + '\n• ' : prev + '• '))}>
+                                <List className="h-3.5 w-3.5" /> <span className="text-xs">Bullet</span>
+                              </Button>
+                              <div className="flex justify-end gap-2">
+                                <Button size="sm" variant="ghost" className="h-6 text-xs px-2" onClick={() => setEditingCommentId(null)}>Cancel</Button>
+                                <Button size="sm" className="h-6 text-xs px-2" disabled={!editingCommentBody.trim()} onClick={() => { store.updateComment(task.id, comment.id, editingCommentBody); setEditingCommentId(null); }}>Save</Button>
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="text-sm bg-muted/40 p-3 rounded-lg border border-transparent hover:border-border transition-colors">
+                            {renderCommentBody(comment.body)}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="flex items-start gap-3 pt-2">
+                <Avatar className="h-8 w-8">
+                  <AvatarImage src={store.currentUser?.avatarUrl} />
+                  <AvatarFallback>{store.currentUser?.name?.charAt(0)}</AvatarFallback>
+                </Avatar>
+                <div className="flex-1 space-y-2">
+                  <Textarea
+                    placeholder="Write a comment..."
+                    className="min-h-[80px] text-sm"
+                    value={newComment}
+                    onChange={(e) => setNewComment(e.target.value)}
+                    onKeyDown={(e) => handleKeyDownBullets(e, newComment, setNewComment)}
+                  />
+                  <div className="flex justify-between items-center">
+                    <Button variant="outline" size="sm" className="h-8 gap-2 text-muted-foreground" onClick={() => setNewComment(prev => (prev && !prev.endsWith('\n') ? prev + '\n• ' : prev + '• '))}>
+                      <List className="h-3.5 w-3.5" />
+                      Add Bullet
+                    </Button>
+                    <div className="flex justify-end">
+                      <Button
+                        size="sm"
+                        className="gap-2 h-8"
+                        onClick={handlePostComment}
+                        disabled={!newComment.trim()}
+                      >
+                        <Send className="h-3.5 w-3.5" />
+                        Comment
+                      </Button>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
-            </div>
           </TabsContent>
-          
+
           <TabsContent value="subtasks" className="m-0 px-6 focus-visible:outline-none focus-visible:ring-0">
             <SubtasksTabContent task={task} store={store} projectMembers={eligibleAssignees} />
           </TabsContent>

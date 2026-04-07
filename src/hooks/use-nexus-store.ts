@@ -176,6 +176,23 @@ export function useNexusStore() {
     });
   }, [activeWorkspace, profiles, user]);
 
+  const invitesQuery = useMemoFirebase(() => {
+    if (!db || !activeWorkspace) return null;
+    return query(
+      collection(db, 'invitations'),
+      where('workspaceId', '==', activeWorkspace.id)
+    );
+  }, [db, activeWorkspace]);
+
+  const { data: invitesData } = useCollection(invitesQuery);
+  const workspaceInvitations = useMemo(() => (invitesData || []).filter((i: any) => i.status === 'active'), [invitesData]);
+
+  const cancelInvitation = useCallback(async (inviteId: string) => {
+    if (!db || !isAdmin) return;
+    const ref = doc(db, 'invitations', inviteId);
+    await deleteDocumentNonBlocking(ref);
+  }, [db, isAdmin]);
+
   const switchWorkspace = useCallback((id: string) => {
     setActiveWorkspaceId(id);
     setActiveProjectId(null); 
@@ -520,6 +537,8 @@ export function useNexusStore() {
     projectTasks,
     myTasks,
     workspaceMembers,
+    workspaceInvitations,
+    cancelInvitation,
     globalSearchQuery,
     isTasksLoading,
     isWorkspacesLoading: isWorkspacesLoading || isPrefsLoading,
@@ -612,6 +631,22 @@ export function useNexusStore() {
         });
       }
     },
+    updateComment: async (taskId: string, commentId: string, body: string) => {
+      if (!db || !user || !taskId || !commentId) return;
+      const task = allWorkspaceTasks.find(t => t.id === taskId);
+      if (!task) return;
+      
+      const commentRef = doc(db, 'workspaces', task.workspaceId, 'projects', task.projectId, 'tasks', task.id, 'comments', commentId);
+      await updateDocumentNonBlocking(commentRef, { body, isEdited: true, updatedAt: new Date().toISOString() });
+    },
+    deleteComment: async (taskId: string, commentId: string) => {
+      if (!db || !user || !taskId || !commentId) return;
+      const task = allWorkspaceTasks.find(t => t.id === taskId);
+      if (!task) return;
+      
+      const commentRef = doc(db, 'workspaces', task.workspaceId, 'projects', task.projectId, 'tasks', task.id, 'comments', commentId);
+      await deleteDocumentNonBlocking(commentRef);
+    },
     removeMember: async (userId: string) => {
       const wsId = activeWorkspace?.id;
       if (!db || !wsId || !isAdmin || userId === user?.uid) return;
@@ -624,6 +659,18 @@ export function useNexusStore() {
       });
       const memberRef = doc(db, 'workspaces', wsId, 'members', userId);
       await deleteDocumentNonBlocking(memberRef);
+    },
+    updateMemberRole: async (userId: string, newRole: 'member' | 'lead') => {
+      const wsId = activeWorkspace?.id;
+      if (!db || !wsId || !isAdmin || userId === user?.uid) return;
+      
+      const wsRef = doc(db, 'workspaces', wsId);
+      const roles = { ...activeWorkspace!.memberRoles };
+      roles[userId] = newRole;
+      await updateDocumentNonBlocking(wsRef, {
+        memberRoles: roles,
+        updatedAt: new Date().toISOString()
+      });
     },
     searchUsersByEmail,
     sendEmailInvite,

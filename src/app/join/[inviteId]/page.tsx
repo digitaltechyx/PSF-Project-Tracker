@@ -182,9 +182,13 @@ export default function JoinWorkspacePage() {
           updatedAt: serverTimestamp(),
         });
 
-        // 2. Increment usage
+        // 2. Increment usage and complete email invites
         const inviteRef = doc(db, 'invitations', invitation.id);
-        await updateDoc(inviteRef, { usageCount: increment(1) });
+        if (invitation.type === 'email' || invitation.maxUses === 1) {
+          await updateDoc(inviteRef, { usageCount: increment(1), status: 'used' });
+        } else {
+          await updateDoc(inviteRef, { usageCount: increment(1) });
+        }
 
         // 3. Create Member Profile
         const memberRef = doc(db, 'workspaces', invitation.workspaceId, 'members', user.uid);
