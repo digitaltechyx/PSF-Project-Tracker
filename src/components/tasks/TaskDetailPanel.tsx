@@ -192,17 +192,27 @@ function SubtaskRow({ subtask, store, projectMembers, isNew, onRemoveNew }: any)
             />
           </div>
 
-          <Select value={subtask.assigneeUserId || 'unassigned'} onValueChange={(val) => store.updateSubtask(subtask.taskId, subtask.id, { assigneeUserId: val === 'unassigned' ? null : val })} disabled={!isAdmin}>
-            <SelectTrigger className="h-6 text-[10px] w-auto border-none bg-muted/50 max-w-[120px] truncate">
-              <SelectValue placeholder="Unassigned" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="unassigned">Unassigned</SelectItem>
-              {projectMembers.map((m: any) => (
-                <SelectItem key={m.userId} value={m.userId}>{m.displayName}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-1">
+            <div className="flex -space-x-1">
+              {(subtask.assigneeUserIds || []).slice(0, 3).map((assigneeId: string, idx: number) => {
+                const member = projectMembers.find((m: any) => m.userId === assigneeId);
+                return (
+                  <Avatar key={assigneeId} className="h-5 w-5 border-2 border-background">
+                    <AvatarImage src={member?.avatarUrl} />
+                    <AvatarFallback className="text-[8px]">{(member?.displayName || '?').charAt(0)}</AvatarFallback>
+                  </Avatar>
+                );
+              })}
+              {(subtask.assigneeUserIds || []).length > 3 && (
+                <div className="h-5 w-5 rounded-full bg-muted border-2 border-background flex items-center justify-center">
+                  <span className="text-[8px] text-muted-foreground">+{(subtask.assigneeUserIds || []).length - 3}</span>
+                </div>
+              )}
+            </div>
+            {!subtask.assigneeUserIds?.length && (
+              <span className="text-[10px] text-muted-foreground">Unassigned</span>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -490,26 +500,39 @@ export function TaskDetailPanel({
                 </div>
               </div>
               <div className="space-y-2">
-                <Label className="text-xs text-muted-foreground uppercase font-bold tracking-tight">Assignee</Label>
-                <Select value={task.assigneeUserId || 'unassigned'} onValueChange={(val) => handleUpdate('assigneeUserId', val === 'unassigned' ? null : val)} disabled={!isAdmin}>
-                  <SelectTrigger className="h-9">
-                    <SelectValue placeholder="Unassigned" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="unassigned">Unassigned</SelectItem>
-                    {eligibleAssignees.map((m: any) => (
-                      <SelectItem key={m.userId} value={m.userId}>
-                        <div className="flex items-center gap-2">
-                          <Avatar className="h-5 w-5">
-                            <AvatarImage src={m.avatarUrl} />
-                            <AvatarFallback>{m.displayName?.charAt(0)}</AvatarFallback>
-                          </Avatar>
-                          {m.displayName}
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label className="text-xs text-muted-foreground uppercase font-bold tracking-tight">Assignees</Label>
+                <div className="space-y-2 max-h-32 overflow-y-auto border rounded-md p-2">
+                  {eligibleAssignees.map((m: any) => (
+                    <div key={m.userId} className="flex items-center space-x-2">
+                      <Checkbox 
+                        id={`task-assignee-${m.userId}`}
+                        checked={task.assigneeUserIds?.includes(m.userId) || false}
+                        onCheckedChange={(checked) => {
+                          const currentAssignees = task.assigneeUserIds || [];
+                          if (checked) {
+                            handleUpdate('assigneeUserIds', [...currentAssignees, m.userId]);
+                          } else {
+                            handleUpdate('assigneeUserIds', currentAssignees.filter((id: string) => id !== m.userId));
+                          }
+                        }}
+                        disabled={!isAdmin}
+                      />
+                      <Label 
+                        htmlFor={`task-assignee-${m.userId}`}
+                        className="flex items-center gap-2 cursor-pointer flex-1"
+                      >
+                        <Avatar className="h-5 w-5">
+                          <AvatarImage src={m.avatarUrl} />
+                          <AvatarFallback>{m.displayName?.charAt(0)}</AvatarFallback>
+                        </Avatar>
+                        <span className="text-sm">{m.displayName}</span>
+                      </Label>
+                    </div>
+                  ))}
+                </div>
+                {(!task.assigneeUserIds || task.assigneeUserIds.length === 0) && (
+                  <p className="text-xs text-muted-foreground">No assignees selected</p>
+                )}
               </div>
             </div>
 

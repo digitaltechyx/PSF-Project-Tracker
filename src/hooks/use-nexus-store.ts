@@ -142,7 +142,7 @@ export function useNexusStore() {
 
   const myTasks = useMemo(() => {
     if (!user?.uid) return [];
-    return allWorkspaceTasks.filter(t => t.assigneeUserId === user.uid);
+    return allWorkspaceTasks.filter(t => t.assigneeUserIds?.includes(user.uid));
   }, [allWorkspaceTasks, user?.uid]);
 
   const projectTasks = useMemo(() => {
@@ -276,13 +276,17 @@ export function useNexusStore() {
     try {
       await setDocumentNonBlocking(taskRef, taskData, { merge: true });
       
-      // Notify assignee if it's not the current user
-      if (data.assigneeUserId && data.assigneeUserId !== user.uid) {
-        notifyTaskAssigned(db, data.assigneeUserId, { id: user.uid, name: user.displayName || 'User' }, {
-          id: taskRef.id,
-          title: data.title,
-          workspaceId: wsId,
-          projectId
+      // Notify assignees if they're not the current user
+      if (data.assigneeUserIds && data.assigneeUserIds.length > 0) {
+        data.assigneeUserIds.forEach((assigneeId: string) => {
+          if (assigneeId !== user.uid) {
+            notifyTaskAssigned(db, assigneeId, { id: user.uid, name: user.displayName || 'User' }, {
+              id: taskRef.id,
+              title: data.title,
+              workspaceId: wsId,
+              projectId
+            });
+          }
         });
       }
       return taskRef.id;
@@ -306,25 +310,40 @@ export function useNexusStore() {
       if (data.priority && data.priority !== t.priority) changes.push('priority');
       if (data.dueDate !== undefined && data.dueDate !== t.dueDate) changes.push('due date');
 
-      const recipientId = data.assigneeUserId || t.assigneeUserId;
+      // Handle assignment changes for notifications
+      const oldAssignees = t.assigneeUserIds || [];
+      const newAssignees = data.assigneeUserIds || [];
       
-      // 1. Notify of new assignment if it changed
-      if (data.assigneeUserId && data.assigneeUserId !== t.assigneeUserId) {
-        notifyTaskAssigned(db, data.assigneeUserId, { id: user.uid, name: user.displayName || 'User' }, {
-          id: t.id,
-          title: data.title || t.title,
-          workspaceId: t.workspaceId,
-          projectId: t.projectId
-        });
-      } else if (recipientId && recipientId !== user.uid && changes.length > 0) {
-        // 2. Notify assignee of edits
-        notifyTaskUpdated(db, recipientId, { id: user.uid, name: user.displayName || 'User' }, {
-          id: t.id,
-          title: t.title,
-          workspaceId: t.workspaceId,
-          projectId: t.projectId
-        }, changes);
-      }
+      // Notify newly assigned users
+      newAssignees.forEach(assigneeId => {
+        if (!oldAssignees.includes(assigneeId) && assigneeId !== user.uid) {
+          notifyTaskAssigned(db, assigneeId, { id: user.uid, name: user.displayName || 'User' }, {
+            id: t.id,
+            title: data.title || t.title,
+            workspaceId: t.workspaceId,
+            projectId: t.projectId
+          });
+        }
+      });
+      
+      // Notify unassigned users
+      oldAssignees.forEach(assigneeId => {
+        if (!newAssignees.includes(assigneeId) && assigneeId !== user.uid && changes.length > 0) {
+          // Could add unassignment notification here if needed
+        }
+      });
+      
+      // Notify current assignees of task updates
+      newAssignees.forEach(assigneeId => {
+        if (assigneeId !== user.uid && changes.length > 0) {
+          notifyTaskUpdated(db, assigneeId, { id: user.uid, name: user.displayName || 'User' }, {
+            id: t.id,
+            title: t.title,
+            workspaceId: t.workspaceId,
+            projectId: t.projectId
+          }, changes);
+        }
+      });
     }
   }, [db, allWorkspaceTasks, isAdmin, user]);
 
@@ -344,13 +363,18 @@ export function useNexusStore() {
     };
     try {
       await setDocumentNonBlocking(subtaskRef, subtaskData, { merge: true });
-      if (data.assigneeUserId && data.assigneeUserId !== user.uid) {
-        notifySubtaskAssigned(db, data.assigneeUserId, { id: user.uid, name: user.displayName || 'User' }, {
-          id: taskId,
-          title: taskObj?.title || 'Task',
-          workspaceId: wsId,
-          projectId
-        }, data.title || 'Untitled');
+      // Notify assignees if they're not the current user
+      if (data.assigneeUserIds && data.assigneeUserIds.length > 0) {
+        data.assigneeUserIds.forEach((assigneeId: string) => {
+          if (assigneeId !== user.uid) {
+            notifySubtaskAssigned(db, assigneeId, { id: user.uid, name: user.displayName || 'User' }, {
+              id: taskId,
+              title: taskObj?.title || 'Task',
+              workspaceId: wsId,
+              projectId
+            }, data.title || 'Untitled');
+          }
+        });
       }
       return subtaskRef.id;
     } catch (e) {
@@ -365,15 +389,22 @@ export function useNexusStore() {
     if (s) {
       const ref = doc(db, 'workspaces', s.workspaceId, 'projects', s.projectId, 'tasks', s.taskId, 'subtasks', s.id);
       updateDocumentNonBlocking(ref, { ...data, updatedAt: new Date().toISOString() });
-      if (data.assigneeUserId && data.assigneeUserId !== s.assigneeUserId && data.assigneeUserId !== user.uid) {
-        const taskObj = allWorkspaceTasks.find(t => t.id === s.taskId);
-        notifySubtaskAssigned(db, data.assigneeUserId, { id: user.uid, name: user.displayName || 'User' }, {
-          id: s.taskId,
-          title: taskObj?.title || 'Task',
-          workspaceId: s.workspaceId,
-          projectId: s.projectId
-        }, data.title || s.title);
-      }
+      // Handle subtask assignment changes
+      const oldAssignees = s.assigneeUserIds || [];
+      const newAssignees = data.assigneeUserIds || [];
+      
+      // Notify newly assigned users
+      newAssignees.forEach(assigneeId => {
+        if (!oldAssignees.includes(assigneeId) && assigneeId !== user.uid) {
+          const taskObj = allWorkspaceTasks.find(t => t.id === s.taskId);
+          notifySubtaskAssigned(db, assigneeId, { id: user.uid, name: user.displayName || 'User' }, {
+            id: s.taskId,
+            title: taskObj?.title || 'Task',
+            workspaceId: s.workspaceId,
+            projectId: s.projectId
+          }, data.title || s.title);
+        }
+      });
     }
   }, [db, isAdmin, user, allWorkspaceSubtasks, allWorkspaceTasks]);
 
@@ -616,18 +647,22 @@ export function useNexusStore() {
       
       await setDocumentNonBlocking(commentRef, commentData, { merge: true });
 
-      // Notify assignee about the comment if it's not them
-      if (task.assigneeUserId && task.assigneeUserId !== user.uid) {
-        createNotification(db, {
-          userId: task.assigneeUserId,
-          actorId: user.uid,
-          actorName: user.displayName || 'User',
-          type: 'comment_added',
-          title: 'New Comment',
-          message: `${user.displayName} commented on "${task.title}"`,
-          workspaceId: task.workspaceId,
-          projectId: task.projectId,
-          taskId: task.id
+      // Notify assignees about the comment if they're not the current user
+      if (task.assigneeUserIds && task.assigneeUserIds.length > 0) {
+        task.assigneeUserIds.forEach(assigneeId => {
+          if (assigneeId !== user.uid) {
+            createNotification(db, {
+              userId: assigneeId,
+              actorId: user.uid,
+              actorName: user.displayName || 'User',
+              type: 'comment_added',
+              title: 'New Comment',
+              message: `${user.displayName} commented on "${task.title}"`,
+              workspaceId: task.workspaceId,
+              projectId: task.projectId,
+              taskId: task.id
+            });
+          }
         });
       }
     },

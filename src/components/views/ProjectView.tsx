@@ -51,7 +51,7 @@ export function ProjectView({ store }: { store: any }) {
   const [newTaskStatus, setNewTaskStatus] = useState<Status>('todo');
   const [newTaskPriority, setNewTaskPriority] = useState<Priority>('medium');
   const [newTaskDueDate, setNewTaskDueDate] = useState('');
-  const [newTaskAssignee, setNewTaskAssignee] = useState('');
+  const [newTaskAssignees, setNewTaskAssignees] = useState<string[]>([]);
   const [newTaskTags, setNewTaskTags] = useState('');
 
   const activeProject = store.activeProject;
@@ -78,7 +78,7 @@ export function ProjectView({ store }: { store: any }) {
 
   useEffect(() => {
     if (isCreateTaskOpen && store.currentUser) {
-      setNewTaskAssignee(store.currentUser.id);
+      setNewTaskAssignees([store.currentUser.id]);
     }
   }, [isCreateTaskOpen, store.currentUser]);
 
@@ -93,7 +93,7 @@ export function ProjectView({ store }: { store: any }) {
           status: newTaskStatus,
           priority: newTaskPriority,
           dueDate: newTaskDueDate ? new Date(newTaskDueDate).toISOString() : null,
-          assigneeUserId: newTaskAssignee || store.currentUser?.id,
+          assigneeUserIds: newTaskAssignees.length > 0 ? newTaskAssignees : [store.currentUser?.id],
           tags: tagsArray,
         });
       } catch (error: any) {
@@ -110,7 +110,7 @@ export function ProjectView({ store }: { store: any }) {
       setNewTaskStatus('todo');
       setNewTaskPriority('medium');
       setNewTaskDueDate('');
-      setNewTaskAssignee(store.currentUser?.id || '');
+      setNewTaskAssignees([store.currentUser?.id || '']);
       setNewTaskTags('');
       setIsCreateTaskOpen(false);
     }
@@ -279,25 +279,37 @@ export function ProjectView({ store }: { store: any }) {
                       </div>
                     </div>
                     <div className="space-y-2">
-                      <Label>Assignee</Label>
-                      <Select value={newTaskAssignee} onValueChange={setNewTaskAssignee}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Unassigned" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {eligibleAssignees.map((m: any) => (
-                            <SelectItem key={m.userId} value={m.userId}>
-                              <div className="flex items-center gap-2">
-                                <Avatar className="h-4 w-4">
-                                  <AvatarImage src={m.avatarUrl} />
-                                  <AvatarFallback>{(m.displayName || '?').charAt(0)}</AvatarFallback>
-                                </Avatar>
-                                <span className="truncate">{m.displayName || 'Unnamed'}</span>
-                              </div>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <Label>Assignees</Label>
+                      <div className="space-y-2 max-h-32 overflow-y-auto border rounded-md p-2">
+                        {eligibleAssignees.map((m: any) => (
+                          <div key={m.userId} className="flex items-center space-x-2">
+                            <Checkbox 
+                              id={`assignee-${m.userId}`}
+                              checked={newTaskAssignees.includes(m.userId)}
+                              onCheckedChange={(checked) => {
+                                if (checked) {
+                                  setNewTaskAssignees([...newTaskAssignees, m.userId]);
+                                } else {
+                                  setNewTaskAssignees(newTaskAssignees.filter(id => id !== m.userId));
+                                }
+                              }}
+                            />
+                            <Label 
+                              htmlFor={`assignee-${m.userId}`}
+                              className="flex items-center gap-2 cursor-pointer flex-1"
+                            >
+                              <Avatar className="h-4 w-4">
+                                <AvatarImage src={m.avatarUrl} />
+                                <AvatarFallback>{(m.displayName || '?').charAt(0)}</AvatarFallback>
+                              </Avatar>
+                              <span className="truncate text-sm">{m.displayName || 'Unnamed'}</span>
+                            </Label>
+                          </div>
+                        ))}
+                      </div>
+                      {newTaskAssignees.length === 0 && (
+                        <p className="text-xs text-muted-foreground">No assignees selected</p>
+                      )}
                     </div>
                   </div>
 
@@ -347,6 +359,8 @@ export function ProjectView({ store }: { store: any }) {
             updateTask={store.updateTask}
             readOnly={!store.isAdmin}
             subtasks={store.allWorkspaceSubtasks}
+            workspaceMembers={store.workspaceMembers}
+            currentUser={store.currentUser}
           />
         ) : (
           <KanbanBoard 
@@ -361,6 +375,8 @@ export function ProjectView({ store }: { store: any }) {
             }}
             readOnly={!store.isAdmin}
             subtasks={store.allWorkspaceSubtasks}
+            workspaceMembers={store.workspaceMembers}
+            currentUser={store.currentUser}
           />
         )}
       </div>

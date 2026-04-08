@@ -86,6 +86,8 @@ export function MyTasksView({ store }: { store: any }) {
             tasks={visibleTasks} 
             onTaskClick={(id) => setSelectedTaskId(id)} 
             updateTask={updateTask}
+            workspaceMembers={store.workspaceMembers}
+            currentUser={store.currentUser}
           />
         ) : isTasksLoading ? (
           <div className="flex flex-col items-center justify-center py-20 text-center space-y-4">

@@ -29,14 +29,18 @@ export function KanbanBoard({
   updateTask,
   onAddTask,
   readOnly = false,
-  subtasks = []
+  subtasks = [],
+  workspaceMembers = [],
+  currentUser = null
 }: { 
   tasks: Task[], 
   onTaskClick: (id: string) => void,
   updateTask: (id: string, data: Partial<Task>) => void,
   onAddTask?: (status: Status) => void,
   readOnly?: boolean,
-  subtasks?: any[]
+  subtasks?: any[],
+  workspaceMembers?: any[],
+  currentUser?: any
 }) {
   const [mounted, setMounted] = useState(false);
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
@@ -177,7 +181,37 @@ export function KanbanBoard({
                         )}
                       </div>
                       <div className="flex -space-x-2">
-                        <div className="w-5 h-5 rounded-full bg-primary/10 border-2 border-background" />
+                        {(task.assigneeUserIds || []).slice(0, 3).map((assigneeId: string, idx: number) => {
+                          const isCurrentUser = assigneeId === currentUser?.id;
+                          const member = workspaceMembers.find((m: any) => m.userId === assigneeId);
+                          const isOwner = member?.role === 'owner';
+                          let displayName = '';
+                          let initials = '';
+                          
+                          if (isCurrentUser) {
+                            displayName = 'You';
+                            initials = 'Y';
+                          } else {
+                            displayName = member?.displayName || member?.email || assigneeId;
+                            initials = displayName.charAt(0).toUpperCase();
+                          }
+                          
+                          return (
+                            <div key={assigneeId} className="w-5 h-5 rounded-full bg-muted border-2 border-background flex items-center justify-center">
+                              <span className={cn("text-[8px] font-medium", 
+                                isCurrentUser ? "text-green-600" : isOwner ? "text-green-600" : "text-foreground"
+                              )}>{initials}</span>
+                            </div>
+                          );
+                        })}
+                        {(task.assigneeUserIds || []).length > 3 && (
+                          <div className="w-5 h-5 rounded-full bg-muted border-2 border-background flex items-center justify-center">
+                            <span className="text-[8px] text-muted-foreground">+{(task.assigneeUserIds || []).length - 3}</span>
+                          </div>
+                        )}
+                        {(!task.assigneeUserIds || task.assigneeUserIds.length === 0) && (
+                          <div className="w-5 h-5 rounded-full bg-primary/10 border-2 border-background" />
+                        )}
                       </div>
                     </div>
                   </CardContent>

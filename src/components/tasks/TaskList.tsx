@@ -20,6 +20,7 @@ import {
   PauseCircle,
   MoreVertical 
 } from 'lucide-react';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
 
 const priorityColors: Record<Priority, string> = {
@@ -41,13 +42,17 @@ export function TaskList({
   onTaskClick, 
   updateTask,
   readOnly = false,
-  subtasks = []
+  subtasks = [],
+  workspaceMembers = [],
+  currentUser = null
 }: { 
   tasks: Task[], 
   onTaskClick: (id: string) => void,
   updateTask: any,
   readOnly?: boolean,
-  subtasks?: any[]
+  subtasks?: any[],
+  workspaceMembers?: any[],
+  currentUser?: any
 }) {
   const [mounted, setMounted] = useState(false);
 
@@ -64,6 +69,7 @@ export function TaskList({
             <TableHead className="min-w-[300px]">Task Name</TableHead>
             <TableHead>Status</TableHead>
             <TableHead>Priority</TableHead>
+            <TableHead>Assignees</TableHead>
             <TableHead>Due Date</TableHead>
             <TableHead className="text-right"></TableHead>
           </TableRow>
@@ -125,6 +131,41 @@ export function TaskList({
                 <Badge variant="outline" className={cn("capitalize border-none", priorityColors[task.priority])}>
                   {task.priority}
                 </Badge>
+              </TableCell>
+              <TableCell>
+                <div className="flex items-center gap-1">
+                  {(task.assigneeUserIds || []).slice(0, 3).map((assigneeId: string, idx: number) => {
+                    const isCurrentUser = assigneeId === currentUser?.id;
+                    const member = workspaceMembers.find((m: any) => m.userId === assigneeId);
+                    const isOwner = member?.role === 'owner';
+                    let displayName = '';
+                    let initials = '';
+                    
+                    if (isCurrentUser) {
+                      displayName = 'You';
+                      initials = 'Y';
+                    } else {
+                      displayName = member?.displayName || member?.email || assigneeId;
+                      initials = displayName.charAt(0).toUpperCase();
+                    }
+                    
+                    return (
+                      <div key={assigneeId} className="h-6 w-6 rounded-full bg-muted border-2 border-background flex items-center justify-center">
+                        <span className={cn("text-[8px] font-medium", 
+                          isCurrentUser ? "text-green-600" : isOwner ? "text-green-600" : "text-foreground"
+                        )}>{initials}</span>
+                      </div>
+                    );
+                  })}
+                  {(task.assigneeUserIds || []).length > 3 && (
+                    <div className="h-6 w-6 rounded-full bg-muted border-2 border-background flex items-center justify-center">
+                      <span className="text-[8px] text-muted-foreground">+{(task.assigneeUserIds || []).length - 3}</span>
+                    </div>
+                  )}
+                  {(!task.assigneeUserIds || task.assigneeUserIds.length === 0) && (
+                    <span className="text-xs text-muted-foreground">Unassigned</span>
+                  )}
+                </div>
               </TableCell>
               <TableCell className="text-muted-foreground text-xs">
                 {mounted && task.dueDate ? new Date(task.dueDate).toLocaleDateString() : (task.dueDate ? '...' : 'No date')}

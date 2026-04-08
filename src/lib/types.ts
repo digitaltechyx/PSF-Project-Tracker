@@ -53,7 +53,7 @@ export interface Task {
   status: Status;
   priority: Priority;
   dueDate?: string | null;
-  assigneeUserId?: string | null;
+  assigneeUserIds?: string[];
   tags?: string[];
   createdAt: string;
   updatedAt: string;
@@ -68,7 +68,7 @@ export interface Subtask {
   status: Status;
   priority: Priority;
   dueDate?: string | null;
-  assigneeUserId?: string | null;
+  assigneeUserIds?: string[];
   createdAt: string;
   updatedAt: string;
 }
