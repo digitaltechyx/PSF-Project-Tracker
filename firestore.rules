@@ -6,6 +6,13 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function isWorkspaceAdmin(workspaceId) {
+      let ws = get(/databases/$(database)/documents/workspaces/$(workspaceId));
+      let isOwner = ws.data.ownerUserId == request.auth.uid;
+      let isLead = ws.data.memberRoles[request.auth.uid] == 'lead';
+      return isOwner || isLead;
+    }
+
     // --- NOTIFICATIONS RULES (FIXED) ---
     match /notifications/{notificationId} {
       // Read: user can only read their own notifications
@@ -38,6 +45,12 @@ service cloud.firestore {
       allow write: if isSignedIn();
     }
 
+    // Attendance collectionGroup rule - allows querying attendance across all workspaces
+    match /{path=**}/attendance/{attendanceId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
+    }
+
     // --- HIERARCHICAL RULES ---
 
     match /users/{userId} {
@@ -55,9 +68,22 @@ service cloud.firestore {
         allow write: if isSignedIn();
       }
 
+      match /attendance/{attendanceId} {
+        // Read: own entry OR workspace admin
+        allow read: if isSignedIn() && 
+          (request.auth.uid == resource.data.userId || isWorkspaceAdmin(workspaceId));
+        
+        // Create/update: only own entry
+        allow create, update: if isSignedIn() && request.auth.uid == request.resource.data.userId;
+        
+        // Delete: not needed in Phase 1
+        allow delete: if false;
+      }
+
       match /projects/{projectId} {
         allow read: if isSignedIn();
-        allow write: if isSignedIn();
+        allow create: if isWorkspaceAdmin(workspaceId);
+        allow update, delete: if isWorkspaceAdmin(workspaceId);
 
         match /tasks/{taskId} {
           allow read: if isSignedIn();

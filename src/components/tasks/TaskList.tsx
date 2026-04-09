@@ -13,7 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { Task, Priority, Status } from '@/lib/types';
+import { Task, Priority, Status, Pipeline } from '@/lib/types';
 import { 
   Clock, 
   CheckCircle2, 
@@ -30,11 +30,9 @@ const priorityColors: Record<Priority, string> = {
   urgent: 'bg-red-100 text-red-700',
 };
 
-const statusIcons: Record<Status, React.ReactNode> = {
-  todo: <div className="h-4 w-4 rounded-full border-2 border-muted-foreground/30" />,
-  in_progress: <Clock className="h-4 w-4 text-accent animate-pulse" />,
-  on_hold: <PauseCircle className="h-4 w-4 text-amber-600" />,
-  done: <CheckCircle2 className="h-4 w-4 text-green-500" />,
+const getPipelineInfo = (pipelines: Pipeline[], statusId: string) => {
+  const pipeline = pipelines.find(p => p.id === statusId);
+  return pipeline || { name: statusId, color: '#94a3b8' };
 };
 
 export function TaskList({ 
@@ -44,7 +42,8 @@ export function TaskList({
   readOnly = false,
   subtasks = [],
   workspaceMembers = [],
-  currentUser = null
+  currentUser = null,
+  pipelines = []
 }: { 
   tasks: Task[], 
   onTaskClick: (id: string) => void,
@@ -52,13 +51,16 @@ export function TaskList({
   readOnly?: boolean,
   subtasks?: any[],
   workspaceMembers?: any[],
-  currentUser?: any
+  currentUser?: any,
+  pipelines?: Pipeline[]
 }) {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  const lastPipelineId = pipelines.length > 0 ? pipelines[pipelines.length - 1].id : 'done';
 
   return (
     <div className="bg-card rounded-lg border overflow-hidden shadow-sm">
@@ -83,10 +85,11 @@ export function TaskList({
             >
               <TableCell onClick={(e) => e.stopPropagation()}>
                 <Checkbox 
-                  checked={task.status === 'done'} 
+                  checked={task.status === lastPipelineId} 
                   disabled={readOnly}
                   onCheckedChange={(checked) => {
-                    updateTask(task.id, { status: checked ? 'done' : 'todo' });
+                    const firstPipelineId = pipelines.length > 0 ? pipelines[0].id : 'todo';
+                    updateTask(task.id, { status: checked ? lastPipelineId : firstPipelineId });
                   }}
                 />
               </TableCell>
@@ -94,7 +97,7 @@ export function TaskList({
                 <div className="flex flex-col">
                   <span className={cn(
                     "font-medium",
-                    task.status === 'done' && "line-through text-muted-foreground"
+                    task.status === lastPipelineId && "line-through text-muted-foreground"
                   )}>
                     {task.title}
                   </span>
@@ -110,7 +113,7 @@ export function TaskList({
                   {(() => {
                     const st = (subtasks || []).filter(s => s.taskId === task.id);
                     if (st.length === 0) return null;
-                    const done = st.filter(s => s.status === 'done').length;
+                    const done = st.filter(s => s.status === lastPipelineId).length;
                     return (
                       <div className="flex items-center gap-1 text-[10px] text-muted-foreground mt-1 font-medium">
                         <CheckCircle2 className="h-3 w-3" />
@@ -122,10 +125,18 @@ export function TaskList({
                 </div>
               </TableCell>
               <TableCell>
-                <div className="flex items-center gap-2">
-                  {statusIcons[task.status]}
-                  <span className="text-xs capitalize text-muted-foreground">{task.status.replace('_', ' ')}</span>
-                </div>
+                {(() => {
+                  const pipeline = getPipelineInfo(pipelines, task.status);
+                  return (
+                    <div className="flex items-center gap-2">
+                      <div 
+                        className="h-3 w-3 rounded-full" 
+                        style={{ backgroundColor: pipeline.color }}
+                      />
+                      <span className="text-xs text-muted-foreground">{pipeline.name}</span>
+                    </div>
+                  );
+                })()}
               </TableCell>
               <TableCell>
                 <Badge variant="outline" className={cn("capitalize border-none", priorityColors[task.priority])}>

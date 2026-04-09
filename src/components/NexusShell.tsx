@@ -11,7 +11,10 @@ import {
   Box,
   ListTodo,
   Bell,
-  LogOut
+  LogOut,
+  Settings,
+  Trash2,
+  Clock
 } from 'lucide-react';
 import { useNexusStore } from '@/hooks/use-nexus-store';
 import { useAuth } from '@/firebase';
@@ -40,10 +43,13 @@ import { ProjectView } from './views/ProjectView';
 import { MembersView } from './views/MembersView';
 import { MyTasksView } from './views/MyTasksView';
 import { NotificationsView } from './views/NotificationsView';
+import { AttendanceLogView } from './views/AttendanceLogView';
 import { InviteMembersModal } from './invitations/InviteMembersModal';
 import { NotificationBell } from './notifications/NotificationBell';
+import { EditWorkspaceModal } from './workspaces/EditWorkspaceModal';
+import { DeleteWorkspaceButton } from './workspaces/DeleteWorkspaceButton';
 
-type ViewType = 'dashboard' | 'project' | 'members' | 'my-tasks' | 'notifications';
+type ViewType = 'dashboard' | 'project' | 'members' | 'my-tasks' | 'notifications' | 'attendance';
 
 export function NexusShell() {
   const store = useNexusStore();
@@ -53,6 +59,7 @@ export function NexusShell() {
   
   // Dialog States
   const [isWsDialogOpen, setIsWsDialogOpen] = useState(false);
+  const [isWsEditDialogOpen, setIsWsEditDialogOpen] = useState(false);
   const [isProjDialogOpen, setIsProjDialogOpen] = useState(false);
   const [isInviteOpen, setIsInviteOpen] = useState(false);
   
@@ -153,6 +160,20 @@ export function NexusShell() {
           >
             <Plus className="h-4 w-4" />
           </Button>
+          {store.isOwner && (
+            <>
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                className="h-8 w-8 text-muted-foreground hover:text-primary flex-shrink-0"
+                onClick={() => setIsWsEditDialogOpen(true)}
+                title="Edit workspace"
+              >
+                <Settings className="h-4 w-4" />
+              </Button>
+              <DeleteWorkspaceButton store={store} variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive flex-shrink-0" />
+            </>
+          )}
         </div>
 
         <ScrollArea className="flex-1 px-3 py-4">
@@ -181,6 +202,16 @@ export function NexusShell() {
               <Bell className="h-4 w-4" />
               Activity Feed
             </Button>
+            {store.isAdmin && (
+              <Button 
+                variant={currentView === 'attendance' ? 'secondary' : 'ghost'} 
+                className="w-full justify-start gap-3"
+                onClick={() => handleNavClick('attendance')}
+              >
+                <Clock className="h-4 w-4" />
+                Attendance Log
+              </Button>
+            )}
             <Button 
               variant={currentView === 'members' ? 'secondary' : 'ghost'} 
               className="w-full justify-start gap-3"
@@ -249,11 +280,12 @@ export function NexusShell() {
                currentView === 'members' ? 'Team Members' : 
                currentView === 'my-tasks' ? 'Personal Taskboard' :
                currentView === 'notifications' ? 'Activity Feed' :
+               currentView === 'attendance' ? 'Attendance Log' :
                store.activeProject?.name || 'Project'}
             </h1>
           </div>
           <div className="flex items-center gap-3">
-            {currentView !== 'dashboard' && currentView !== 'notifications' && currentView !== 'members' && (
+            {currentView !== 'dashboard' && currentView !== 'notifications' && currentView !== 'members' && currentView !== 'attendance' && (
               <div className="relative w-64 animate-in fade-in duration-300">
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input 
@@ -283,6 +315,7 @@ export function NexusShell() {
           )}
           {currentView === 'my-tasks' && <MyTasksView store={store} />}
           {currentView === 'notifications' && <NotificationsView store={store} />}
+          {currentView === 'attendance' && <AttendanceLogView store={store} />}
         </main>
       </div>
 
@@ -337,6 +370,12 @@ export function NexusShell() {
         isOpen={isInviteOpen} 
         onOpenChange={setIsInviteOpen} 
         store={store} 
+      />
+
+      <EditWorkspaceModal
+        isOpen={isWsEditDialogOpen}
+        onOpenChange={setIsWsEditDialogOpen}
+        store={store}
       />
     </div>
   );

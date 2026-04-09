@@ -8,13 +8,16 @@ import {
   Calendar,
   Tag as TagIcon,
   Loader2,
-  Users
+  Users,
+  Settings
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { TaskList } from '../tasks/TaskList';
 import { KanbanBoard } from '../tasks/KanbanBoard';
 import { TaskDetailPanel } from '../tasks/TaskDetailPanel';
+import { EditProjectModal } from '../projects/EditProjectModal';
+import { DeleteProjectButton } from '../projects/DeleteProjectButton';
 import { 
   Dialog, 
   DialogContent, 
@@ -44,6 +47,7 @@ export function ProjectView({ store }: { store: any }) {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [isCreateTaskOpen, setIsCreateTaskOpen] = useState(false);
   const [isMembersOpen, setIsMembersOpen] = useState(false);
+  const [isEditProjectOpen, setIsEditProjectOpen] = useState(false);
 
   // Form State
   const [newTaskTitle, setNewTaskTitle] = useState('');
@@ -159,13 +163,30 @@ export function ProjectView({ store }: { store: any }) {
 
         <div className="flex items-center gap-2">
           {store.isAdmin && (
-            <Dialog open={isMembersOpen} onOpenChange={setIsMembersOpen}>
-              <DialogTrigger asChild>
-                <Button variant="outline" size="sm" className="gap-2 h-8">
-                  <Users className="h-4 w-4" />
-                  Project Team
-                </Button>
-              </DialogTrigger>
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2 h-8"
+                onClick={() => setIsEditProjectOpen(true)}
+              >
+                <Settings className="h-4 w-4" />
+                Edit
+              </Button>
+              <DeleteProjectButton
+                store={store}
+                project={activeProject}
+                variant="outline"
+                size="sm"
+                className="gap-2 h-8 border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground"
+              />
+              <Dialog open={isMembersOpen} onOpenChange={setIsMembersOpen}>
+                <DialogTrigger asChild>
+                  <Button variant="outline" size="sm" className="gap-2 h-8">
+                    <Users className="h-4 w-4" />
+                    Project Team
+                  </Button>
+                </DialogTrigger>
               <DialogContent className="sm:max-w-[400px]">
                 <DialogHeader>
                   <DialogTitle>Project Access</DialogTitle>
@@ -208,6 +229,7 @@ export function ProjectView({ store }: { store: any }) {
                 </div>
               </DialogContent>
             </Dialog>
+            </>
           )}
 
           {store.isAdmin && (
@@ -382,13 +404,20 @@ export function ProjectView({ store }: { store: any }) {
       </div>
 
       {selectedTaskId && (
-        <TaskDetailPanel 
-          taskId={selectedTaskId} 
-          isOpen={!!selectedTaskId} 
-          onClose={() => setSelectedTaskId(null)} 
+        <TaskDetailPanel
+          taskId={selectedTaskId}
+          isOpen={!!selectedTaskId}
+          onClose={() => setSelectedTaskId(null)}
           store={store}
         />
       )}
+
+      <EditProjectModal
+        isOpen={isEditProjectOpen}
+        onOpenChange={setIsEditProjectOpen}
+        store={store}
+        project={activeProject}
+      />
     </div>
   );
 }

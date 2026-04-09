@@ -15,10 +15,14 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
+import { TodayCard } from '@/components/dashboard/TodayCard';
+import { AttendanceCard } from '@/components/dashboard/AttendanceCard';
+import { TaskDetailPanel } from '@/components/tasks/TaskDetailPanel';
 
 export function DashboardView({ store, onNavigateToProject }: { store: any, onNavigateToProject: (id: string) => void }) {
   const { allWorkspaceTasks, workspaceProjects, activeWorkspace, isTasksLoading } = store;
   const [mounted, setMounted] = useState(false);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -70,7 +74,7 @@ export function DashboardView({ store, onNavigateToProject }: { store: any, onNa
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         <Card className="bg-card shadow-sm border-none">
           <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
             <CardTitle className="text-sm font-medium">Projects</CardTitle>
@@ -126,10 +130,11 @@ export function DashboardView({ store, onNavigateToProject }: { store: any, onNa
             <p className="text-xs text-muted-foreground mt-1">Overdue or Urgent</p>
           </CardContent>
         </Card>
+        <AttendanceCard store={store} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card className="lg:col-span-2 shadow-sm border-none">
+        <Card className="shadow-sm border-none">
           <CardHeader className="flex items-center justify-between flex-row">
             <CardTitle className="text-lg">Recent Activity</CardTitle>
             {isTasksLoading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
@@ -179,6 +184,8 @@ export function DashboardView({ store, onNavigateToProject }: { store: any, onNa
           </CardContent>
         </Card>
 
+        <TodayCard store={store} onTaskClick={setSelectedTaskId} />
+
         <Card className="shadow-sm border-none">
           <CardHeader>
             <CardTitle className="text-lg">Projects Breakdown</CardTitle>
@@ -214,6 +221,15 @@ export function DashboardView({ store, onNavigateToProject }: { store: any, onNa
           </CardContent>
         </Card>
       </div>
+
+      {selectedTaskId && (
+        <TaskDetailPanel 
+          taskId={selectedTaskId} 
+          isOpen={!!selectedTaskId} 
+          onClose={() => setSelectedTaskId(null)} 
+          store={store}
+        />
+      )}
     </div>
   );
 }

@@ -6,6 +6,7 @@ import {
   useUser, 
   useFirestore, 
   useCollection, 
+  useDoc,
   useMemoFirebase,
   setDocumentNonBlocking,
   updateDocumentNonBlocking,
@@ -24,7 +25,7 @@ import {
   orderBy,
   addDoc
 } from 'firebase/firestore';
-import { Workspace, Project, Task, WorkspaceMember, Invitation, Subtask } from '@/lib/types';
+import { Workspace, Project, Task, WorkspaceMember, Invitation, Subtask, AttendanceEntry } from '@/lib/types';
 import { createNotification, notifyTaskAssigned, notifyTaskUpdated, notifySubtaskAssigned } from '@/lib/notifications';
 import { sendWorkspaceInviteEmail } from '@/app/actions/send-workspace-invite-email';
 
@@ -186,6 +187,43 @@ export function useNexusStore() {
 
   const { data: invitesData } = useCollection(invitesQuery);
   const workspaceInvitations = useMemo(() => (invitesData || []).filter((i: any) => i.status === 'active'), [invitesData]);
+
+  // Query for all attendance entries in workspace (for admins)
+  // Use collectionGroup to get all attendance documents across the workspace
+  const allAttendanceQuery = useMemoFirebase(() => {
+    const wsId = activeWorkspace?.id;
+    if (!db || !wsId || wsId === '' || !isAuthReady || !isAdmin) return null;
+    // Use collectionGroup to get all attendance documents with this workspaceId
+    return query(collectionGroup(db, 'attendance'), where('workspaceId', '==', wsId));
+  }, [db, activeWorkspace?.id, isAuthReady, isAdmin]);
+
+  const { data: allAttendanceData, isLoading: isAllAttendanceLoading } = useCollection<AttendanceEntry>(allAttendanceQuery);
+  const allWorkspaceAttendance = useMemo(() => {
+    if (!isAdmin) return []; // Only admins can view all attendance
+    return allAttendanceData || [];
+  }, [allAttendanceData, isAdmin]);
+
+  // Helper to get today's date key in local timezone (YYYY-MM-DD)
+  const getTodayDateKey = useCallback(() => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }, []);
+
+  // Query for today's attendance entry for current user
+  const todayDateKey = getTodayDateKey();
+  const attendanceDocRef = useMemoFirebase(() => {
+    const wsId = activeWorkspace?.id;
+    if (!db || !user?.uid || !wsId || wsId === '' || !isAuthReady) return null;
+    // Simplified structure: attendance/{userId}_{dateKey}
+    const docId = `${user.uid}_${todayDateKey}`;
+    return doc(db, 'workspaces', wsId, 'attendance', docId);
+  }, [db, user?.uid, activeWorkspace?.id, isAuthReady, todayDateKey]);
+
+  const { data: todayAttendanceData, isLoading: isAttendanceLoading } = useDoc<AttendanceEntry>(attendanceDocRef);
+  const todayAttendance = useMemo(() => todayAttendanceData, [todayAttendanceData]);
 
   const cancelInvitation = useCallback(async (inviteId: string) => {
     if (!db || !isAdmin) return;
@@ -557,6 +595,163 @@ export function useNexusStore() {
     [db, user, activeWorkspace, isAdmin]
   );
 
+  const updateWorkspace = useCallback(async (workspaceId: string, data: Partial<Workspace>) => {
+    if (!db || !isOwner || !user) return;
+    const ref = doc(db, 'workspaces', workspaceId);
+    await updateDocumentNonBlocking(ref, { ...data, updatedAt: new Date().toISOString() });
+  }, [db, isOwner, user]);
+
+  const deleteWorkspace = useCallback(async (workspaceId: string) => {
+    if (!db || !isOwner || !user) return;
+    // Only allow deleting if owner
+    const ws = workspaces.find(w => w.id === workspaceId);
+    if (!ws || ws.ownerUserId !== user.uid) {
+      throw new Error('Only workspace owner can delete the workspace.');
+    }
+    // Delete all projects and their tasks/subtasks/comments first
+    try {
+      const projectsCol = collection(db, 'workspaces', workspaceId, 'projects');
+      const projectsSnap = await getDocs(projectsCol);
+      for (const projDoc of projectsSnap.docs) {
+        const projectId = projDoc.id;
+        // Delete all tasks in this project
+        const tasksCol = collection(db, 'workspaces', workspaceId, 'projects', projectId, 'tasks');
+        const tasksSnap = await getDocs(tasksCol);
+        for (const taskDoc of tasksSnap.docs) {
+          const taskId = taskDoc.id;
+          // Delete subtasks
+          const subtasksCol = collection(db, 'workspaces', workspaceId, 'projects', projectId, 'tasks', taskId, 'subtasks');
+          const subtasksSnap = await getDocs(subtasksCol);
+          subtasksSnap.docs.forEach(s => deleteDocumentNonBlocking(s.ref));
+          // Delete comments
+          const commentsCol = collection(db, 'workspaces', workspaceId, 'projects', projectId, 'tasks', taskId, 'comments');
+          const commentsSnap = await getDocs(commentsCol);
+          commentsSnap.docs.forEach(c => deleteDocumentNonBlocking(c.ref));
+          // Delete task
+          deleteDocumentNonBlocking(taskDoc.ref);
+        }
+        // Delete project
+        deleteDocumentNonBlocking(projDoc.ref);
+      }
+      // Delete workspace members
+      const membersCol = collection(db, 'workspaces', workspaceId, 'members');
+      const membersSnap = await getDocs(membersCol);
+      membersSnap.docs.forEach(m => deleteDocumentNonBlocking(m.ref));
+      // Delete the workspace
+      await deleteDocumentNonBlocking(doc(db, 'workspaces', workspaceId));
+    } catch (e) {
+      console.error("Failed to delete workspace:", e);
+      throw e;
+    }
+  }, [db, isOwner, user, workspaces]);
+
+  const updateProject = useCallback(async (projectId: string, data: Partial<Project>) => {
+    const wsId = activeWorkspace?.id;
+    if (!db || !wsId || !isAdmin || !user) return;
+    const ref = doc(db, 'workspaces', wsId, 'projects', projectId);
+    await updateDocumentNonBlocking(ref, { ...data, updatedAt: new Date().toISOString() });
+  }, [db, isAdmin, user, activeWorkspace?.id]);
+
+  const deleteProject = useCallback(async (projectId: string) => {
+    const wsId = activeWorkspace?.id;
+    if (!db || !wsId || !isAdmin || !user) return;
+    try {
+      // Delete all tasks and their subtasks/comments first
+      const tasksCol = collection(db, 'workspaces', wsId, 'projects', projectId, 'tasks');
+      const tasksSnap = await getDocs(tasksCol);
+      for (const taskDoc of tasksSnap.docs) {
+        const taskId = taskDoc.id;
+        // Delete subtasks
+        const subtasksCol = collection(db, 'workspaces', wsId, 'projects', projectId, 'tasks', taskId, 'subtasks');
+        const subtasksSnap = await getDocs(subtasksCol);
+        subtasksSnap.docs.forEach(s => deleteDocumentNonBlocking(s.ref));
+        // Delete comments
+        const commentsCol = collection(db, 'workspaces', wsId, 'projects', projectId, 'tasks', taskId, 'comments');
+        const commentsSnap = await getDocs(commentsCol);
+        commentsSnap.docs.forEach(c => deleteDocumentNonBlocking(c.ref));
+        // Delete task
+        deleteDocumentNonBlocking(taskDoc.ref);
+      }
+      // Delete the project
+      await deleteDocumentNonBlocking(doc(db, 'workspaces', wsId, 'projects', projectId));
+    } catch (e) {
+      console.error("Failed to delete project:", e);
+      throw e;
+    }
+  }, [db, isAdmin, user, activeWorkspace?.id]);
+
+  const checkIn = useCallback(async () => {
+    const wsId = activeWorkspace?.id;
+    if (!db || !user?.uid || !wsId) return;
+    
+    // Guard: if already checked in today, don't overwrite
+    if (todayAttendance?.checkInTime) {
+      console.log("Already checked in today");
+      return;
+    }
+
+    const dateKey = getTodayDateKey();
+    const docId = `${user.uid}_${dateKey}`;
+    const attendanceRef = doc(db, 'workspaces', wsId, 'attendance', docId);
+    
+    const attendanceData: AttendanceEntry = {
+      id: docId,
+      workspaceId: wsId,
+      userId: user.uid,
+      dateKey,
+      checkInTime: new Date().toISOString(),
+      checkOutTime: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    try {
+      await setDocumentNonBlocking(attendanceRef, attendanceData, { merge: true });
+    } catch (e) {
+      console.error("Failed to check in:", e);
+      throw e;
+    }
+  }, [db, user, activeWorkspace?.id, todayAttendance, getTodayDateKey]);
+
+  const checkOut = useCallback(async () => {
+    const wsId = activeWorkspace?.id;
+    if (!db || !user?.uid || !wsId) return;
+    
+    // Guard: if not checked in or already checked out, don't proceed
+    if (!todayAttendance?.checkInTime) {
+      console.log("Not checked in yet");
+      return;
+    }
+    if (todayAttendance?.checkOutTime) {
+      console.log("Already checked out today");
+      return;
+    }
+
+    // Guard: must wait at least 8 hours after check-in before checking out
+    const checkInTime = new Date(todayAttendance.checkInTime);
+    const now = new Date();
+    const hoursSinceCheckIn = (now.getTime() - checkInTime.getTime()) / (1000 * 60 * 60);
+    if (hoursSinceCheckIn < 8) {
+      const hoursRemaining = Math.ceil(8 - hoursSinceCheckIn);
+      console.log(`Must wait ${hoursRemaining} more hours before checking out`);
+      throw new Error(`Must wait at least 8 hours after check-in. ${hoursRemaining} hours remaining.`);
+    }
+
+    const dateKey = getTodayDateKey();
+    const docId = `${user.uid}_${dateKey}`;
+    const attendanceRef = doc(db, 'workspaces', wsId, 'attendance', docId);
+    
+    try {
+      await updateDocumentNonBlocking(attendanceRef, {
+        checkOutTime: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.error("Failed to check out:", e);
+      throw e;
+    }
+  }, [db, user, activeWorkspace?.id, todayAttendance, getTodayDateKey]);
+
   return {
     currentUser: user ? { id: user.uid, name: user.displayName || 'User', email: user.email || '', avatarUrl: user.photoURL || null } : null,
     workspaces,
@@ -576,10 +771,16 @@ export function useNexusStore() {
     isAdmin,
     isOwner,
     currentRole,
+    todayAttendance,
+    isAttendanceLoading,
+    allWorkspaceAttendance,
+    isAllAttendanceLoading,
     setGlobalSearchQuery,
     switchWorkspace,
     selectProject,
     createWorkspace,
+    updateWorkspace,
+    deleteWorkspace,
     createProject: async (wsId: string, name: string, description: string) => {
       if (!db || !wsId) return null;
       const projRef = doc(collection(db, 'workspaces', wsId, 'projects'));
@@ -604,6 +805,8 @@ export function useNexusStore() {
       const ref = doc(db, 'workspaces', wsId, 'projects', projectId);
       updateDocumentNonBlocking(ref, { allowedUserIds, updatedAt: new Date().toISOString() });
     },
+    updateProject,
+    deleteProject,
     createTask,
     updateTask,
     createSubtask,
@@ -710,5 +913,7 @@ export function useNexusStore() {
     searchUsersByEmail,
     sendEmailInvite,
     directAddMember,
+    checkIn,
+    checkOut,
   };
 }

@@ -122,3 +122,14 @@ export interface Notification {
   taskId?: string;
   createdAt: string;
 }
+
+export interface AttendanceEntry {
+  id: string; // dateKey (document ID)
+  workspaceId: string;
+  userId: string;
+  dateKey: string; // YYYY-MM-DD
+  checkInTime: string; // ISO timestamp
+  checkOutTime: string | null; // ISO timestamp, null until checkout
+  createdAt: string;
+  updatedAt: string;
+}
