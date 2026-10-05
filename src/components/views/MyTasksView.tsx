@@ -1,14 +1,13 @@
 "use client";
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import { TaskList } from '../tasks/TaskList';
 import { TaskDetailPanel } from '../tasks/TaskDetailPanel';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { ListTodo, CheckSquare, Loader2 } from 'lucide-react';
 
 export function MyTasksView({ store }: { store: any }) {
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
-  const { myTasks, isTasksLoading, updateTask } = store;
+  const { myTasks, isTasksLoading, updateTask, openTask, closeTask, selectedTaskId } = store;
 
   const visibleTasks = useMemo(() => {
     const q = (store.globalSearchQuery || '').trim().toLowerCase();
@@ -84,8 +83,10 @@ export function MyTasksView({ store }: { store: any }) {
         {visibleTasks.length > 0 ? (
           <TaskList 
             tasks={visibleTasks} 
-            onTaskClick={(id) => setSelectedTaskId(id)} 
+            onTaskClick={(id) => openTask?.(id)} 
             updateTask={updateTask}
+            readOnly={false}
+            subtasks={store.allWorkspaceSubtasks}
             workspaceMembers={store.workspaceMembers}
             currentUser={store.currentUser}
           />
@@ -115,7 +116,7 @@ export function MyTasksView({ store }: { store: any }) {
         <TaskDetailPanel 
           taskId={selectedTaskId} 
           isOpen={!!selectedTaskId} 
-          onClose={() => setSelectedTaskId(null)} 
+          onClose={() => closeTask?.()} 
           store={store}
         />
       )}

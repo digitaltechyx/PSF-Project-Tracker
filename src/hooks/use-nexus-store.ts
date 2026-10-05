@@ -34,6 +34,8 @@ export function useNexusStore() {
   const db = useFirestore();
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [preferredProjectView, setPreferredProjectView] = useState<'list' | 'board' | 'calendar'>('list');
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
   const [isPrefsLoading, setIsPrefsLoading] = useState(true);
 
@@ -47,6 +49,9 @@ export function useNexusStore() {
             const data = userSnap.data();
             if (data.lastActiveWorkspaceId) {
               setActiveWorkspaceId(data.lastActiveWorkspaceId);
+            }
+            if (data.preferredProjectView === 'list' || data.preferredProjectView === 'board' || data.preferredProjectView === 'calendar') {
+              setPreferredProjectView(data.preferredProjectView);
             }
           }
         } catch (err) {
@@ -244,6 +249,29 @@ export function useNexusStore() {
     setActiveProjectId(id);
   }, []);
 
+  const openTask = useCallback((taskId: string | null) => {
+    setSelectedTaskId(taskId);
+  }, []);
+
+  const closeTask = useCallback(() => {
+    setSelectedTaskId(null);
+  }, []);
+
+  const setProjectViewPreference = useCallback((view: 'list' | 'board' | 'calendar') => {
+    setPreferredProjectView(view);
+    if (user?.uid && db) {
+      const userRef = doc(db, 'users', user.uid);
+      updateDocumentNonBlocking(userRef, { preferredProjectView: view });
+    }
+  }, [user?.uid, db]);
+
+  const canEditTask = useCallback((taskId: string) => {
+    if (!user?.uid) return false;
+    if (isAdmin) return true;
+    const task = allWorkspaceTasks.find((t) => t.id === taskId);
+    return Boolean(task?.assigneeUserIds?.includes(user.uid));
+  }, [user?.uid, isAdmin, allWorkspaceTasks]);
+
   const hasWorkspaceAdminAccess = useCallback(async (wsId: string) => {
     if (!db || !user?.uid || !wsId) return false;
 
@@ -335,54 +363,58 @@ export function useNexusStore() {
   }, [db, user, hasWorkspaceAdminAccess]);
 
   const updateTask = useCallback((taskId: string, data: Partial<Task>) => {
-    if (!db || !isAdmin || !user) return;
+    if (!db || !user) return;
     const t = allWorkspaceTasks.find(x => x.id === taskId);
-    if (t) {
-      const ref = doc(db, 'workspaces', t.workspaceId, 'projects', t.projectId, 'tasks', t.id);
-      updateDocumentNonBlocking(ref, { ...data, updatedAt: new Date().toISOString() });
+    if (!t) return;
 
-      // Detect meaningful changes for notification
-      const changes: string[] = [];
-      if (data.title && data.title !== t.title) changes.push('title');
-      if (data.status && data.status !== t.status) changes.push('status');
-      if (data.priority && data.priority !== t.priority) changes.push('priority');
-      if (data.dueDate !== undefined && data.dueDate !== t.dueDate) changes.push('due date');
+    const isAssignee = Boolean(t.assigneeUserIds?.includes(user.uid));
+    if (!isAdmin && !isAssignee) return;
 
-      // Handle assignment changes for notifications
-      const oldAssignees = t.assigneeUserIds || [];
-      const newAssignees = data.assigneeUserIds || [];
-      
-      // Notify newly assigned users
+    // Assignees can update execution fields; admins can update everything.
+    const assigneeAllowedKeys: (keyof Task)[] = ['status', 'priority', 'dueDate', 'description', 'tags'];
+    let payload: Partial<Task> = data;
+    if (!isAdmin && isAssignee) {
+      payload = Object.fromEntries(
+        Object.entries(data).filter(([key]) => assigneeAllowedKeys.includes(key as keyof Task))
+      ) as Partial<Task>;
+      if (Object.keys(payload).length === 0) return;
+    }
+
+    const ref = doc(db, 'workspaces', t.workspaceId, 'projects', t.projectId, 'tasks', t.id);
+    updateDocumentNonBlocking(ref, { ...payload, updatedAt: new Date().toISOString() });
+
+    const changes: string[] = [];
+    if (payload.title && payload.title !== t.title) changes.push('title');
+    if (payload.status && payload.status !== t.status) changes.push('status');
+    if (payload.priority && payload.priority !== t.priority) changes.push('priority');
+    if (payload.dueDate !== undefined && payload.dueDate !== t.dueDate) changes.push('due date');
+
+    const oldAssignees = t.assigneeUserIds || [];
+    const newAssignees = payload.assigneeUserIds !== undefined ? (payload.assigneeUserIds || []) : oldAssignees;
+
+    if (isAdmin && payload.assigneeUserIds) {
       newAssignees.forEach(assigneeId => {
         if (!oldAssignees.includes(assigneeId) && assigneeId !== user.uid) {
           notifyTaskAssigned(db, assigneeId, { id: user.uid, name: user.displayName || 'User' }, {
             id: t.id,
-            title: data.title || t.title,
+            title: payload.title || t.title,
             workspaceId: t.workspaceId,
             projectId: t.projectId
           });
         }
       });
-      
-      // Notify unassigned users
-      oldAssignees.forEach(assigneeId => {
-        if (!newAssignees.includes(assigneeId) && assigneeId !== user.uid && changes.length > 0) {
-          // Could add unassignment notification here if needed
-        }
-      });
-      
-      // Notify current assignees of task updates
-      newAssignees.forEach(assigneeId => {
-        if (assigneeId !== user.uid && changes.length > 0) {
-          notifyTaskUpdated(db, assigneeId, { id: user.uid, name: user.displayName || 'User' }, {
-            id: t.id,
-            title: t.title,
-            workspaceId: t.workspaceId,
-            projectId: t.projectId
-          }, changes);
-        }
-      });
     }
+
+    newAssignees.forEach(assigneeId => {
+      if (assigneeId !== user.uid && changes.length > 0) {
+        notifyTaskUpdated(db, assigneeId, { id: user.uid, name: user.displayName || 'User' }, {
+          id: t.id,
+          title: t.title,
+          workspaceId: t.workspaceId,
+          projectId: t.projectId
+        }, changes);
+      }
+    });
   }, [db, allWorkspaceTasks, isAdmin, user]);
 
   const createSubtask = useCallback(async (taskId: string, projectId: string, data: Partial<Subtask>) => {
@@ -758,6 +790,8 @@ export function useNexusStore() {
     activeWorkspace: activeWorkspace || { id: '', name: 'Loading...', color: '#ccc', memberRoles: {}, ownerUserId: '' },
     workspaceProjects: projects,
     activeProject,
+    selectedTaskId,
+    preferredProjectView,
     allWorkspaceTasks,
     allWorkspaceSubtasks,
     projectTasks,
@@ -778,6 +812,10 @@ export function useNexusStore() {
     setGlobalSearchQuery,
     switchWorkspace,
     selectProject,
+    openTask,
+    closeTask,
+    setProjectViewPreference,
+    canEditTask,
     createWorkspace,
     updateWorkspace,
     deleteWorkspace,

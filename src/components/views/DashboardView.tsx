@@ -19,10 +19,18 @@ import { TodayCard } from '@/components/dashboard/TodayCard';
 import { AttendanceCard } from '@/components/dashboard/AttendanceCard';
 import { TaskDetailPanel } from '@/components/tasks/TaskDetailPanel';
 
-export function DashboardView({ store, onNavigateToProject }: { store: any, onNavigateToProject: (id: string) => void }) {
+export function DashboardView({
+  store,
+  onNavigateToProject,
+  onNavigateToTask,
+}: {
+  store: any;
+  onNavigateToProject: (id: string) => void;
+  onNavigateToTask?: (wsId: string, projId: string, taskId: string) => void;
+}) {
   const { allWorkspaceTasks, workspaceProjects, activeWorkspace, isTasksLoading } = store;
   const [mounted, setMounted] = useState(false);
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const selectedTaskId = store.selectedTaskId as string | null;
 
   useEffect(() => {
     setMounted(true);
@@ -142,7 +150,17 @@ export function DashboardView({ store, onNavigateToProject }: { store: any, onNa
           <CardContent>
             <div className="space-y-6">
               {recentTasks.map((task: any) => (
-                <div key={task.id} className="flex items-start gap-4 group">
+                <div
+                  key={task.id}
+                  className="flex items-start gap-4 group cursor-pointer"
+                  onClick={() => {
+                    if (onNavigateToTask) {
+                      onNavigateToTask(task.workspaceId, task.projectId, task.id);
+                    } else {
+                      store.openTask?.(task.id);
+                    }
+                  }}
+                >
                   <div className="mt-1">
                     {task.status === 'done' ? (
                       <CheckCircle2 className="h-5 w-5 text-green-500" />
@@ -155,15 +173,18 @@ export function DashboardView({ store, onNavigateToProject }: { store: any, onNa
                     )}
                   </div>
                   <div className="flex-1 space-y-1">
-                    <p className="text-sm font-semibold group-hover:text-primary transition-colors cursor-pointer">{task.title}</p>
+                    <p className="text-sm font-semibold group-hover:text-primary transition-colors">{task.title}</p>
                     <div className="flex items-center gap-2">
                       <Badge variant="secondary" className="text-[10px] uppercase font-bold py-0 h-4">
                         {task.priority}
                       </Badge>
-                      <span className="text-xs text-muted-foreground">in project</span>
+                      <span className="text-xs text-muted-foreground">in</span>
                       <span 
-                        className="text-xs font-medium underline cursor-pointer hover:text-primary transition-colors"
-                        onClick={() => onNavigateToProject(task.projectId)}
+                        className="text-xs font-medium underline hover:text-primary transition-colors"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onNavigateToProject(task.projectId);
+                        }}
                       >
                         {workspaceProjects.find((p: any) => p.id === task.projectId)?.name || 'Unknown Project'}
                       </span>
@@ -184,7 +205,7 @@ export function DashboardView({ store, onNavigateToProject }: { store: any, onNa
           </CardContent>
         </Card>
 
-        <TodayCard store={store} onTaskClick={setSelectedTaskId} />
+        <TodayCard store={store} onTaskClick={(id: string) => store.openTask?.(id)} />
 
         <Card className="shadow-sm border-none">
           <CardHeader>
@@ -226,7 +247,7 @@ export function DashboardView({ store, onNavigateToProject }: { store: any, onNa
         <TaskDetailPanel 
           taskId={selectedTaskId} 
           isOpen={!!selectedTaskId} 
-          onClose={() => setSelectedTaskId(null)} 
+          onClose={() => store.closeTask?.()}
           store={store}
         />
       )}

@@ -15,7 +15,13 @@ const iconMap = {
   comment_added: <MessageSquare className="h-4 w-4 text-green-500" />,
 };
 
-export function NotificationsView({ store }: { store: any }) {
+export function NotificationsView({
+  store,
+  onNavigateToTask,
+}: {
+  store: any;
+  onNavigateToTask?: (wsId: string, projId: string, taskId: string) => void;
+}) {
   const { notifications, isLoading } = useNotifications(50);
   const { markNotificationAsRead } = store;
 
@@ -43,7 +49,12 @@ export function NotificationsView({ store }: { store: any }) {
                   "p-6 flex items-start gap-4 transition-colors hover:bg-muted/30 cursor-pointer",
                   !notif.read && "bg-primary/5 border-l-4 border-l-primary"
                 )}
-                onClick={() => !notif.read && markNotificationAsRead(notif.id)}
+                onClick={() => {
+                  if (!notif.read) markNotificationAsRead(notif.id);
+                  if (notif.workspaceId && notif.projectId && notif.taskId && onNavigateToTask) {
+                    onNavigateToTask(notif.workspaceId, notif.projectId, notif.taskId);
+                  }
+                }}
               >
                 <div className={cn(
                   "h-10 w-10 rounded-full flex items-center justify-center flex-shrink-0 mt-1 shadow-sm",

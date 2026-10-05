@@ -5,7 +5,7 @@ import {
   LayoutList, 
   Kanban, 
   Plus, 
-  Calendar,
+  Calendar as CalendarIcon,
   Tag as TagIcon,
   Loader2,
   Users,
@@ -39,15 +39,22 @@ import {
 import { Status, Priority } from '@/lib/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Calendar } from '@/components/ui/calendar';
+import { Badge } from '@/components/ui/badge';
+import { Filter } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 export function ProjectView({ store }: { store: any }) {
   const { toast } = useToast();
-  const [view, setView] = useState<'list' | 'kanban'>('list');
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  type ProjectViewMode = 'list' | 'board' | 'calendar';
+  const [view, setView] = useState<ProjectViewMode>(store.preferredProjectView || 'list');
   const [isCreateTaskOpen, setIsCreateTaskOpen] = useState(false);
   const [isMembersOpen, setIsMembersOpen] = useState(false);
   const [isEditProjectOpen, setIsEditProjectOpen] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [priorityFilter, setPriorityFilter] = useState<string>('all');
+  const [assigneeFilter, setAssigneeFilter] = useState<string>('all');
+  const [selectedDay, setSelectedDay] = useState<Date | undefined>(new Date());
 
   // Form State
   const [newTaskTitle, setNewTaskTitle] = useState('');
@@ -59,16 +66,58 @@ export function ProjectView({ store }: { store: any }) {
   const [newTaskTags, setNewTaskTags] = useState('');
 
   const activeProject = store.activeProject;
+  const selectedTaskId = store.selectedTaskId as string | null;
+
+  const changeView = (next: ProjectViewMode) => {
+    setView(next);
+    store.setProjectViewPreference?.(next);
+  };
+
+  useEffect(() => {
+    if (store.preferredProjectView) setView(store.preferredProjectView);
+  }, [store.preferredProjectView]);
+
   const filteredTasks = useMemo(() => {
     const q = (store.globalSearchQuery || '').trim().toLowerCase();
-    if (!q) return store.projectTasks;
-
     return (store.projectTasks || []).filter((t: any) => {
+      if (statusFilter !== 'all' && t.status !== statusFilter) return false;
+      if (priorityFilter !== 'all' && t.priority !== priorityFilter) return false;
+      const assignees: string[] = t.assigneeUserIds || [];
+      if (assigneeFilter === 'me' && !assignees.includes(store.currentUser?.id)) return false;
+      if (assigneeFilter === 'unassigned' && assignees.length > 0) return false;
+      if (
+        assigneeFilter !== 'all' &&
+        assigneeFilter !== 'me' &&
+        assigneeFilter !== 'unassigned' &&
+        !assignees.includes(assigneeFilter)
+      ) {
+        return false;
+      }
+      if (!q) return true;
       const title = (t.title || '').toLowerCase();
       const tags = (t.tags || []).map((x: string) => x.toLowerCase());
       return title.includes(q) || tags.some((tag: string) => tag.includes(q));
     });
-  }, [store.projectTasks, store.globalSearchQuery]);
+  }, [
+    store.projectTasks,
+    store.globalSearchQuery,
+    store.currentUser?.id,
+    statusFilter,
+    priorityFilter,
+    assigneeFilter,
+  ]);
+
+  const dayTasks = useMemo(() => {
+    if (!selectedDay) return [];
+    const key = selectedDay.toISOString().slice(0, 10);
+    return filteredTasks.filter((t: any) => t.dueDate && t.dueDate.slice(0, 10) === key);
+  }, [filteredTasks, selectedDay]);
+
+  const dueDates = useMemo(() => {
+    return filteredTasks
+      .filter((t: any) => t.dueDate)
+      .map((t: any) => new Date(t.dueDate as string));
+  }, [filteredTasks]);
 
   const eligibleAssignees = useMemo(() => {
     if (!activeProject) return [];
@@ -139,26 +188,79 @@ export function ProjectView({ store }: { store: any }) {
 
   return (
     <div className="flex flex-col h-full space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2 bg-muted/50 p-1 rounded-md">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-1 bg-muted/50 p-1 rounded-md w-fit">
           <Button 
             variant={view === 'list' ? 'secondary' : 'ghost'} 
             size="sm" 
             className="h-8 gap-2"
-            onClick={() => setView('list')}
+            onClick={() => changeView('list')}
           >
             <LayoutList className="h-4 w-4" />
             List
           </Button>
           <Button 
-            variant={view === 'kanban' ? 'secondary' : 'ghost'} 
+            variant={view === 'board' ? 'secondary' : 'ghost'} 
             size="sm" 
             className="h-8 gap-2"
-            onClick={() => setView('kanban')}
+            onClick={() => changeView('board')}
           >
             <Kanban className="h-4 w-4" />
             Board
           </Button>
+          <Button 
+            variant={view === 'calendar' ? 'secondary' : 'ghost'} 
+            size="sm" 
+            className="h-8 gap-2"
+            onClick={() => changeView('calendar')}
+          >
+            <CalendarIcon className="h-4 w-4" />
+            Calendar
+          </Button>
+        </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Filter className="h-4 w-4 text-muted-foreground hidden sm:block" />
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="h-8 w-[130px] text-xs">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All statuses</SelectItem>
+                <SelectItem value="todo">To Do</SelectItem>
+                <SelectItem value="in_progress">In Progress</SelectItem>
+                <SelectItem value="on_hold">On Hold</SelectItem>
+                <SelectItem value="done">Done</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={priorityFilter} onValueChange={setPriorityFilter}>
+              <SelectTrigger className="h-8 w-[130px] text-xs">
+                <SelectValue placeholder="Priority" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All priorities</SelectItem>
+                <SelectItem value="low">Low</SelectItem>
+                <SelectItem value="medium">Medium</SelectItem>
+                <SelectItem value="high">High</SelectItem>
+                <SelectItem value="urgent">Urgent</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={assigneeFilter} onValueChange={setAssigneeFilter}>
+              <SelectTrigger className="h-8 w-[140px] text-xs">
+                <SelectValue placeholder="Assignee" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All assignees</SelectItem>
+                <SelectItem value="me">Assigned to me</SelectItem>
+                <SelectItem value="unassigned">Unassigned</SelectItem>
+                {eligibleAssignees.map((m: any) => (
+                  <SelectItem key={m.userId} value={m.userId}>
+                    {m.displayName}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         <div className="flex items-center gap-2">
@@ -291,7 +393,7 @@ export function ProjectView({ store }: { store: any }) {
                     <div className="space-y-2">
                       <Label>Due Date</Label>
                       <div className="relative">
-                        <Calendar className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                        <CalendarIcon className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                         <Input 
                           type="date" 
                           className="pl-9" 
@@ -377,17 +479,17 @@ export function ProjectView({ store }: { store: any }) {
         ) : view === 'list' ? (
           <TaskList 
             tasks={filteredTasks} 
-            onTaskClick={(id) => setSelectedTaskId(id)} 
+            onTaskClick={(id) => store.openTask?.(id)} 
             updateTask={store.updateTask}
-            readOnly={!store.isAdmin}
+            readOnly={false}
             subtasks={store.allWorkspaceSubtasks}
             workspaceMembers={store.workspaceMembers}
             currentUser={store.currentUser}
           />
-        ) : (
+        ) : view === 'board' ? (
           <KanbanBoard 
             tasks={filteredTasks} 
-            onTaskClick={(id) => setSelectedTaskId(id)} 
+            onTaskClick={(id) => store.openTask?.(id)} 
             updateTask={store.updateTask}
             onAddTask={(status) => {
               if (store.isAdmin) {
@@ -395,11 +497,49 @@ export function ProjectView({ store }: { store: any }) {
                 setIsCreateTaskOpen(true);
               }
             }}
-            readOnly={!store.isAdmin}
+            readOnly={false}
             subtasks={store.allWorkspaceSubtasks}
             workspaceMembers={store.workspaceMembers}
             currentUser={store.currentUser}
           />
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-6 h-full">
+            <Calendar
+              mode="single"
+              selected={selectedDay}
+              onSelect={setSelectedDay}
+              modifiers={{ due: dueDates }}
+              modifiersClassNames={{ due: 'bg-primary/15 font-semibold' }}
+              className="rounded-lg border bg-card p-3"
+            />
+            <div className="space-y-3">
+              <h3 className="text-sm font-semibold text-muted-foreground">
+                Due {selectedDay?.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}
+              </h3>
+              {dayTasks.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No tasks due on this day.</p>
+              ) : (
+                dayTasks.map((task: any) => (
+                  <button
+                    key={task.id}
+                    type="button"
+                    className="w-full text-left p-3 rounded-lg border bg-card hover:bg-muted/40 transition-colors"
+                    onClick={() => store.openTask?.(task.id)}
+                  >
+                    <div className="font-medium text-sm">{task.title}</div>
+                    <div className="flex gap-2 mt-2">
+                      <Badge variant="secondary" className="text-[10px] uppercase">
+                        {task.status.replace('_', ' ')}
+                      </Badge>
+                      <Badge variant="outline" className="text-[10px] uppercase">
+                        {task.priority}
+                      </Badge>
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
         )}
       </div>
 
@@ -407,7 +547,7 @@ export function ProjectView({ store }: { store: any }) {
         <TaskDetailPanel
           taskId={selectedTaskId}
           isOpen={!!selectedTaskId}
-          onClose={() => setSelectedTaskId(null)}
+          onClose={() => store.closeTask?.()}
           store={store}
         />
       )}

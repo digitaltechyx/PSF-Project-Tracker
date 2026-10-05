@@ -2,6 +2,12 @@
 export type Priority = 'low' | 'medium' | 'high' | 'urgent';
 export type Status = 'todo' | 'in_progress' | 'on_hold' | 'done';
 
+export interface Pipeline {
+  id: string;
+  name: string;
+  color?: string;
+}
+
 export interface User {
   id: string;
   name: string;
@@ -9,6 +15,7 @@ export interface User {
   avatarUrl?: string | null;
   updatedAt?: string;
   lastActiveWorkspaceId?: string | null;
+  preferredProjectView?: 'list' | 'board' | 'calendar' | null;
 }
 
 export interface Workspace {

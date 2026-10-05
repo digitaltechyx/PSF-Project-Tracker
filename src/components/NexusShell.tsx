@@ -88,9 +88,7 @@ export function NexusShell() {
     }
     store.selectProject(projId);
     setCurrentView('project');
-    // TaskDetailPanel will open if taskId is set elsewhere or passed.
-    // In our simplified shell, setting selectProject and view is usually enough
-    // but the store could also track a "currentlyExpandedTaskId".
+    store.openTask?.(taskId);
   };
 
   const handleCreateWorkspace = () => {
@@ -304,7 +302,13 @@ export function NexusShell() {
         </header>
 
         <main className="flex-1 overflow-auto bg-background p-6">
-          {currentView === 'dashboard' && <DashboardView store={store} onNavigateToProject={handleProjectClick} />}
+          {currentView === 'dashboard' && (
+            <DashboardView
+              store={store}
+              onNavigateToProject={handleProjectClick}
+              onNavigateToTask={handleNavigateToTask}
+            />
+          )}
           {currentView === 'project' && <ProjectView store={store} />}
           {currentView === 'members' && (
             <MembersView 
@@ -314,7 +318,9 @@ export function NexusShell() {
             />
           )}
           {currentView === 'my-tasks' && <MyTasksView store={store} />}
-          {currentView === 'notifications' && <NotificationsView store={store} />}
+          {currentView === 'notifications' && (
+            <NotificationsView store={store} onNavigateToTask={handleNavigateToTask} />
+          )}
           {currentView === 'attendance' && <AttendanceLogView store={store} />}
         </main>
       </div>
