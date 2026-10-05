@@ -48,16 +48,13 @@ export function useCollection<T = any>(
   const [error, setError] = useState<FirestoreError | Error | null>(null);
 
   useEffect(() => {
-    // EARLY EXIT: If no query provided, reset state and return
     if (!memoizedTargetRefOrQuery) {
-      console.log('[useCollection] No query provided, skipping');
       setData(null);
       setIsLoading(false);
       setError(null);
       return;
     }
 
-    // Determine the path for identifying the error context
     const isCollectionGroup = !('path' in memoizedTargetRefOrQuery) || !memoizedTargetRefOrQuery.type || memoizedTargetRefOrQuery.type === undefined;
     
     let path: string;
@@ -67,12 +64,9 @@ export function useCollection<T = any>(
         : (memoizedTargetRefOrQuery as unknown as InternalQuery)._query.path.canonicalString();
     } catch (e) {
       console.error('[useCollection] Error getting path:', e);
-      path = 'unknown';
+      path = isCollectionGroup ? 'collectionGroup' : 'unknown';
     }
 
-    console.log('[useCollection] Setting up listener for:', path);
-
-    // Safety check to prevent root-level scans
     if (!isCollectionGroup && (path === "/" || path === "" || path.includes('/databases/(default)/documents/'))) {
       console.warn('[useCollection] Blocked root path query:', path);
       setData(null);
@@ -86,7 +80,6 @@ export function useCollection<T = any>(
     const unsubscribe = onSnapshot(
       memoizedTargetRefOrQuery,
       (snapshot: QuerySnapshot<DocumentData>) => {
-        console.log('[useCollection] Got snapshot for:', path, 'docs:', snapshot.docs.length);
         const results: ResultItemType[] = [];
         for (const doc of snapshot.docs) {
           results.push({ ...(doc.data() as T), id: doc.id });
@@ -109,7 +102,6 @@ export function useCollection<T = any>(
         setData(null);
         setIsLoading(false);
 
-        // Only emit rule-debugging errors for genuine permission failures.
         if (isPermissionError) {
           errorEmitter.emit('permission-error', surfacedError as FirestorePermissionError);
         }
@@ -117,7 +109,6 @@ export function useCollection<T = any>(
     );
 
     return () => {
-      console.log('[useCollection] Cleaning up listener for:', path);
       unsubscribe();
     };
   }, [memoizedTargetRefOrQuery]); 

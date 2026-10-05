@@ -6,30 +6,38 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function isWorkspaceAdmin(workspaceId) {
-      let ws = get(/databases/$(database)/documents/workspaces/$(workspaceId));
-      let isOwner = ws.data.ownerUserId == request.auth.uid;
-      let isLead = ws.data.memberRoles[request.auth.uid] == 'lead';
-      return isOwner || isLead;
+    function isSelf(userId) {
+      return isSignedIn() && request.auth.uid == userId;
     }
 
-    // --- NOTIFICATIONS RULES (FIXED) ---
+    function workspaceData(workspaceId) {
+      return get(/databases/$(database)/documents/workspaces/$(workspaceId)).data;
+    }
+
+    function isWorkspaceMember(workspaceId) {
+      return isSignedIn() && (
+        workspaceData(workspaceId).ownerUserId == request.auth.uid ||
+        workspaceData(workspaceId).memberRoles[request.auth.uid] in ['owner', 'lead', 'member']
+      );
+    }
+
+    function isWorkspaceAdmin(workspaceId) {
+      return isSignedIn() && (
+        workspaceData(workspaceId).ownerUserId == request.auth.uid ||
+        workspaceData(workspaceId).memberRoles[request.auth.uid] in ['owner', 'lead']
+      );
+    }
+
+    // --- NOTIFICATIONS ---
     match /notifications/{notificationId} {
-      // Read: user can only read their own notifications
-      // For LIST queries: Firestore will verify the query includes userId filter
       allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
-      
-      // Create: actor must be the authenticated user
-      allow create: if isSignedIn() && 
+      allow create: if isSignedIn() &&
                     request.resource.data.actorId == request.auth.uid &&
                     request.resource.data.userId is string;
-      
-      // Update/Delete: only the recipient can do this
       allow update, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
     }
 
-    // --- COLLECTION GROUP RULES ---
-    
+    // --- COLLECTION GROUP (required for collectionGroup() queries) ---
     match /{path=**}/tasks/{taskId} {
       allow read: if isSignedIn();
       allow write: if isSignedIn();
@@ -45,38 +53,36 @@ service cloud.firestore {
       allow write: if isSignedIn();
     }
 
-    // Attendance collectionGroup rule - allows querying attendance across all workspaces
     match /{path=**}/attendance/{attendanceId} {
       allow read: if isSignedIn();
       allow write: if isSignedIn();
     }
 
-    // --- HIERARCHICAL RULES ---
-
+    // --- USERS ---
     match /users/{userId} {
       allow read: if isSignedIn();
-      allow write: if isSignedIn() && request.auth.uid == userId;
+      allow write: if isSelf(userId);
     }
 
+    // --- WORKSPACES ---
     match /workspaces/{workspaceId} {
-      allow read, create: if isSignedIn();
-      allow update: if isSignedIn();
-      allow delete: if isSignedIn() && get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.ownerUserId == request.auth.uid;
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.ownerUserId == request.auth.uid;
+      allow update: if isWorkspaceMember(workspaceId);
+      allow delete: if isSignedIn() && resource.data.ownerUserId == request.auth.uid;
 
       match /members/{memberUserId} {
         allow read: if isSignedIn();
-        allow write: if isSignedIn();
+        allow create, update: if isWorkspaceAdmin(workspaceId) || isSelf(memberUserId);
+        allow delete: if isWorkspaceAdmin(workspaceId);
       }
 
+      // Keep hierarchical attendance aligned with collectionGroup reads.
+      // App still filters "own vs admin" client-side.
       match /attendance/{attendanceId} {
-        // Read: own entry OR workspace admin
-        allow read: if isSignedIn() && 
-          (request.auth.uid == resource.data.userId || isWorkspaceAdmin(workspaceId));
-        
-        // Create/update: only own entry
-        allow create, update: if isSignedIn() && request.auth.uid == request.resource.data.userId;
-        
-        // Delete: not needed in Phase 1
+        allow read: if isSignedIn();
+        allow create, update: if isSignedIn() &&
+          request.auth.uid == request.resource.data.userId;
         allow delete: if false;
       }
 
@@ -87,22 +93,25 @@ service cloud.firestore {
 
         match /tasks/{taskId} {
           allow read: if isSignedIn();
-          allow write: if isSignedIn();
+          allow create, update, delete: if isWorkspaceMember(workspaceId);
 
           match /subtasks/{subtaskId} {
             allow read: if isSignedIn();
-            allow write: if isSignedIn();
+            allow write: if isWorkspaceMember(workspaceId);
           }
 
           match /comments/{commentId} {
             allow read: if isSignedIn();
-            allow write: if isSignedIn();
+            allow create: if isWorkspaceMember(workspaceId) &&
+                          request.resource.data.authorUserId == request.auth.uid;
+            allow update, delete: if isWorkspaceMember(workspaceId) &&
+                                  resource.data.authorUserId == request.auth.uid;
           }
         }
       }
     }
-    
-    // --- INVITATIONS ---
+
+    // --- INVITATIONS (public read needed for join links) ---
     match /invitations/{invitationId} {
       allow read: if true;
       allow create: if isSignedIn();
