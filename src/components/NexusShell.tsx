@@ -123,17 +123,20 @@ export function NexusShell() {
   return (
     <div className="flex h-screen w-full bg-background overflow-hidden">
       {/* Sidebar — desktop */}
-      <aside className="app-sidebar hidden md:flex w-[260px] flex-col shrink-0">
-        <div className="p-4 border-b border-white/10 flex items-center justify-between gap-2">
+      <aside className="app-sidebar hidden md:flex w-[272px] flex-col shrink-0">
+        <div className="p-4 border-b border-white/[0.08] flex items-center justify-between gap-2">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="flex-1 justify-between hover:bg-white/10 text-white font-semibold px-2 overflow-hidden">
                 <div className="flex items-center gap-2 overflow-hidden">
                   <div 
-                    className="w-5 h-5 rounded flex-shrink-0" 
+                    className="w-7 h-7 rounded-lg flex-shrink-0 ring-1 ring-white/20 shadow-sm" 
                     style={{ backgroundColor: store.activeWorkspace?.color || '#ccc' }}
                   />
-                  <span className="truncate">{store.activeWorkspace?.name || 'Loading...'}</span>
+                  <div className="text-left min-w-0">
+                    <span className="block truncate text-sm">{store.activeWorkspace?.name || 'Loading...'}</span>
+                    <span className="block text-[9px] font-medium uppercase tracking-widest text-white/35">Workspace</span>
+                  </div>
                 </div>
                 <ChevronDown className="h-4 w-4 opacity-50 flex-shrink-0" />
               </Button>
@@ -179,7 +182,7 @@ export function NexusShell() {
           )}
         </div>
 
-        <ScrollArea className="flex-1 px-3 py-4">
+        <ScrollArea className="flex-1 px-3 py-5">
           <div className="space-y-1 mb-6">
             <Button 
               variant="ghost"
@@ -280,7 +283,7 @@ export function NexusShell() {
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col relative">
-        <header className="h-14 border-b flex items-center justify-between px-4 md:px-6 bg-card/50 backdrop-blur-md sticky top-0 z-10">
+        <header className="h-16 border-b border-border/60 flex items-center justify-between px-4 md:px-6 bg-card/80 backdrop-blur-xl sticky top-0 z-20">
           <div className="flex items-center gap-3 min-w-0">
             <Button
               variant="ghost"
@@ -290,14 +293,19 @@ export function NexusShell() {
             >
               <Menu className="h-5 w-5" />
             </Button>
-            <h1 className="text-lg md:text-xl font-bold font-headline truncate">
-              {currentView === 'dashboard' ? '' : 
+            <div className="min-w-0">
+              <p className="hidden md:block text-[9px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                {store.activeWorkspace?.name}
+              </p>
+              <h1 className="text-base md:text-lg font-semibold font-headline truncate">
+              {currentView === 'dashboard' ? 'Overview' : 
                currentView === 'members' ? 'People' : 
                currentView === 'my-tasks' ? 'My Tasks' :
                currentView === 'notifications' ? 'Inbox' :
                currentView === 'attendance' ? (store.isAdmin ? 'Team time' : 'My time') :
                store.activeProject?.name || 'Project'}
-            </h1>
+              </h1>
+            </div>
           </div>
           <div className="flex items-center gap-2 md:gap-3">
             {currentView !== 'dashboard' && currentView !== 'notifications' && currentView !== 'members' && currentView !== 'attendance' && (
@@ -319,7 +327,7 @@ export function NexusShell() {
           </div>
         </header>
 
-        <main className="flex-1 overflow-auto app-main-surface p-4 md:p-6">
+        <main className="flex-1 overflow-auto app-main-surface p-4 md:p-6 lg:p-8">
           {currentView === 'dashboard' && (
             <DashboardView
               store={store}

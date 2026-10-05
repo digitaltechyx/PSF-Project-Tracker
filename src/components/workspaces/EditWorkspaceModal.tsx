@@ -93,12 +93,12 @@ export function EditWorkspaceModal({ isOpen, onOpenChange, store }: EditWorkspac
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
+            <div className="mb-2 grid h-10 w-10 place-items-center rounded-xl bg-primary/10 text-primary">
               <Pencil className="h-5 w-5" />
-              Edit Workspace
-            </DialogTitle>
+            </div>
+            <DialogTitle>Workspace settings</DialogTitle>
             <DialogDescription>
-              Make changes to your workspace settings. Only the workspace owner can edit or delete a workspace.
+              Update the identity and details shown to your team.
             </DialogDescription>
           </DialogHeader>
 
@@ -127,16 +127,16 @@ export function EditWorkspaceModal({ isOpen, onOpenChange, store }: EditWorkspac
             </div>
 
             <div className="space-y-2">
-              <Label>Workspace Color</Label>
-              <div className="flex flex-wrap gap-2">
+              <Label>Accent color</Label>
+              <div className="flex flex-wrap gap-2 rounded-xl border border-border/60 bg-muted/25 p-3">
                 {presetColors.map((c) => (
                   <button
                     key={c}
                     onClick={() => setColor(c)}
-                    className={`w-8 h-8 rounded-full transition-all ${
+                    className={`w-8 h-8 rounded-lg transition-all ${
                       color === c
-                        ? 'ring-2 ring-offset-2 ring-primary scale-110'
-                        : 'hover:scale-105'
+                        ? 'ring-2 ring-primary ring-offset-2 scale-105'
+                        : 'hover:scale-105 opacity-80 hover:opacity-100'
                     }`}
                     style={{ backgroundColor: c }}
                     type="button"
@@ -152,7 +152,7 @@ export function EditWorkspaceModal({ isOpen, onOpenChange, store }: EditWorkspac
             </Button>
             <Button onClick={handleSave} disabled={isSaving} className="gap-2">
               {isSaving && <Loader2 className="h-4 w-4 animate-spin" />}
-              Save Changes
+              Save workspace
             </Button>
           </DialogFooter>
         </DialogContent>

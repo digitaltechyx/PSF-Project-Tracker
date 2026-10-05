@@ -130,7 +130,7 @@ export function InviteMembersModal({
         If role is Member and you select projects, access is limited to those projects.
         If none selected, they get access to all workspace projects.
       </p>
-      <ScrollArea className="h-[120px] rounded-md border p-2">
+      <ScrollArea className="h-[132px] rounded-xl border border-border/60 bg-muted/25 p-3">
         <div className="space-y-2">
           {store.workspaceProjects.map((p: any) => (
             <div key={p.id} className="flex items-center space-x-2">
@@ -159,14 +159,14 @@ export function InviteMembersModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[560px]">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <UserPlus className="h-5 w-5 text-primary" />
-            Invite Members
-          </DialogTitle>
+          <div className="mb-2 grid h-10 w-10 place-items-center rounded-xl bg-primary/10 text-primary">
+            <UserPlus className="h-5 w-5" />
+          </div>
+          <DialogTitle>Grow your workspace</DialogTitle>
           <DialogDescription>
-            Send an email invitation or add someone who already uses PSF Project Tracker.
+            Invite teammates and choose exactly what they can access.
           </DialogDescription>
         </DialogHeader>
 
@@ -182,7 +182,7 @@ export function InviteMembersModal({
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="send-email" className="space-y-6 py-4">
+          <TabsContent value="send-email" className="space-y-6 pt-5">
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="invite-email">Recipient email</Label>
@@ -192,10 +192,9 @@ export function InviteMembersModal({
                   placeholder="colleague@company.com"
                   value={inviteEmail}
                   onChange={(e) => setInviteEmail(e.target.value)}
-                  className="bg-background/50"
                 />
-                <p className="text-[10px] text-muted-foreground">
-                  They will receive a message with a link to sign in and join this workspace (same as before).
+                <p className="text-xs text-muted-foreground">
+                  We’ll send a secure invitation link to this address.
                 </p>
               </div>
 
@@ -217,7 +216,7 @@ export function InviteMembersModal({
               <ProjectSelection />
 
               <Button 
-                className="w-full" 
+                className="w-full h-11" 
                 onClick={handleSendEmailInvite} 
                 disabled={isSending || !inviteEmail.trim()}
               >
@@ -227,7 +226,7 @@ export function InviteMembersModal({
             </div>
           </TabsContent>
 
-          <TabsContent value="find-user" className="space-y-6 py-4">
+          <TabsContent value="find-user" className="space-y-6 pt-5">
             <div className="space-y-6">
               <ProjectSelection />
               
@@ -254,7 +253,7 @@ export function InviteMembersModal({
                   {!isSearching && searchResults.map(user => {
                     const isAlreadyMember = store.activeWorkspace?.memberRoles?.[user.id] !== undefined;
                     return (
-                      <div key={user.id} className="flex items-center justify-between p-3 rounded-lg border bg-card/50">
+                      <div key={user.id} className="flex items-center justify-between p-3 rounded-xl border border-border/60 bg-muted/20">
                         <div className="flex items-center gap-3">
                           <Avatar>
                             <AvatarImage src={user.avatarUrl} />

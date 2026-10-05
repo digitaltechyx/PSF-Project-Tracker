@@ -249,19 +249,21 @@ export default function JoinWorkspacePage() {
   }
 
   return (
-    <div className="h-screen w-full relative flex items-center justify-center p-4">
+    <div className="min-h-screen w-full relative flex items-center justify-center bg-slate-950 p-3 sm:p-6">
       <div className="absolute inset-0 z-0">
         <Image src={bgImage?.imageUrl || 'https://picsum.photos/seed/65/1920/1080'} alt="PSF Project Tracker" fill className="object-cover" priority data-ai-hint="modern office" />
-        <div className="absolute inset-0 bg-background/70 backdrop-blur-[2px]" />
+        <div className="absolute inset-0 bg-[linear-gradient(135deg,hsl(229_42%_8%/.96),hsl(250_58%_24%/.86),hsl(228_35%_10%/.95))] backdrop-blur-sm" />
+        <div className="absolute inset-0 opacity-20 [background-image:radial-gradient(circle_at_1px_1px,white_1px,transparent_0)] [background-size:28px_28px]" />
       </div>
 
-      <Card className="max-w-md w-full border-none shadow-2xl relative z-10 animate-in fade-in zoom-in duration-300 backdrop-blur-md bg-card/95">
+      <Card className="max-w-md w-full border-white/20 shadow-2xl relative z-10 animate-in fade-in zoom-in duration-300 backdrop-blur-xl bg-card/95 rounded-[24px]">
         <CardHeader className="text-center space-y-4">
-          <div className="mx-auto w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center">
-            {joined ? <CheckCircle2 className="h-8 w-8 text-green-500" /> : <Users className="h-8 w-8 text-primary" />}
+          <div className="mx-auto w-14 h-14 bg-primary text-primary-foreground rounded-2xl flex items-center justify-center shadow-lg shadow-primary/20">
+            {joined ? <CheckCircle2 className="h-7 w-7 text-white" /> : <Users className="h-7 w-7 text-white" />}
           </div>
           <div>
-            <CardTitle className="text-2xl font-bold font-headline">{joined ? 'Welcome!' : 'Join Workspace'}</CardTitle>
+            <p className="eyebrow mb-2">Workspace invitation</p>
+            <CardTitle className="text-2xl font-semibold font-headline">{joined ? 'You’re in' : 'Join your team'}</CardTitle>
             <CardDescription>
               {inviteError ? 'There was a problem' : joined ? 'Redirecting...' : invitation ? `You've been invited to join ${invitation.workspaceName}` : 'Preparing...'}
             </CardDescription>
@@ -297,7 +299,7 @@ export default function JoinWorkspacePage() {
                         <Input type="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} required />
                       </div>
                       {signInError && <div className="text-xs text-destructive">{signInError}</div>}
-                      <Button type="submit" className="w-full h-11" disabled={signingIn}>
+                      <Button type="submit" size="lg" className="w-full" disabled={signingIn}>
                         {signingIn ? <Loader2 className="h-4 w-4 animate-spin" /> : (authMode === 'login' ? <LogIn className="h-4 w-4" /> : <UserPlus className="h-4 w-4" />)}
                         {authMode === 'login' ? 'Login & Join' : 'Sign Up & Join'}
                       </Button>
@@ -313,7 +315,7 @@ export default function JoinWorkspacePage() {
                     </div>
                   </div>
 
-                  <Button variant="outline" className="w-full gap-2 h-11 bg-background/50" onClick={handleGoogleSignIn} disabled={signingIn}>
+                  <Button variant="outline" size="lg" className="w-full gap-2" onClick={handleGoogleSignIn} disabled={signingIn}>
                     <svg className="h-4 w-4" viewBox="0 0 24 24">
                       <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
                       <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
@@ -330,14 +332,14 @@ export default function JoinWorkspacePage() {
                       This invite was sent to <strong>{invitation.invitedEmail}</strong>. Sign out and sign in with that email to join.
                     </div>
                   )}
-                  <div className="flex items-center gap-3 p-3 border rounded-lg bg-background/50">
+                  <div className="flex items-center gap-3 p-3.5 border rounded-xl bg-muted/35">
                     <img src={user.photoURL || `https://picsum.photos/seed/${user.uid}/100/100`} className="h-10 w-10 rounded-full" alt="" />
                     <div className="flex flex-col overflow-hidden">
                       <span className="text-sm font-bold truncate">{user.displayName || 'User'}</span>
                       <span className="text-xs text-muted-foreground truncate">{user.email}</span>
                     </div>
                   </div>
-                  <Button className="w-full h-11" onClick={handleJoinWorkspace} disabled={joining || emailMismatch}>
+                  <Button size="lg" className="w-full" onClick={handleJoinWorkspace} disabled={joining || emailMismatch}>
                     {joining ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : `Join ${invitation?.workspaceName}`}
                   </Button>
                 </div>

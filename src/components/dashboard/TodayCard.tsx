@@ -44,10 +44,12 @@ export function TodayCard({ store, onTaskClick }: { store: any, onTaskClick: (id
   const taskCount = todayTasks.length;
 
   return (
-    <Card className="shadow-sm border-none">
+    <Card className="border-border/60 shadow-sm">
       <CardHeader className="flex items-center justify-between flex-row">
-        <CardTitle className="text-lg flex items-center gap-2">
-          <Calendar className="h-5 w-5 text-primary" />
+        <CardTitle className="text-base flex items-center gap-2">
+          <span className="grid h-8 w-8 place-items-center rounded-lg bg-primary/10 text-primary">
+            <Calendar className="h-4 w-4" />
+          </span>
           Today
         </CardTitle>
         {isTasksLoading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
@@ -63,8 +65,10 @@ export function TodayCard({ store, onTaskClick }: { store: any, onTaskClick: (id
             ))}
           </div>
         ) : taskCount === 0 ? (
-          <div className="text-center py-8 text-muted-foreground">
-            <p className="text-sm">No tasks due today</p>
+          <div className="text-center py-10 text-muted-foreground rounded-xl border border-dashed border-border/70 bg-muted/20">
+            <Calendar className="mx-auto mb-2 h-6 w-6 opacity-30" />
+            <p className="text-sm font-medium">Your schedule is clear</p>
+            <p className="mt-1 text-xs">No tasks are due today.</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -74,7 +78,7 @@ export function TodayCard({ store, onTaskClick }: { store: any, onTaskClick: (id
             {todayTasks.map((task: any) => (
               <div 
                 key={task.id} 
-                className="flex items-start gap-3 group cursor-pointer hover:bg-muted/50 p-2 rounded-lg transition-colors"
+                className="flex items-start gap-3 group cursor-pointer hover:bg-muted/50 p-2.5 rounded-xl border border-transparent hover:border-border/60 transition-all"
                 onClick={() => onTaskClick(task.id)}
               >
                 <div className="mt-0.5">

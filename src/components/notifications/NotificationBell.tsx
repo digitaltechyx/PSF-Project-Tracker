@@ -36,7 +36,7 @@ export function NotificationBell({ onNavigateToTask, onViewAll, markAsRead }: No
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" className="relative h-9 w-9 rounded-full">
+        <Button variant="ghost" size="icon" className="relative h-9 w-9 rounded-xl border border-transparent hover:border-border/60 hover:bg-card">
           <Bell className="h-5 w-5 text-muted-foreground" />
           {unreadCount > 0 && (
             <Badge className="absolute -top-1 -right-1 h-4 w-4 flex items-center justify-center p-0 text-[10px] bg-primary border-2 border-background">
@@ -45,9 +45,12 @@ export function NotificationBell({ onNavigateToTask, onViewAll, markAsRead }: No
           )}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-80 p-0 shadow-2xl border-none">
-        <div className="p-3 border-b flex items-center justify-between bg-card/50">
-          <span className="text-sm font-bold font-headline">Notifications</span>
+      <DropdownMenuContent align="end" className="w-[360px] p-0 overflow-hidden">
+        <div className="p-4 border-b flex items-center justify-between bg-muted/25">
+          <div>
+            <span className="block text-sm font-semibold font-headline">Inbox</span>
+            <span className="block text-[10px] text-muted-foreground mt-0.5">Latest workspace updates</span>
+          </div>
           {unreadCount > 0 && (
             <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wider">
               {unreadCount} New
@@ -73,7 +76,7 @@ export function NotificationBell({ onNavigateToTask, onViewAll, markAsRead }: No
           )}
         </ScrollArea>
 
-        <div className="p-2 border-t text-center bg-muted/30">
+        <div className="p-2.5 border-t text-center bg-muted/20">
           <Button
             variant="ghost"
             size="sm"
@@ -83,7 +86,7 @@ export function NotificationBell({ onNavigateToTask, onViewAll, markAsRead }: No
               onViewAll?.();
             }}
           >
-            View Activity Feed
+            Open inbox
           </Button>
         </div>
       </DropdownMenuContent>

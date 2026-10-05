@@ -478,9 +478,9 @@ export function TaskDetailPanel({
 
   return (
     <Sheet open={isOpen} onOpenChange={onClose}>
-      <SheetContent className="w-full sm:max-w-xl overflow-y-auto">
-        <SheetHeader className="space-y-4 pb-6 border-b">
-          <div className="flex justify-between items-start pt-2">
+      <SheetContent className="w-full sm:max-w-2xl overflow-y-auto p-0">
+        <SheetHeader className="space-y-4 p-6 pb-5 border-b border-border/60 bg-muted/20">
+          <div className="flex justify-between items-start">
             <SheetTitle>
               <Badge variant="outline" className="uppercase tracking-widest text-[10px]">
                 Task Detail
@@ -495,7 +495,7 @@ export function TaskDetailPanel({
             </div>
           </div>
           <Input
-            className="text-2xl font-bold border-none px-0 shadow-none focus-visible:ring-0 font-headline"
+            className="h-auto text-2xl font-semibold border-none bg-transparent px-0 py-0 shadow-none focus-visible:ring-0 font-headline tracking-tight"
             value={localTitle}
             onChange={(e) => setLocalTitle(e.target.value)}
             disabled={!canManageMeta}
@@ -503,15 +503,15 @@ export function TaskDetailPanel({
         </SheetHeader>
 
         <Tabs defaultValue="details" className="flex-1 overflow-visible">
-          <div className="px-6 border-b">
-            <TabsList className="grid w-full max-w-[400px] grid-cols-2 bg-transparent justify-start">
+          <div className="px-6 border-b border-border/60 bg-card sticky top-0 z-10">
+            <TabsList className="grid h-12 w-full max-w-[400px] grid-cols-2 bg-transparent border-0 p-0 justify-start">
               <TabsTrigger value="details" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none shadow-none bg-transparent h-10">Details</TabsTrigger>
               <TabsTrigger value="subtasks" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none shadow-none bg-transparent h-10">Subtasks</TabsTrigger>
             </TabsList>
           </div>
 
           <TabsContent value="details" className="m-0 px-6 focus-visible:outline-none focus-visible:ring-0 space-y-8 py-6">
-            <div className="grid grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 rounded-2xl border border-border/60 bg-muted/20 p-4">
               <div className="space-y-2">
                 <Label className="text-xs text-muted-foreground uppercase font-bold tracking-tight">Status</Label>
                 <Select value={task.status} onValueChange={(val) => handleUpdate('status', val)} disabled={!canEditFields}>

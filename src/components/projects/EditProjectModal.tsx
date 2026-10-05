@@ -100,12 +100,12 @@ export function EditProjectModal({
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
+            <div className="mb-2 grid h-10 w-10 place-items-center rounded-xl bg-primary/10 text-primary">
               <Pencil className="h-5 w-5" />
-              Edit Project
-            </DialogTitle>
+            </div>
+            <DialogTitle>Project settings</DialogTitle>
             <DialogDescription>
-              Make changes to your project settings. Workspace owners and leads can edit or delete projects.
+              Update how this project appears across the workspace.
             </DialogDescription>
           </DialogHeader>
 
@@ -134,16 +134,16 @@ export function EditProjectModal({
             </div>
 
             <div className="space-y-2">
-              <Label>Project Color</Label>
-              <div className="flex flex-wrap gap-2">
+              <Label>Accent color</Label>
+              <div className="flex flex-wrap gap-2 rounded-xl border border-border/60 bg-muted/25 p-3">
                 {presetColors.map((c) => (
                   <button
                     key={c}
                     onClick={() => setColor(c)}
-                    className={`w-8 h-8 rounded-full transition-all ${
+                    className={`w-8 h-8 rounded-lg transition-all ${
                       color === c
-                        ? 'ring-2 ring-offset-2 ring-primary scale-110'
-                        : 'hover:scale-105'
+                        ? 'ring-2 ring-primary ring-offset-2 scale-105'
+                        : 'hover:scale-105 opacity-80 hover:opacity-100'
                     }`}
                     style={{ backgroundColor: c }}
                     type="button"
@@ -159,7 +159,7 @@ export function EditProjectModal({
             </Button>
             <Button onClick={handleSave} disabled={isSaving} className="gap-2">
               {isSaving && <Loader2 className="h-4 w-4 animate-spin" />}
-              Save Changes
+              Save project
             </Button>
           </DialogFooter>
         </DialogContent>

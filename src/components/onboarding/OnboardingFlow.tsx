@@ -65,24 +65,27 @@ export function OnboardingFlow({ store }: OnboardingFlowProps) {
   const canCreateTask = hasProjectName && Boolean(taskTitle.trim());
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center bg-background p-4 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/5 via-background to-background">
-      <div className="w-full max-w-xl space-y-8">
+    <div className="min-h-screen w-full flex items-center justify-center bg-slate-950 p-3 sm:p-6">
+      <div className="relative w-full max-w-2xl overflow-hidden rounded-[28px] border border-white/10 bg-card p-6 shadow-2xl sm:p-10">
+        <div className="pointer-events-none absolute -right-32 -top-32 h-80 w-80 rounded-full bg-primary/10 blur-3xl" />
+        <div className="relative space-y-8">
         <div className="text-center space-y-2">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-primary/10 text-primary mb-2">
+          <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-primary text-primary-foreground mb-2 shadow-lg shadow-primary/20">
             <Rocket className="w-6 h-6" />
           </div>
-          <h1 className="text-3xl font-bold font-headline">Welcome to PSF Project Tracker</h1>
-          <p className="text-muted-foreground">Let's set up your first workspace to get you started.</p>
+          <p className="eyebrow">Workspace setup</p>
+          <h1 className="text-3xl font-semibold font-headline">Build your command center</h1>
+          <p className="text-sm text-muted-foreground">Create the structure your team will use every day.</p>
         </div>
 
-        <div className="flex justify-between max-w-xs mx-auto mb-4">
+        <div className="relative flex justify-between max-w-sm mx-auto mb-4 before:absolute before:left-4 before:right-4 before:top-1/2 before:h-px before:bg-border">
           {[1, 2, 3].map((s) => (
             <div 
               key={s} 
               className={cn(
-                "w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300",
+                "relative z-10 w-9 h-9 rounded-xl flex items-center justify-center text-xs font-bold transition-all duration-300 ring-4 ring-card",
                 step === s ? "bg-primary text-primary-foreground scale-110 shadow-lg shadow-primary/20" : 
-                step > s ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground"
+                step > s ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground"
               )}
             >
               {s}
@@ -90,7 +93,7 @@ export function OnboardingFlow({ store }: OnboardingFlowProps) {
           ))}
         </div>
 
-        <Card className="border-none shadow-2xl">
+        <Card className="border-border/60 shadow-none bg-muted/20">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               {step === 1 && <><Layout className="w-5 h-5 text-primary" /> Create Your Workspace</>}
@@ -170,7 +173,7 @@ export function OnboardingFlow({ store }: OnboardingFlowProps) {
             )}
           </CardContent>
 
-          <CardFooter className="flex justify-between border-t pt-6 bg-muted/30 rounded-b-lg">
+          <CardFooter className="flex justify-between border-t pt-5 bg-card/70 rounded-b-2xl">
             {step > 1 ? (
               <Button variant="ghost" onClick={prevStep} disabled={loading}>
                 Back
@@ -200,6 +203,7 @@ export function OnboardingFlow({ store }: OnboardingFlowProps) {
             </div>
           </CardFooter>
         </Card>
+        </div>
       </div>
     </div>
   );
