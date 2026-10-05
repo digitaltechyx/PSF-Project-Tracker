@@ -721,7 +721,7 @@ export function TaskDetailPanel({
                               <Button variant="ghost" size="icon" className="h-5 w-5 text-muted-foreground hover:text-primary" onClick={() => { setEditingCommentId(comment.id); setEditingCommentBody(comment.body); }}>
                                 <Edit2 className="h-3 w-3" />
                               </Button>
-                              <Button variant="ghost" size="icon" className="h-5 w-5 text-muted-foreground hover:text-destructive" onClick={() => { if (window.confirm('Delete comment?')) store.deleteComment(task.id, comment.id); }}>
+                              <Button variant="ghost" size="icon" className="h-5 w-5 text-muted-foreground hover:text-destructive" onClick={() => { if (confirm('Delete this comment?')) store.deleteComment(task.id, comment.id); }}>
                                 <Trash2 className="h-3 w-3" />
                               </Button>
                             </div>

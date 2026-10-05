@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { Trash2, GripVertical, Plus } from 'lucide-react';
+import { Trash2, ChevronUp, ChevronDown, Plus } from 'lucide-react';
 import {
   STATUS_COLOR_PRESETS,
   createUniqueStatusId,
@@ -131,7 +131,7 @@ export function ManageStatusesDialog({
               key={draft._key}
               className="flex items-start gap-2 rounded-xl border bg-card p-3 shadow-sm"
             >
-              <div className="flex flex-col gap-1 pt-1">
+              <div className="flex flex-col gap-0.5 pt-1">
                 <button
                   type="button"
                   className="h-5 w-5 text-muted-foreground hover:text-foreground disabled:opacity-30"
@@ -139,7 +139,16 @@ export function ManageStatusesDialog({
                   onClick={() => move(index, -1)}
                   title="Move up"
                 >
-                  <GripVertical className="h-4 w-4 rotate-90" />
+                  <ChevronUp className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  className="h-5 w-5 text-muted-foreground hover:text-foreground disabled:opacity-30"
+                  disabled={index === drafts.length - 1}
+                  onClick={() => move(index, 1)}
+                  title="Move down"
+                >
+                  <ChevronDown className="h-4 w-4" />
                 </button>
               </div>
 

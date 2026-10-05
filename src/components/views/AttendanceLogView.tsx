@@ -231,7 +231,7 @@ export function AttendanceLogView({ store }: { store: any }) {
     return (
       <div className="space-y-4 animate-in fade-in duration-300">
         <div>
-          <p className="text-sm text-muted-foreground">
+          <p className="page-subheading">
             Track your work day and review your recent hours.
           </p>
         </div>
@@ -243,7 +243,7 @@ export function AttendanceLogView({ store }: { store: any }) {
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
       <div>
-        <p className="text-sm text-muted-foreground">
+        <p className="page-subheading">
           See who’s working now and review team time entries.
         </p>
       </div>

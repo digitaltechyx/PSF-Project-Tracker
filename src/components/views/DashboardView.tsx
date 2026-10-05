@@ -6,8 +6,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { 
   FolderKanban, 
   CheckCircle2, 
-  Clock, 
-  PauseCircle,
   AlertCircle,
   CalendarDays,
   Loader2
@@ -18,6 +16,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { TodayCard } from '@/components/dashboard/TodayCard';
 import { TimeTrackingWidget } from '@/components/dashboard/TimeTrackingWidget';
 import { TaskDetailPanel } from '@/components/tasks/TaskDetailPanel';
+import { getTaskPipelineInfo, isTaskClosed } from '@/lib/pipelines';
 
 export function DashboardView({
   store,
@@ -36,21 +35,23 @@ export function DashboardView({
     setMounted(true);
   }, []);
 
-  // Stats derived from raw unfiltered data
+  // Stats derived from raw unfiltered data (pipeline-aware closed status)
   const stats = useMemo(() => {
     const tasks = allWorkspaceTasks || [];
     const now = new Date();
+    const openTasks = tasks.filter((t: any) => !isTaskClosed(t, workspaceProjects));
+    const doneTasks = tasks.filter((t: any) => isTaskClosed(t, workspaceProjects)).length;
     return {
       totalProjects: workspaceProjects.length,
       totalTasks: tasks.length,
-      doneTasks: tasks.filter((t: any) => t.status === 'done').length,
-      inProgress: tasks.filter((t: any) => t.status === 'in_progress').length,
-      todo: tasks.filter((t: any) => t.status === 'todo').length,
-      onHold: tasks.filter((t: any) => t.status === 'on_hold').length,
-      overdue: tasks.filter((t: any) => t.dueDate && new Date(t.dueDate) < now && t.status !== 'done').length,
-      urgent: tasks.filter((t: any) => t.priority === 'urgent').length,
+      doneTasks,
+      active: openTasks.length,
+      overdue: tasks.filter(
+        (t: any) => t.dueDate && new Date(t.dueDate) < now && !isTaskClosed(t, workspaceProjects)
+      ).length,
+      urgent: tasks.filter((t: any) => t.priority === 'urgent' && !isTaskClosed(t, workspaceProjects)).length,
     };
-  }, [allWorkspaceTasks, workspaceProjects.length]);
+  }, [allWorkspaceTasks, workspaceProjects]);
 
   const completionRate = stats.totalTasks > 0 ? (stats.doneTasks / stats.totalTasks) * 100 : 0;
 
@@ -94,7 +95,7 @@ export function DashboardView({
 
       <TimeTrackingWidget store={store} />
 
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card className="bg-card/80 shadow-sm border border-border/50">
           <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0 py-3">
             <CardTitle className="text-xs font-medium text-muted-foreground">Projects</CardTitle>
@@ -117,23 +118,14 @@ export function DashboardView({
         </Card>
         <Card className="bg-card/80 shadow-sm border border-border/50">
           <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0 py-3">
-            <CardTitle className="text-xs font-medium text-muted-foreground">Active</CardTitle>
-            <CalendarDays className="h-4 w-4 text-accent" />
+            <CardTitle className="text-xs font-medium text-muted-foreground">Open</CardTitle>
+            <CalendarDays className="h-4 w-4 text-primary" />
           </CardHeader>
           <CardContent className="pt-0 pb-4">
-            <div className="text-xl font-bold">{stats.todo + stats.inProgress}</div>
+            <div className="text-xl font-bold">{stats.active}</div>
           </CardContent>
         </Card>
         <Card className="bg-card/80 shadow-sm border border-border/50">
-          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0 py-3">
-            <CardTitle className="text-xs font-medium text-muted-foreground">On hold</CardTitle>
-            <PauseCircle className="h-4 w-4 text-amber-600" />
-          </CardHeader>
-          <CardContent className="pt-0 pb-4">
-            <div className="text-xl font-bold">{stats.onHold}</div>
-          </CardContent>
-        </Card>
-        <Card className="bg-card/80 shadow-sm border border-border/50 col-span-2 md:col-span-1">
           <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0 py-3">
             <CardTitle className="text-xs font-medium text-muted-foreground">Critical</CardTitle>
             <AlertCircle className="h-4 w-4 text-destructive" />
@@ -152,7 +144,10 @@ export function DashboardView({
           </CardHeader>
           <CardContent>
             <div className="space-y-6">
-              {recentTasks.map((task: any) => (
+              {recentTasks.map((task: any) => {
+                const pipeline = getTaskPipelineInfo(task, workspaceProjects);
+                const closed = isTaskClosed(task, workspaceProjects);
+                return (
                 <div
                   key={task.id}
                   className="flex items-start gap-4 group cursor-pointer"
@@ -165,20 +160,26 @@ export function DashboardView({
                   }}
                 >
                   <div className="mt-1">
-                    {task.status === 'done' ? (
+                    {closed ? (
                       <CheckCircle2 className="h-5 w-5 text-green-500" />
-                    ) : task.status === 'in_progress' ? (
-                      <Clock className="h-5 w-5 text-accent" />
-                    ) : task.status === 'on_hold' ? (
-                      <PauseCircle className="h-5 w-5 text-amber-600" />
                     ) : (
-                      <div className="h-5 w-5 rounded-full border-2" />
+                      <span
+                        className="mt-0.5 block h-3 w-3 rounded-full ring-2 ring-background"
+                        style={{ backgroundColor: pipeline.color || '#94a3b8' }}
+                      />
                     )}
                   </div>
                   <div className="flex-1 space-y-1">
                     <p className="text-sm font-semibold group-hover:text-primary transition-colors">{task.title}</p>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="secondary" className="text-[10px] uppercase font-bold py-0 h-4">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Badge variant="secondary" className="text-[10px] gap-1.5 font-medium py-0 h-5">
+                        <span
+                          className="h-1.5 w-1.5 rounded-full"
+                          style={{ backgroundColor: pipeline.color }}
+                        />
+                        {pipeline.name}
+                      </Badge>
+                      <Badge variant="outline" className="text-[10px] uppercase font-bold py-0 h-5">
                         {task.priority}
                       </Badge>
                       <span className="text-xs text-muted-foreground">in</span>
@@ -197,7 +198,8 @@ export function DashboardView({
                     {mounted ? new Date(task.updatedAt).toLocaleDateString([], { month: 'short', day: 'numeric' }) : '...'}
                   </div>
                 </div>
-              ))}
+              );
+              })}
               {allWorkspaceTasks.length === 0 && (
                 <div className="text-center py-10 text-muted-foreground space-y-2">
                   <p>No tasks found in this workspace.</p>
@@ -218,7 +220,7 @@ export function DashboardView({
             <div className="space-y-4">
               {workspaceProjects.map((project: any) => {
                 const projectTasks = allWorkspaceTasks.filter((t: any) => t.projectId === project.id);
-                const done = projectTasks.filter((t: any) => t.status === 'done').length;
+                const done = projectTasks.filter((t: any) => isTaskClosed(t, workspaceProjects)).length;
                 const total = projectTasks.length;
                 const progress = total > 0 ? (done / total) * 100 : 0;
                 

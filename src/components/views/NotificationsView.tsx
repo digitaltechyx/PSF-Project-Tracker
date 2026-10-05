@@ -34,8 +34,7 @@ export function NotificationsView({
     <div className="space-y-6 max-w-3xl mx-auto animate-in fade-in slide-in-from-bottom-2 duration-500">
       <div className="flex items-end justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Inbox</h2>
-          <p className="text-sm text-muted-foreground mt-1">
+          <p className="page-subheading">
             Assignments, comments, and task updates.
           </p>
         </div>

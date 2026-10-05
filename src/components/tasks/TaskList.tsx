@@ -12,7 +12,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Progress } from '@/components/ui/progress';
-import { Task, Priority, Pipeline } from '@/lib/types';
+import { Task, Priority, Pipeline, Project } from '@/lib/types';
 import { CheckCircle2, CalendarDays } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
@@ -21,7 +21,10 @@ import {
   getClosedStatusId,
   getOpenStatusId,
   getPipelineInfo,
+  getProjectPipelines,
   isClosedStatus,
+  isTaskClosed,
+  getTaskPipelineInfo,
 } from '@/lib/pipelines';
 
 const priorityColors: Record<Priority, string> = {
@@ -40,6 +43,7 @@ export function TaskList({
   workspaceMembers = [],
   currentUser = null,
   pipelines = DEFAULT_PIPELINES,
+  workspaceProjects = null,
 }: {
   tasks: Task[];
   onTaskClick: (id: string) => void;
@@ -49,15 +53,13 @@ export function TaskList({
   workspaceMembers?: any[];
   currentUser?: any;
   pipelines?: Pipeline[];
+  workspaceProjects?: Project[] | null;
 }) {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     setMounted(true);
   }, []);
-
-  const closedId = getClosedStatusId(pipelines);
-  const openId = getOpenStatusId(pipelines);
 
   if (tasks.length === 0) {
     return (
@@ -92,10 +94,19 @@ export function TaskList({
         </TableHeader>
         <TableBody>
           {tasks.map((task) => {
-            const done = isClosedStatus(pipelines, task.status);
-            const pipeline = getPipelineInfo(pipelines, task.status);
+            const projectPipelines = workspaceProjects
+              ? getProjectPipelines(workspaceProjects.find((p) => p.id === task.projectId))
+              : pipelines;
+            const done = workspaceProjects
+              ? isTaskClosed(task, workspaceProjects)
+              : isClosedStatus(pipelines, task.status);
+            const pipeline = workspaceProjects
+              ? getTaskPipelineInfo(task, workspaceProjects)
+              : getPipelineInfo(pipelines, task.status);
+            const taskClosedId = getClosedStatusId(projectPipelines);
+            const taskOpenId = getOpenStatusId(projectPipelines);
             const st = (subtasks || []).filter((s) => s.taskId === task.id);
-            const subDone = st.filter((s) => s.status === closedId).length;
+            const subDone = st.filter((s) => s.status === taskClosedId).length;
 
             return (
               <TableRow
@@ -108,7 +119,7 @@ export function TaskList({
                     checked={done}
                     disabled={readOnly}
                     onCheckedChange={(checked) => {
-                      updateTask(task.id, { status: checked ? closedId : openId });
+                      updateTask(task.id, { status: checked ? taskClosedId : taskOpenId });
                     }}
                   />
                 </TableCell>

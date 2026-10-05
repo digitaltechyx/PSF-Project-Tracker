@@ -86,7 +86,7 @@ export function NotificationBell({ onNavigateToTask, onViewAll, markAsRead }: No
               onViewAll?.();
             }}
           >
-            Open inbox
+            View all in inbox
           </Button>
         </div>
       </DropdownMenuContent>

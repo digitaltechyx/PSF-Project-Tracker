@@ -6,11 +6,10 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { 
   CheckCircle2, 
-  Clock, 
-  PauseCircle,
   Calendar,
   Loader2
 } from 'lucide-react';
+import { getTaskPipelineInfo, isTaskClosed } from '@/lib/pipelines';
 
 export function TodayCard({ store, onTaskClick }: { store: any, onTaskClick: (id: string) => void }) {
   const { allWorkspaceTasks, workspaceProjects, currentUser, isTasksLoading } = store;
@@ -75,21 +74,23 @@ export function TodayCard({ store, onTaskClick }: { store: any, onTaskClick: (id
             <div className="text-sm text-muted-foreground mb-2">
               {taskCount} task{taskCount !== 1 ? 's' : ''} due today
             </div>
-            {todayTasks.map((task: any) => (
+            {todayTasks.map((task: any) => {
+              const pipeline = getTaskPipelineInfo(task, workspaceProjects);
+              const closed = isTaskClosed(task, workspaceProjects);
+              return (
               <div 
                 key={task.id} 
                 className="flex items-start gap-3 group cursor-pointer hover:bg-muted/50 p-2.5 rounded-xl border border-transparent hover:border-border/60 transition-all"
                 onClick={() => onTaskClick(task.id)}
               >
                 <div className="mt-0.5">
-                  {task.status === 'done' ? (
+                  {closed ? (
                     <CheckCircle2 className="h-4 w-4 text-green-500" />
-                  ) : task.status === 'in_progress' ? (
-                    <Clock className="h-4 w-4 text-accent" />
-                  ) : task.status === 'on_hold' ? (
-                    <PauseCircle className="h-4 w-4 text-amber-600" />
                   ) : (
-                    <div className="h-4 w-4 rounded-full border-2 border-muted-foreground/30" />
+                    <span
+                      className="mt-0.5 block h-2.5 w-2.5 rounded-full"
+                      style={{ backgroundColor: pipeline.color || '#94a3b8' }}
+                    />
                   )}
                 </div>
                 <div className="flex-1 space-y-1 min-w-0">
@@ -97,7 +98,14 @@ export function TodayCard({ store, onTaskClick }: { store: any, onTaskClick: (id
                     {task.title}
                   </p>
                   <div className="flex items-center gap-2">
-                    <Badge variant="secondary" className="text-[10px] uppercase font-bold py-0 h-4">
+                    <Badge variant="secondary" className="text-[10px] gap-1 font-medium py-0 h-4">
+                      <span
+                        className="h-1.5 w-1.5 rounded-full"
+                        style={{ backgroundColor: pipeline.color }}
+                      />
+                      {pipeline.name}
+                    </Badge>
+                    <Badge variant="outline" className="text-[10px] uppercase font-bold py-0 h-4">
                       {task.priority}
                     </Badge>
                     <span className="text-xs text-muted-foreground truncate">
@@ -106,7 +114,8 @@ export function TodayCard({ store, onTaskClick }: { store: any, onTaskClick: (id
                   </div>
                 </div>
               </div>
-            ))}
+            );
+            })}
           </div>
         )}
       </CardContent>

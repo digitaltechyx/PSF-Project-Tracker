@@ -5,7 +5,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Mail, Shield, MoreVertical, Trash2, Search, UserPlus, Loader2, Users } from 'lucide-react';
+import { Mail, Shield, MoreVertical, Trash2, Search, UserPlus, Loader2 } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -60,11 +60,7 @@ export function MembersView({ store, onInviteClick, isAdmin }: MembersViewProps)
     <div className="space-y-6 max-w-4xl mx-auto animate-in fade-in duration-500">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <Users className="h-6 w-6 text-primary" />
-            People
-          </h2>
-          <p className="text-sm text-muted-foreground mt-1">
+          <p className="page-subheading">
             Manage roles and access for {activeWorkspace?.name || 'this workspace'}.
           </p>
         </div>

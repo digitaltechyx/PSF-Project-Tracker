@@ -55,6 +55,23 @@ export function isClosedStatus(pipelines: Pipeline[], statusId: string): boolean
   return statusId === getClosedStatusId(pipelines);
 }
 
+/** Resolve closed vs open for a task using its project's pipelines (falls back to defaults). */
+export function isTaskClosed(
+  task: { status: string; projectId?: string },
+  projects?: Array<{ id: string; pipelines?: Pipeline[] | null }> | null
+): boolean {
+  const project = projects?.find((p) => p.id === task.projectId);
+  return isClosedStatus(getProjectPipelines(project), task.status);
+}
+
+export function getTaskPipelineInfo(
+  task: { status: string; projectId?: string },
+  projects?: Array<{ id: string; pipelines?: Pipeline[] | null }> | null
+): Pipeline {
+  const project = projects?.find((p) => p.id === task.projectId);
+  return getPipelineInfo(getProjectPipelines(project), task.status);
+}
+
 export function slugifyStatusId(name: string): string {
   const base = name
     .trim()
