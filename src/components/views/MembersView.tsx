@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useMemo } from 'react';
@@ -6,7 +5,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Mail, Shield, MoreVertical, Trash2, Search, UserPlus, Loader2 } from 'lucide-react';
+import { Mail, Shield, MoreVertical, Trash2, Search, UserPlus, Loader2, Users } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,14 +22,14 @@ interface MembersViewProps {
 }
 
 export function MembersView({ store, onInviteClick, isAdmin }: MembersViewProps) {
-  const { 
-    workspaceMembers, 
-    removeMember, 
-    currentUser, 
-    isWorkspacesLoading, 
+  const {
+    workspaceMembers,
+    removeMember,
+    currentUser,
+    isWorkspacesLoading,
     activeWorkspace,
     workspaceInvitations,
-    cancelInvitation
+    cancelInvitation,
   } = store;
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -45,78 +44,102 @@ export function MembersView({ store, onInviteClick, isAdmin }: MembersViewProps)
         displayName: inv.invitedEmail,
         email: `Invited as ${inv.role} by ${inv.invitedByName}`,
         role: inv.role,
-        avatarUrl: null
-      }))
+        avatarUrl: null,
+      })),
     ];
     if (!searchQuery.trim()) return all;
     const lowerQuery = searchQuery.toLowerCase();
-    return all.filter((m: any) => 
-      (m.displayName || '').toLowerCase().includes(lowerQuery) || 
-      (m.email || '').toLowerCase().includes(lowerQuery)
+    return all.filter(
+      (m: any) =>
+        (m.displayName || '').toLowerCase().includes(lowerQuery) ||
+        (m.email || '').toLowerCase().includes(lowerQuery)
     );
   }, [workspaceMembers, workspaceInvitations, searchQuery]);
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto animate-in fade-in duration-500">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
-          <p className="text-sm text-muted-foreground">Manage roles and access for this workspace.</p>
+          <h2 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+            <Users className="h-6 w-6 text-primary" />
+            People
+          </h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            Manage roles and access for {activeWorkspace?.name || 'this workspace'}.
+          </p>
         </div>
         {isAdmin && (
-          <Button className="gap-2 shrink-0" onClick={onInviteClick}>
+          <Button className="gap-2 shrink-0 shadow-sm" onClick={onInviteClick}>
             <UserPlus className="h-4 w-4" />
-            Invite Member
+            Invite member
           </Button>
         )}
       </div>
 
       <div className="relative">
         <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-        <Input 
-          placeholder="Search members by name or email..." 
-          className="pl-10 h-10 bg-card shadow-sm"
+        <Input
+          placeholder="Search by name or email…"
+          className="pl-10 h-11 bg-card border-border/60 shadow-sm rounded-xl"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
         />
       </div>
 
-      <Card className="border-none shadow-sm">
+      <Card className="border-border/60 shadow-sm overflow-hidden rounded-2xl">
         <CardContent className="p-0">
-          <div className="divide-y">
+          <div className="divide-y divide-border/60">
             {filteredMembers.map((member: any) => {
               const userId = member.userId || member.id;
               const isOwner = activeWorkspace?.ownerUserId === userId;
-              
+
               return (
-                <div key={userId} className={cn("flex items-center justify-between p-4 hover:bg-muted/30 transition-colors", member.isInvite && "opacity-70")}>
-                  <div className="flex items-center gap-4">
-                    <Avatar className="h-10 w-10 border">
+                <div
+                  key={userId}
+                  className={cn(
+                    'flex items-center justify-between p-4 hover:bg-muted/30 transition-colors',
+                    member.isInvite && 'opacity-80'
+                  )}
+                >
+                  <div className="flex items-center gap-4 min-w-0">
+                    <Avatar className="h-10 w-10 border border-border/60">
                       <AvatarImage src={member.avatarUrl} />
-                      <AvatarFallback className="font-bold">
-                        {member.isInvite ? <Mail className="h-4 w-4 text-muted-foreground" /> : (member.displayName || '?').charAt(0).toUpperCase()}
+                      <AvatarFallback className="font-bold bg-muted">
+                        {member.isInvite ? (
+                          <Mail className="h-4 w-4 text-muted-foreground" />
+                        ) : (
+                          (member.displayName || '?').charAt(0).toUpperCase()
+                        )}
                       </AvatarFallback>
                     </Avatar>
-                    <div className="flex flex-col">
-                      <span className="font-semibold text-sm flex items-center gap-2">
-                        {member.displayName}
+                    <div className="flex flex-col min-w-0">
+                      <span className="font-semibold text-sm flex items-center gap-2 flex-wrap">
+                        <span className="truncate">{member.displayName}</span>
                         {userId === currentUser?.id && (
-                          <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded font-bold uppercase">You</span>
+                          <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded font-bold uppercase">
+                            You
+                          </span>
                         )}
                         {member.isInvite && (
-                          <span className="text-[9px] bg-amber-500/10 text-amber-600 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">Pending</span>
+                          <span className="text-[9px] bg-amber-500/10 text-amber-600 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">
+                            Pending
+                          </span>
                         )}
                       </span>
-                      <span className="text-xs text-muted-foreground whitespace-nowrap">
-                        {member.email || (member.displayName === 'Pending Sync...' ? 'Initializing...' : 'No email provided')}
+                      <span className="text-xs text-muted-foreground truncate">
+                        {member.email ||
+                          (member.displayName === 'Pending Sync...'
+                            ? 'Initializing...'
+                            : 'No email provided')}
                       </span>
                     </div>
                   </div>
-                  <div className="flex items-center gap-6">
-                    <div className="hidden md:flex items-center gap-1.5 text-xs font-medium text-muted-foreground bg-muted px-2.5 py-1 rounded-full capitalize">
+                  <div className="flex items-center gap-3 shrink-0">
+                    <div className="hidden md:flex items-center gap-1.5 text-xs font-medium text-muted-foreground bg-muted/80 px-2.5 py-1 rounded-full capitalize">
                       {member.isInvite ? (
                         <>
                           <Mail className="h-3 w-3" />
-                          Pending Role: {member.role}
+                          {member.role}
                         </>
                       ) : (
                         <>
@@ -133,25 +156,25 @@ export function MembersView({ store, onInviteClick, isAdmin }: MembersViewProps)
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         {member.isInvite ? (
-                          <DropdownMenuItem 
+                          <DropdownMenuItem
                             className="text-destructive focus:text-destructive gap-2"
                             disabled={!isAdmin}
                             onClick={() => cancelInvitation(member.inviteId)}
                           >
                             <Trash2 className="h-4 w-4" />
-                            Cancel Invite
+                            Cancel invite
                           </DropdownMenuItem>
                         ) : (
                           <>
                             {isAdmin && !isOwner && userId !== currentUser?.id && (
                               <>
-                                <DropdownMenuItem 
+                                <DropdownMenuItem
                                   disabled={member.role === 'lead'}
                                   onClick={() => store.updateMemberRole(userId, 'lead')}
                                 >
                                   Make Lead
                                 </DropdownMenuItem>
-                                <DropdownMenuItem 
+                                <DropdownMenuItem
                                   disabled={member.role === 'member'}
                                   onClick={() => store.updateMemberRole(userId, 'member')}
                                 >
@@ -160,13 +183,13 @@ export function MembersView({ store, onInviteClick, isAdmin }: MembersViewProps)
                                 <DropdownMenuSeparator />
                               </>
                             )}
-                            <DropdownMenuItem 
+                            <DropdownMenuItem
                               className="text-destructive focus:text-destructive gap-2"
                               disabled={userId === currentUser?.id || isOwner || !isAdmin}
                               onClick={() => removeMember(userId)}
                             >
                               <Trash2 className="h-4 w-4" />
-                              Remove Member
+                              Remove member
                             </DropdownMenuItem>
                           </>
                         )}
@@ -179,14 +202,16 @@ export function MembersView({ store, onInviteClick, isAdmin }: MembersViewProps)
             {filteredMembers.length === 0 && !isWorkspacesLoading && (
               <div className="p-12 text-center text-muted-foreground space-y-3">
                 <Search className="h-8 w-8 mx-auto opacity-20" />
-                <p>No members found matching "{searchQuery}"</p>
-                <Button variant="link" size="sm" onClick={() => setSearchQuery('')}>Clear search</Button>
+                <p>No members found matching &quot;{searchQuery}&quot;</p>
+                <Button variant="link" size="sm" onClick={() => setSearchQuery('')}>
+                  Clear search
+                </Button>
               </div>
             )}
             {isWorkspacesLoading && (
               <div className="p-12 text-center space-y-3">
                 <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary opacity-50" />
-                <p className="text-sm text-muted-foreground italic">Updating team list...</p>
+                <p className="text-sm text-muted-foreground italic">Updating team list…</p>
               </div>
             )}
           </div>

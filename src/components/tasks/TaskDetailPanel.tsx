@@ -42,6 +42,13 @@ import { useToast } from '@/hooks/use-toast';
 import { Separator } from '@/components/ui/separator';
 import { useFirestore, useCollection, useMemoFirebase, useUser } from '@/firebase';
 import { collection, query, orderBy } from 'firebase/firestore';
+import {
+  getClosedStatusId,
+  getOpenStatusId,
+  getProjectPipelines,
+  isClosedStatus,
+} from '@/lib/pipelines';
+import { Pipeline } from '@/lib/types';
 
 const renderCommentBody = (text: string) => {
   if (!text) return null;
@@ -96,9 +103,12 @@ const handleKeyDownBullets = (e: React.KeyboardEvent<HTMLTextAreaElement>, value
   }
 };
 
-function SubtaskRow({ subtask, store, projectMembers, isNew, onRemoveNew }: any) {
+function SubtaskRow({ subtask, store, projectMembers, pipelines, isNew, onRemoveNew }: any) {
   const isAdmin = store.isAdmin;
   const [title, setTitle] = useState(subtask.title || '');
+  const closedId = getClosedStatusId(pipelines || []);
+  const openId = getOpenStatusId(pipelines || []);
+  const done = isClosedStatus(pipelines || [], subtask.status);
 
   useEffect(() => {
     if (isNew) return;
@@ -114,7 +124,11 @@ function SubtaskRow({ subtask, store, projectMembers, isNew, onRemoveNew }: any)
     if (!title.trim()) {
       onRemoveNew();
     } else {
-      store.createSubtask(subtask.taskId, subtask.projectId, { title: title.trim(), status: 'todo', priority: 'medium' });
+      store.createSubtask(subtask.taskId, subtask.projectId, {
+        title: title.trim(),
+        status: openId,
+        priority: 'medium',
+      });
       onRemoveNew();
     }
   };
@@ -124,13 +138,18 @@ function SubtaskRow({ subtask, store, projectMembers, isNew, onRemoveNew }: any)
       <div className="flex items-center gap-3">
         {!isNew && (
           <Checkbox
-            checked={subtask.status === 'done'}
-            onCheckedChange={(c) => store.updateSubtask(subtask.taskId, subtask.id, { status: c ? 'done' : 'todo' })}
+            checked={done}
+            onCheckedChange={(c) =>
+              store.updateSubtask(subtask.taskId, subtask.id, { status: c ? closedId : openId })
+            }
             disabled={!isAdmin}
           />
         )}
         <Input
-          className={cn("h-8 flex-1 font-medium bg-transparent border-transparent hover:border-input focus-visible:ring-1", subtask.status === 'done' && !isNew && "line-through text-muted-foreground opacity-70")}
+          className={cn(
+            'h-8 flex-1 font-medium bg-transparent border-transparent hover:border-input focus-visible:ring-1',
+            done && !isNew && 'line-through text-muted-foreground opacity-70'
+          )}
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="Subtask title..."
@@ -144,33 +163,54 @@ function SubtaskRow({ subtask, store, projectMembers, isNew, onRemoveNew }: any)
           disabled={!isAdmin && !isNew}
         />
         {!isNew && isAdmin && (
-          <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100 text-destructive" onClick={() => {
-            if (confirm("Delete subtask?")) store.deleteSubtask(subtask.taskId, subtask.id);
-          }}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 opacity-0 group-hover:opacity-100 text-destructive"
+            onClick={() => {
+              if (confirm('Delete subtask?')) store.deleteSubtask(subtask.taskId, subtask.id);
+            }}
+          >
             <Trash2 className="h-3 w-3" />
           </Button>
         )}
       </div>
       {!isNew && (
         <div className="flex flex-wrap gap-2 items-center pl-6">
-          <Select value={subtask.status} onValueChange={(val) => store.updateSubtask(subtask.taskId, subtask.id, { status: val })} disabled={!isAdmin}>
+          <Select
+            value={subtask.status}
+            onValueChange={(val) => store.updateSubtask(subtask.taskId, subtask.id, { status: val })}
+            disabled={!isAdmin}
+          >
             <SelectTrigger className="h-6 text-[10px] w-auto border-none bg-muted/50">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="todo">To Do</SelectItem>
-              <SelectItem value="in_progress">In Progress</SelectItem>
-              <SelectItem value="on_hold">On Hold</SelectItem>
-              <SelectItem value="done">Done</SelectItem>
+              {(pipelines || []).map((p: Pipeline) => (
+                <SelectItem key={p.id} value={p.id}>
+                  {p.name}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
 
-          <Select value={subtask.priority} onValueChange={(val) => store.updateSubtask(subtask.taskId, subtask.id, { priority: val })} disabled={!isAdmin}>
-            <SelectTrigger className={cn("h-6 text-[10px] w-auto border-none",
-              subtask.priority === 'urgent' ? 'bg-red-100 text-red-700' :
-                subtask.priority === 'high' ? 'bg-orange-100 text-orange-700' :
-                  subtask.priority === 'medium' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-700'
-            )}>
+          <Select
+            value={subtask.priority}
+            onValueChange={(val) => store.updateSubtask(subtask.taskId, subtask.id, { priority: val })}
+            disabled={!isAdmin}
+          >
+            <SelectTrigger
+              className={cn(
+                'h-6 text-[10px] w-auto border-none',
+                subtask.priority === 'urgent'
+                  ? 'bg-red-100 text-red-700'
+                  : subtask.priority === 'high'
+                    ? 'bg-orange-100 text-orange-700'
+                    : subtask.priority === 'medium'
+                      ? 'bg-blue-100 text-blue-700'
+                      : 'bg-slate-100 text-slate-700'
+              )}
+            >
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -187,25 +227,33 @@ function SubtaskRow({ subtask, store, projectMembers, isNew, onRemoveNew }: any)
               type="date"
               className="h-6 text-[10px] pl-6 w-auto border-none bg-muted/50"
               value={subtask.dueDate ? subtask.dueDate.split('T')[0] : ''}
-              onChange={(e) => store.updateSubtask(subtask.taskId, subtask.id, { dueDate: e.target.value ? new Date(e.target.value).toISOString() : null })}
+              onChange={(e) =>
+                store.updateSubtask(subtask.taskId, subtask.id, {
+                  dueDate: e.target.value ? new Date(e.target.value).toISOString() : null,
+                })
+              }
               disabled={!isAdmin}
             />
           </div>
 
           <div className="flex items-center gap-1">
             <div className="flex -space-x-1">
-              {(subtask.assigneeUserIds || []).slice(0, 3).map((assigneeId: string, idx: number) => {
+              {(subtask.assigneeUserIds || []).slice(0, 3).map((assigneeId: string) => {
                 const member = projectMembers.find((m: any) => m.userId === assigneeId);
                 return (
                   <Avatar key={assigneeId} className="h-5 w-5 border-2 border-background">
                     <AvatarImage src={member?.avatarUrl} />
-                    <AvatarFallback className="text-[8px]">{(member?.displayName || '?').charAt(0)}</AvatarFallback>
+                    <AvatarFallback className="text-[8px]">
+                      {(member?.displayName || '?').charAt(0)}
+                    </AvatarFallback>
                   </Avatar>
                 );
               })}
               {(subtask.assigneeUserIds || []).length > 3 && (
                 <div className="h-5 w-5 rounded-full bg-muted border-2 border-background flex items-center justify-center">
-                  <span className="text-[8px] text-muted-foreground">+{(subtask.assigneeUserIds || []).length - 3}</span>
+                  <span className="text-[8px] text-muted-foreground">
+                    +{(subtask.assigneeUserIds || []).length - 3}
+                  </span>
                 </div>
               )}
             </div>
@@ -219,11 +267,12 @@ function SubtaskRow({ subtask, store, projectMembers, isNew, onRemoveNew }: any)
   );
 }
 
-function SubtasksTabContent({ task, store, projectMembers }: any) {
+function SubtasksTabContent({ task, store, projectMembers, pipelines }: any) {
   const [addingNew, setAddingNew] = useState(false);
   const subtasks = store.allWorkspaceSubtasks?.filter((s: any) => s.taskId === task.id) || [];
+  const closedId = getClosedStatusId(pipelines || []);
 
-  const completedCount = subtasks.filter((s: any) => s.status === 'done').length;
+  const completedCount = subtasks.filter((s: any) => s.status === closedId).length;
   const totalCount = subtasks.length;
   const progressPercent = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
 
@@ -233,7 +282,13 @@ function SubtasksTabContent({ task, store, projectMembers }: any) {
         <div className="flex justify-between items-center text-sm font-medium">
           <span>{totalCount > 0 ? `${completedCount}/${totalCount} completed` : '0 subtasks'}</span>
           {store.isAdmin && (
-            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setAddingNew(true)} disabled={addingNew}>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs"
+              onClick={() => setAddingNew(true)}
+              disabled={addingNew}
+            >
               <Plus className="h-3 w-3 mr-1" /> Add Subtask
             </Button>
           )}
@@ -249,7 +304,13 @@ function SubtasksTabContent({ task, store, projectMembers }: any) {
 
       <div className="space-y-3">
         {subtasks.map((st: any) => (
-          <SubtaskRow key={st.id} subtask={st} store={store} projectMembers={projectMembers} />
+          <SubtaskRow
+            key={st.id}
+            subtask={st}
+            store={store}
+            projectMembers={projectMembers}
+            pipelines={pipelines}
+          />
         ))}
         {addingNew && (
           <SubtaskRow
@@ -257,6 +318,7 @@ function SubtasksTabContent({ task, store, projectMembers }: any) {
             onRemoveNew={() => setAddingNew(false)}
             subtask={{ taskId: task.id, projectId: task.projectId }}
             store={store}
+            pipelines={pipelines}
           />
         )}
       </div>
@@ -310,6 +372,8 @@ export function TaskDetailPanel({
     if (!task) return null;
     return store.workspaceProjects?.find((p: any) => p.id === task.projectId) || null;
   }, [task, store.workspaceProjects]);
+
+  const pipelines = useMemo(() => getProjectPipelines(taskProject), [taskProject]);
 
   const eligibleAssignees = useMemo(() => {
     if (!taskProject) return store.workspaceMembers || [];
@@ -455,10 +519,17 @@ export function TaskDetailPanel({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="todo">To Do</SelectItem>
-                    <SelectItem value="in_progress">In Progress</SelectItem>
-                    <SelectItem value="on_hold">On Hold</SelectItem>
-                    <SelectItem value="done">Done</SelectItem>
+                    {pipelines.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        <span className="flex items-center gap-2">
+                          <span
+                            className="h-2 w-2 rounded-full"
+                            style={{ backgroundColor: p.color }}
+                          />
+                          {p.name}
+                        </span>
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -721,7 +792,12 @@ export function TaskDetailPanel({
           </TabsContent>
 
           <TabsContent value="subtasks" className="m-0 px-6 focus-visible:outline-none focus-visible:ring-0">
-            <SubtasksTabContent task={task} store={store} projectMembers={eligibleAssignees} />
+            <SubtasksTabContent
+              task={task}
+              store={store}
+              projectMembers={eligibleAssignees}
+              pipelines={pipelines}
+            />
           </TabsContent>
         </Tabs>
       </SheetContent>

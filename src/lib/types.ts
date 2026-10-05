@@ -1,11 +1,14 @@
 
 export type Priority = 'low' | 'medium' | 'high' | 'urgent';
-export type Status = 'todo' | 'in_progress' | 'on_hold' | 'done';
+/** Built-in defaults; projects may define custom pipeline status ids. */
+export type Status = string;
 
 export interface Pipeline {
   id: string;
   name: string;
   color?: string;
+  /** closed statuses count as completed for progress / checkboxes */
+  category?: 'open' | 'closed';
 }
 
 export interface User {
@@ -45,6 +48,8 @@ export interface Project {
   description: string;
   color: string;
   allowedUserIds?: string[];
+  /** Custom board columns / statuses (ClickUp-style). Falls back to defaults when empty. */
+  pipelines?: Pipeline[];
   /** The user who created the project (used to mark them as project admin in UI). */
   createdByUserId?: string | null;
   createdAt: string;

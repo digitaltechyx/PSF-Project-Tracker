@@ -25,9 +25,10 @@ import {
   orderBy,
   addDoc
 } from 'firebase/firestore';
-import { Workspace, Project, Task, WorkspaceMember, Invitation, Subtask, AttendanceEntry } from '@/lib/types';
+import { Workspace, Project, Task, WorkspaceMember, Invitation, Subtask, AttendanceEntry, Pipeline } from '@/lib/types';
 import { createNotification, notifyTaskAssigned, notifyTaskUpdated, notifySubtaskAssigned } from '@/lib/notifications';
 import { sendWorkspaceInviteEmail } from '@/app/actions/send-workspace-invite-email';
+import { DEFAULT_PIPELINES } from '@/lib/pipelines';
 
 export function useNexusStore() {
   const { user, isAuthReady } = useUser();
@@ -898,6 +899,7 @@ export function useNexusStore() {
         color: '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0'),
         allowedUserIds: creatorId ? [creatorId] : [],
         createdByUserId: creatorId,
+        pipelines: DEFAULT_PIPELINES.map((p) => ({ ...p })),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
@@ -911,6 +913,10 @@ export function useNexusStore() {
       updateDocumentNonBlocking(ref, { allowedUserIds, updatedAt: new Date().toISOString() });
     },
     updateProject,
+    updateProjectPipelines: async (projectId: string, pipelines: Pipeline[]) => {
+      if (!pipelines.length) return;
+      await updateProject(projectId, { pipelines });
+    },
     deleteProject,
     createTask,
     updateTask,
