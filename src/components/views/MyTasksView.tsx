@@ -36,7 +36,6 @@ export function MyTasksView({ store }: { store: any }) {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-2xl font-bold font-headline">My Tasks</h2>
               {isTasksLoading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
             </div>
             <p className="text-sm text-muted-foreground">Everything assigned to you in {store.activeWorkspace?.name}.</p>

@@ -60,8 +60,7 @@ export function MembersView({ store, onInviteClick, isAdmin }: MembersViewProps)
     <div className="space-y-6 max-w-4xl mx-auto animate-in fade-in duration-500">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold font-headline">Team Members</h2>
-          <p className="text-sm text-muted-foreground">Manage roles and permissions for your workspace.</p>
+          <p className="text-sm text-muted-foreground">Manage roles and access for this workspace.</p>
         </div>
         {isAdmin && (
           <Button className="gap-2 shrink-0" onClick={onInviteClick}>
@@ -193,16 +192,6 @@ export function MembersView({ store, onInviteClick, isAdmin }: MembersViewProps)
           </div>
         </CardContent>
       </Card>
-
-      {!searchQuery && filteredMembers.length > 0 && (
-        <div className="bg-primary/5 rounded-xl p-8 text-center space-y-3">
-          <Mail className="h-8 w-8 text-primary mx-auto opacity-50" />
-          <h3 className="font-semibold">Collaborate with your team</h3>
-          <p className="text-sm text-muted-foreground max-w-sm mx-auto">
-            Members can assign tasks, share feedback, and track project progress together. Roles define what they can do.
-          </p>
-        </div>
-      )}
     </div>
   );
 }

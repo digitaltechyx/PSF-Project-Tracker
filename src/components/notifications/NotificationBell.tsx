@@ -17,10 +17,11 @@ import { Notification } from '@/lib/types';
 
 interface NotificationBellProps {
   onNavigateToTask: (wsId: string, projId: string, taskId: string) => void;
+  onViewAll?: () => void;
   markAsRead: (id: string) => void;
 }
 
-export function NotificationBell({ onNavigateToTask, markAsRead }: NotificationBellProps) {
+export function NotificationBell({ onNavigateToTask, onViewAll, markAsRead }: NotificationBellProps) {
   const { notifications, unreadCount, isLoading } = useNotifications(10);
   const [open, setOpen] = useState(false);
 
@@ -73,7 +74,15 @@ export function NotificationBell({ onNavigateToTask, markAsRead }: NotificationB
         </ScrollArea>
 
         <div className="p-2 border-t text-center bg-muted/30">
-          <Button variant="ghost" size="sm" className="w-full text-xs text-muted-foreground font-medium hover:text-primary transition-colors">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full text-xs text-muted-foreground font-medium hover:text-primary transition-colors"
+            onClick={() => {
+              setOpen(false);
+              onViewAll?.();
+            }}
+          >
             View Activity Feed
           </Button>
         </div>

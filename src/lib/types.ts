@@ -131,10 +131,11 @@ export interface Notification {
 }
 
 export interface AttendanceEntry {
-  id: string; // dateKey (document ID)
+  /** Document ID: `{userId}_{dateKey}` */
+  id: string;
   workspaceId: string;
   userId: string;
-  dateKey: string; // YYYY-MM-DD
+  dateKey: string; // YYYY-MM-DD (local)
   checkInTime: string; // ISO timestamp
   checkOutTime: string | null; // ISO timestamp, null until checkout
   createdAt: string;

@@ -11,14 +11,12 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Task, Priority, Status, Pipeline } from '@/lib/types';
 import { 
   Clock, 
   CheckCircle2, 
-  PauseCircle,
-  MoreVertical 
+  PauseCircle
 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
@@ -35,6 +33,13 @@ const getPipelineInfo = (pipelines: Pipeline[], statusId: string) => {
   return pipeline || { name: statusId, color: '#94a3b8' };
 };
 
+const DEFAULT_PIPELINES: Pipeline[] = [
+  { id: 'todo', name: 'To Do', color: '#94a3b8' },
+  { id: 'in_progress', name: 'In Progress', color: '#38bdf8' },
+  { id: 'on_hold', name: 'On Hold', color: '#f59e0b' },
+  { id: 'done', name: 'Done', color: '#22c55e' },
+];
+
 export function TaskList({ 
   tasks, 
   onTaskClick, 
@@ -43,7 +48,7 @@ export function TaskList({
   subtasks = [],
   workspaceMembers = [],
   currentUser = null,
-  pipelines = []
+  pipelines = DEFAULT_PIPELINES
 }: { 
   tasks: Task[], 
   onTaskClick: (id: string) => void,
@@ -73,7 +78,6 @@ export function TaskList({
             <TableHead>Priority</TableHead>
             <TableHead>Assignees</TableHead>
             <TableHead>Due Date</TableHead>
-            <TableHead className="text-right"></TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -180,11 +184,6 @@ export function TaskList({
               </TableCell>
               <TableCell className="text-muted-foreground text-xs">
                 {mounted && task.dueDate ? new Date(task.dueDate).toLocaleDateString() : (task.dueDate ? '...' : 'No date')}
-              </TableCell>
-              <TableCell className="text-right">
-                <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100">
-                  <MoreVertical className="h-4 w-4" />
-                </Button>
               </TableCell>
             </TableRow>
           ))}

@@ -335,9 +335,12 @@ export function TaskDetailPanel({
   if (!task) return null;
 
   const isAdmin = store.isAdmin;
+  const canEditFields = store.canEditTask ? store.canEditTask(taskId) : isAdmin;
+  const canManageMeta = isAdmin;
 
   const handleUpdate = (field: string, value: any) => {
-    if (!isAdmin) return;
+    if (!canEditFields) return;
+    if (!canManageMeta && (field === 'title' || field === 'assigneeUserIds' || field === 'assigneeUserId')) return;
     store.updateTask(taskId, { [field]: value });
   };
 
@@ -431,7 +434,7 @@ export function TaskDetailPanel({
             className="text-2xl font-bold border-none px-0 shadow-none focus-visible:ring-0 font-headline"
             value={localTitle}
             onChange={(e) => setLocalTitle(e.target.value)}
-            disabled={!isAdmin}
+            disabled={!canManageMeta}
           />
         </SheetHeader>
 
@@ -447,7 +450,7 @@ export function TaskDetailPanel({
             <div className="grid grid-cols-2 gap-6">
               <div className="space-y-2">
                 <Label className="text-xs text-muted-foreground uppercase font-bold tracking-tight">Status</Label>
-                <Select value={task.status} onValueChange={(val) => handleUpdate('status', val)} disabled={!isAdmin}>
+                <Select value={task.status} onValueChange={(val) => handleUpdate('status', val)} disabled={!canEditFields}>
                   <SelectTrigger className="h-9">
                     <SelectValue />
                   </SelectTrigger>
@@ -462,7 +465,7 @@ export function TaskDetailPanel({
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
                   <Label className="text-xs text-muted-foreground uppercase font-bold tracking-tight">Priority</Label>
-                  {isAdmin && (
+                  {canManageMeta && (
                     <Button
                       variant="ghost"
                       size="icon"
@@ -474,7 +477,7 @@ export function TaskDetailPanel({
                     </Button>
                   )}
                 </div>
-                <Select value={task.priority} onValueChange={(val) => handleUpdate('priority', val)} disabled={!isAdmin}>
+                <Select value={task.priority} onValueChange={(val) => handleUpdate('priority', val)} disabled={!canEditFields}>
                   <SelectTrigger className="h-9">
                     <SelectValue />
                   </SelectTrigger>
@@ -495,7 +498,7 @@ export function TaskDetailPanel({
                     className="pl-9 h-9"
                     value={task.dueDate ? task.dueDate.split('T')[0] : ''}
                     onChange={(e) => handleUpdate('dueDate', e.target.value ? new Date(e.target.value).toISOString() : null)}
-                    disabled={!isAdmin}
+                    disabled={!canEditFields}
                   />
                 </div>
               </div>
@@ -515,7 +518,7 @@ export function TaskDetailPanel({
                             handleUpdate('assigneeUserIds', currentAssignees.filter((id: string) => id !== m.userId));
                           }
                         }}
-                        disabled={!isAdmin}
+                        disabled={!canManageMeta}
                       />
                       <Label 
                         htmlFor={`task-assignee-${m.userId}`}
@@ -541,7 +544,7 @@ export function TaskDetailPanel({
                 <Label className="text-xs text-muted-foreground uppercase font-bold tracking-tight">
                   Description
                 </Label>
-                {isAdmin && (
+                {canManageMeta && (
                   <Button
                     variant="outline"
                     size="sm"
@@ -559,7 +562,7 @@ export function TaskDetailPanel({
                 className="min-h-[120px] leading-relaxed resize-none"
                 value={localDesc}
                 onChange={(e) => setLocalDesc(e.target.value)}
-                disabled={!isAdmin}
+                disabled={!canEditFields}
               />
             </div>
 
@@ -571,7 +574,7 @@ export function TaskDetailPanel({
                 {task.tags?.map((tag: string) => (
                   <Badge key={tag} variant="secondary" className="gap-1 px-2 py-1">
                     {tag}
-                    {isAdmin && (
+                    {canEditFields && (
                       <X
                         className="h-3 w-3 cursor-pointer hover:text-destructive"
                         onClick={() => handleUpdate('tags', task.tags.filter((t: string) => t !== tag))}
@@ -579,7 +582,7 @@ export function TaskDetailPanel({
                     )}
                   </Badge>
                 ))}
-                {isAdmin && !isAddingTag && (
+                {canEditFields && !isAddingTag && (
                   <Button
                     variant="ghost"
                     size="sm"
@@ -589,7 +592,7 @@ export function TaskDetailPanel({
                     <Plus className="h-3 w-3 mr-1" /> Add Tag
                   </Button>
                 )}
-                {isAdmin && isAddingTag && (
+                {canEditFields && isAddingTag && (
                   <Input
                     autoFocus
                     className="h-7 text-xs w-24 px-2 py-0 border-dashed rounded-full"

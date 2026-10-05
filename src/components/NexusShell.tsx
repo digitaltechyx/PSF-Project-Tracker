@@ -14,7 +14,8 @@ import {
   LogOut,
   Settings,
   Trash2,
-  Clock
+  Clock,
+  Menu
 } from 'lucide-react';
 import { useNexusStore } from '@/hooks/use-nexus-store';
 import { useAuth } from '@/firebase';
@@ -48,6 +49,7 @@ import { InviteMembersModal } from './invitations/InviteMembersModal';
 import { NotificationBell } from './notifications/NotificationBell';
 import { EditWorkspaceModal } from './workspaces/EditWorkspaceModal';
 import { DeleteWorkspaceButton } from './workspaces/DeleteWorkspaceButton';
+import { Sheet, SheetContent } from '@/components/ui/sheet';
 
 type ViewType = 'dashboard' | 'project' | 'members' | 'my-tasks' | 'notifications' | 'attendance';
 
@@ -56,6 +58,7 @@ export function NexusShell() {
   const auth = useAuth();
   const [currentView, setCurrentView] = useState<ViewType>('dashboard');
   const [mounted, setMounted] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   
   // Dialog States
   const [isWsDialogOpen, setIsWsDialogOpen] = useState(false);
@@ -72,14 +75,16 @@ export function NexusShell() {
     setMounted(true);
   }, []);
 
-  const handleProjectClick = (id: string) => {
-    store.selectProject(id);
-    setCurrentView('project');
-  };
-
   const handleNavClick = (view: ViewType) => {
     if (view !== 'project') store.selectProject(null);
     setCurrentView(view);
+    setMobileNavOpen(false);
+  };
+
+  const handleProjectClick = (id: string) => {
+    store.selectProject(id);
+    setCurrentView('project');
+    setMobileNavOpen(false);
   };
 
   const handleNavigateToTask = (wsId: string, projId: string, taskId: string) => {
@@ -117,8 +122,8 @@ export function NexusShell() {
 
   return (
     <div className="flex h-screen w-full bg-background overflow-hidden">
-      {/* Sidebar */}
-      <aside className="w-64 border-r bg-card flex flex-col">
+      {/* Sidebar — desktop */}
+      <aside className="hidden md:flex w-64 border-r bg-card flex-col">
         <div className="p-4 border-b flex items-center justify-between gap-2">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -200,16 +205,14 @@ export function NexusShell() {
               <Bell className="h-4 w-4" />
               Activity Feed
             </Button>
-            {store.isAdmin && (
-              <Button 
-                variant={currentView === 'attendance' ? 'secondary' : 'ghost'} 
-                className="w-full justify-start gap-3"
-                onClick={() => handleNavClick('attendance')}
-              >
-                <Clock className="h-4 w-4" />
-                Attendance Log
-              </Button>
-            )}
+            <Button 
+              variant={currentView === 'attendance' ? 'secondary' : 'ghost'} 
+              className="w-full justify-start gap-3"
+              onClick={() => handleNavClick('attendance')}
+            >
+              <Clock className="h-4 w-4" />
+              {store.isAdmin ? 'Time & Attendance' : 'My Time'}
+            </Button>
             <Button 
               variant={currentView === 'members' ? 'secondary' : 'ghost'} 
               className="w-full justify-start gap-3"
@@ -271,20 +274,28 @@ export function NexusShell() {
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col relative">
-        <header className="h-16 border-b flex items-center justify-between px-6 bg-card/50 backdrop-blur-md sticky top-0 z-10">
-          <div className="flex items-center gap-4">
-            <h1 className="text-xl font-bold font-headline">
-              {currentView === 'dashboard' ? 'Workspace Overview' : 
-               currentView === 'members' ? 'Team Members' : 
-               currentView === 'my-tasks' ? 'Personal Taskboard' :
-               currentView === 'notifications' ? 'Activity Feed' :
-               currentView === 'attendance' ? 'Attendance Log' :
+        <header className="h-14 border-b flex items-center justify-between px-4 md:px-6 bg-card/50 backdrop-blur-md sticky top-0 z-10">
+          <div className="flex items-center gap-3 min-w-0">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="md:hidden h-9 w-9 shrink-0"
+              onClick={() => setMobileNavOpen(true)}
+            >
+              <Menu className="h-5 w-5" />
+            </Button>
+            <h1 className="text-lg md:text-xl font-bold font-headline truncate">
+              {currentView === 'dashboard' ? 'Home' : 
+               currentView === 'members' ? 'Members' : 
+               currentView === 'my-tasks' ? 'My Tasks' :
+               currentView === 'notifications' ? 'Inbox' :
+               currentView === 'attendance' ? (store.isAdmin ? 'Time & Attendance' : 'My Time') :
                store.activeProject?.name || 'Project'}
             </h1>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 md:gap-3">
             {currentView !== 'dashboard' && currentView !== 'notifications' && currentView !== 'members' && currentView !== 'attendance' && (
-              <div className="relative w-64 animate-in fade-in duration-300">
+              <div className="relative w-40 sm:w-64 animate-in fade-in duration-300">
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input 
                   placeholder="Search..." 
@@ -295,7 +306,8 @@ export function NexusShell() {
               </div>
             )}
             <NotificationBell 
-              onNavigateToTask={handleNavigateToTask} 
+              onNavigateToTask={handleNavigateToTask}
+              onViewAll={() => handleNavClick('notifications')}
               markAsRead={store.markNotificationAsRead} 
             />
           </div>
@@ -314,7 +326,7 @@ export function NexusShell() {
             <MembersView 
               store={store} 
               onInviteClick={() => setIsInviteOpen(true)} 
-              isAdmin={store.isOwner}
+              isAdmin={store.isAdmin}
             />
           )}
           {currentView === 'my-tasks' && <MyTasksView store={store} />}
@@ -324,6 +336,50 @@ export function NexusShell() {
           {currentView === 'attendance' && <AttendanceLogView store={store} />}
         </main>
       </div>
+
+      <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
+        <SheetContent side="left" className="p-0 w-72">
+          <div className="flex flex-col h-full bg-card">
+            <div className="p-4 border-b">
+              <p className="text-sm font-semibold truncate">{store.activeWorkspace?.name}</p>
+              <p className="text-xs text-muted-foreground">Navigation</p>
+            </div>
+            <ScrollArea className="flex-1 px-3 py-4">
+              <div className="space-y-1 mb-6">
+                <Button variant={currentView === 'dashboard' ? 'secondary' : 'ghost'} className="w-full justify-start gap-3" onClick={() => handleNavClick('dashboard')}>
+                  <LayoutDashboard className="h-4 w-4" /> Home
+                </Button>
+                <Button variant={currentView === 'my-tasks' ? 'secondary' : 'ghost'} className="w-full justify-start gap-3" onClick={() => handleNavClick('my-tasks')}>
+                  <ListTodo className="h-4 w-4" /> My Tasks
+                </Button>
+                <Button variant={currentView === 'notifications' ? 'secondary' : 'ghost'} className="w-full justify-start gap-3" onClick={() => handleNavClick('notifications')}>
+                  <Bell className="h-4 w-4" /> Inbox
+                </Button>
+                <Button variant={currentView === 'attendance' ? 'secondary' : 'ghost'} className="w-full justify-start gap-3" onClick={() => handleNavClick('attendance')}>
+                  <Clock className="h-4 w-4" /> {store.isAdmin ? 'Time & Attendance' : 'My Time'}
+                </Button>
+                <Button variant={currentView === 'members' ? 'secondary' : 'ghost'} className="w-full justify-start gap-3" onClick={() => handleNavClick('members')}>
+                  <Users className="h-4 w-4" /> Members
+                </Button>
+              </div>
+              <div className="space-y-1">
+                <p className="px-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Projects</p>
+                {store.workspaceProjects?.map((p: any) => (
+                  <Button
+                    key={p.id}
+                    variant={store.activeProject?.id === p.id && currentView === 'project' ? 'secondary' : 'ghost'}
+                    className="w-full justify-start gap-3 font-normal"
+                    onClick={() => handleProjectClick(p.id)}
+                  >
+                    <Box className="h-4 w-4" style={{ color: p.color }} />
+                    <span className="truncate">{p.name}</span>
+                  </Button>
+                ))}
+              </div>
+            </ScrollArea>
+          </div>
+        </SheetContent>
+      </Sheet>
 
       {/* Global Dialogs */}
       <Dialog open={isWsDialogOpen} onOpenChange={setIsWsDialogOpen}>

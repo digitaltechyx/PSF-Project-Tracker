@@ -87,7 +87,7 @@ export function KanbanBoard({
   };
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 h-full min-h-[600px] pb-10">
+    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 h-full min-h-[600px] pb-10">
       {columns.map(col => {
         const columnTasks = tasks.filter(t => t.status === col.id);
         

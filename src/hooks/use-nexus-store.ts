@@ -193,13 +193,11 @@ export function useNexusStore() {
   const { data: invitesData } = useCollection(invitesQuery);
   const workspaceInvitations = useMemo(() => (invitesData || []).filter((i: any) => i.status === 'active'), [invitesData]);
 
-  // Query for all attendance entries in workspace (for admins)
-  // Use collectionGroup to get all attendance documents across the workspace
+  // All attendance in this workspace (admins only) — hierarchical path so rules can use isWorkspaceAdmin(workspaceId)
   const allAttendanceQuery = useMemoFirebase(() => {
     const wsId = activeWorkspace?.id;
     if (!db || !wsId || wsId === '' || !isAuthReady || !isAdmin) return null;
-    // Use collectionGroup to get all attendance documents with this workspaceId
-    return query(collectionGroup(db, 'attendance'), where('workspaceId', '==', wsId));
+    return query(collection(db, 'workspaces', wsId, 'attendance'), orderBy('dateKey', 'desc'), limit(200));
   }, [db, activeWorkspace?.id, isAuthReady, isAdmin]);
 
   const { data: allAttendanceData, isLoading: isAllAttendanceLoading } = useCollection<AttendanceEntry>(allAttendanceQuery);
@@ -229,6 +227,21 @@ export function useNexusStore() {
 
   const { data: todayAttendanceData, isLoading: isAttendanceLoading } = useDoc<AttendanceEntry>(attendanceDocRef);
   const todayAttendance = useMemo(() => todayAttendanceData, [todayAttendanceData]);
+
+  // Personal attendance history (last ~30 days)
+  const myAttendanceQuery = useMemoFirebase(() => {
+    const wsId = activeWorkspace?.id;
+    if (!db || !wsId || !user?.uid || !isAuthReady) return null;
+    return query(
+      collection(db, 'workspaces', wsId, 'attendance'),
+      where('userId', '==', user.uid),
+      orderBy('dateKey', 'desc'),
+      limit(30)
+    );
+  }, [db, activeWorkspace?.id, user?.uid, isAuthReady]);
+
+  const { data: myAttendanceData, isLoading: isMyAttendanceLoading } = useCollection<AttendanceEntry>(myAttendanceQuery);
+  const myAttendanceHistory = useMemo(() => myAttendanceData || [], [myAttendanceData]);
 
   const cancelInvitation = useCallback(async (inviteId: string) => {
     if (!db || !isAdmin) return;
@@ -712,20 +725,20 @@ export function useNexusStore() {
     }
   }, [db, isAdmin, user, activeWorkspace?.id]);
 
-  const checkIn = useCallback(async () => {
+  const checkIn = useCallback(async (): Promise<{ ok: boolean; reason?: string }> => {
     const wsId = activeWorkspace?.id;
-    if (!db || !user?.uid || !wsId) return;
-    
-    // Guard: if already checked in today, don't overwrite
+    if (!db || !user?.uid || !wsId) {
+      throw new Error('Unable to check in right now.');
+    }
+
     if (todayAttendance?.checkInTime) {
-      console.log("Already checked in today");
-      return;
+      return { ok: false, reason: 'already_checked_in' };
     }
 
     const dateKey = getTodayDateKey();
     const docId = `${user.uid}_${dateKey}`;
     const attendanceRef = doc(db, 'workspaces', wsId, 'attendance', docId);
-    
+
     const attendanceData: AttendanceEntry = {
       id: docId,
       workspaceId: wsId,
@@ -739,47 +752,38 @@ export function useNexusStore() {
 
     try {
       await setDocumentNonBlocking(attendanceRef, attendanceData, { merge: true });
+      return { ok: true };
     } catch (e) {
-      console.error("Failed to check in:", e);
+      console.error('Failed to check in:', e);
       throw e;
     }
   }, [db, user, activeWorkspace?.id, todayAttendance, getTodayDateKey]);
 
-  const checkOut = useCallback(async () => {
+  const checkOut = useCallback(async (): Promise<{ ok: boolean; reason?: string }> => {
     const wsId = activeWorkspace?.id;
-    if (!db || !user?.uid || !wsId) return;
-    
-    // Guard: if not checked in or already checked out, don't proceed
-    if (!todayAttendance?.checkInTime) {
-      console.log("Not checked in yet");
-      return;
-    }
-    if (todayAttendance?.checkOutTime) {
-      console.log("Already checked out today");
-      return;
+    if (!db || !user?.uid || !wsId) {
+      throw new Error('Unable to check out right now.');
     }
 
-    // Guard: must wait at least 8 hours after check-in before checking out
-    const checkInTime = new Date(todayAttendance.checkInTime);
-    const now = new Date();
-    const hoursSinceCheckIn = (now.getTime() - checkInTime.getTime()) / (1000 * 60 * 60);
-    if (hoursSinceCheckIn < 8) {
-      const hoursRemaining = Math.ceil(8 - hoursSinceCheckIn);
-      console.log(`Must wait ${hoursRemaining} more hours before checking out`);
-      throw new Error(`Must wait at least 8 hours after check-in. ${hoursRemaining} hours remaining.`);
+    if (!todayAttendance?.checkInTime) {
+      return { ok: false, reason: 'not_checked_in' };
+    }
+    if (todayAttendance?.checkOutTime) {
+      return { ok: false, reason: 'already_checked_out' };
     }
 
     const dateKey = getTodayDateKey();
     const docId = `${user.uid}_${dateKey}`;
     const attendanceRef = doc(db, 'workspaces', wsId, 'attendance', docId);
-    
+
     try {
       await updateDocumentNonBlocking(attendanceRef, {
         checkOutTime: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       });
+      return { ok: true };
     } catch (e) {
-      console.error("Failed to check out:", e);
+      console.error('Failed to check out:', e);
       throw e;
     }
   }, [db, user, activeWorkspace?.id, todayAttendance, getTodayDateKey]);
@@ -807,6 +811,8 @@ export function useNexusStore() {
     currentRole,
     todayAttendance,
     isAttendanceLoading,
+    myAttendanceHistory,
+    isMyAttendanceLoading,
     allWorkspaceAttendance,
     isAllAttendanceLoading,
     setGlobalSearchQuery,
