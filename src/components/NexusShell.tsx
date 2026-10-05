@@ -123,11 +123,11 @@ export function NexusShell() {
   return (
     <div className="flex h-screen w-full bg-background overflow-hidden">
       {/* Sidebar — desktop */}
-      <aside className="hidden md:flex w-64 border-r bg-card flex-col">
-        <div className="p-4 border-b flex items-center justify-between gap-2">
+      <aside className="app-sidebar hidden md:flex w-[260px] flex-col shrink-0">
+        <div className="p-4 border-b border-white/10 flex items-center justify-between gap-2">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="flex-1 justify-between hover:bg-muted font-semibold px-2 overflow-hidden">
+              <Button variant="ghost" className="flex-1 justify-between hover:bg-white/10 text-white font-semibold px-2 overflow-hidden">
                 <div className="flex items-center gap-2 overflow-hidden">
                   <div 
                     className="w-5 h-5 rounded flex-shrink-0" 
@@ -182,49 +182,54 @@ export function NexusShell() {
         <ScrollArea className="flex-1 px-3 py-4">
           <div className="space-y-1 mb-6">
             <Button 
-              variant={currentView === 'dashboard' ? 'secondary' : 'ghost'} 
-              className="w-full justify-start gap-3"
+              variant="ghost"
+              data-active={currentView === 'dashboard'}
+              className="sidebar-nav-btn"
               onClick={() => handleNavClick('dashboard')}
             >
               <LayoutDashboard className="h-4 w-4" />
-              Dashboard
+              Home
             </Button>
             <Button 
-              variant={currentView === 'my-tasks' ? 'secondary' : 'ghost'} 
-              className="w-full justify-start gap-3"
+              variant="ghost"
+              data-active={currentView === 'my-tasks'}
+              className="sidebar-nav-btn"
               onClick={() => handleNavClick('my-tasks')}
             >
               <ListTodo className="h-4 w-4" />
               My Tasks
             </Button>
             <Button 
-              variant={currentView === 'notifications' ? 'secondary' : 'ghost'} 
-              className="w-full justify-start gap-3"
+              variant="ghost"
+              data-active={currentView === 'notifications'}
+              className="sidebar-nav-btn"
               onClick={() => handleNavClick('notifications')}
             >
               <Bell className="h-4 w-4" />
-              Activity Feed
+              Inbox
             </Button>
             <Button 
-              variant={currentView === 'attendance' ? 'secondary' : 'ghost'} 
-              className="w-full justify-start gap-3"
+              variant="ghost"
+              data-active={currentView === 'attendance'}
+              className="sidebar-nav-btn"
               onClick={() => handleNavClick('attendance')}
             >
               <Clock className="h-4 w-4" />
-              {store.isAdmin ? 'Time & Attendance' : 'My Time'}
+              {store.isAdmin ? 'Team time' : 'My time'}
             </Button>
             <Button 
-              variant={currentView === 'members' ? 'secondary' : 'ghost'} 
-              className="w-full justify-start gap-3"
+              variant="ghost"
+              data-active={currentView === 'members'}
+              className="sidebar-nav-btn"
               onClick={() => handleNavClick('members')}
             >
               <Users className="h-4 w-4" />
-              Members
+              People
             </Button>
           </div>
 
           <div className="space-y-4">
-            <div className="flex items-center justify-between px-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+            <div className="flex items-center justify-between px-2 text-[10px] font-semibold text-white/50 uppercase tracking-wider">
               Projects
               {store.isAdmin && (
                 <Button 
@@ -241,8 +246,9 @@ export function NexusShell() {
               {store.workspaceProjects?.map(p => (
                 <Button 
                   key={p.id} 
-                  variant={store.activeProject?.id === p.id && currentView === 'project' ? 'secondary' : 'ghost'} 
-                  className="w-full justify-start gap-3 font-normal"
+                  variant="ghost"
+                  data-active={store.activeProject?.id === p.id && currentView === 'project'}
+                  className="sidebar-nav-btn font-normal"
                   onClick={() => handleProjectClick(p.id)}
                 >
                   <Box className="h-4 w-4" style={{ color: p.color }} />
@@ -253,19 +259,19 @@ export function NexusShell() {
           </div>
         </ScrollArea>
 
-        <div className="p-4 border-t mt-auto">
+        <div className="p-4 border-t border-white/10 mt-auto">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 overflow-hidden">
-              <Avatar className="h-8 w-8">
+              <Avatar className="h-8 w-8 ring-2 ring-white/20">
                 <AvatarImage src={store.currentUser.avatarUrl ?? undefined} />
-                <AvatarFallback>{store.currentUser.name?.charAt(0)}</AvatarFallback>
+                <AvatarFallback className="bg-white/10 text-white">{store.currentUser.name?.charAt(0)}</AvatarFallback>
               </Avatar>
               <div className="flex flex-col overflow-hidden">
-                <span className="text-sm font-semibold truncate">{store.currentUser.name}</span>
-                <span className="text-xs text-muted-foreground truncate uppercase">{store.currentRole}</span>
+                <span className="text-sm font-semibold truncate text-white">{store.currentUser.name}</span>
+                <span className="text-[10px] text-white/50 truncate uppercase">{store.currentRole}</span>
               </div>
             </div>
-            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" onClick={handleLogout}>
+            <Button variant="ghost" size="icon" className="h-8 w-8 text-white/60 hover:text-white hover:bg-white/10" onClick={handleLogout}>
               <LogOut className="h-4 w-4" />
             </Button>
           </div>
@@ -285,11 +291,11 @@ export function NexusShell() {
               <Menu className="h-5 w-5" />
             </Button>
             <h1 className="text-lg md:text-xl font-bold font-headline truncate">
-              {currentView === 'dashboard' ? 'Home' : 
-               currentView === 'members' ? 'Members' : 
+              {currentView === 'dashboard' ? '' : 
+               currentView === 'members' ? 'People' : 
                currentView === 'my-tasks' ? 'My Tasks' :
                currentView === 'notifications' ? 'Inbox' :
-               currentView === 'attendance' ? (store.isAdmin ? 'Time & Attendance' : 'My Time') :
+               currentView === 'attendance' ? (store.isAdmin ? 'Team time' : 'My time') :
                store.activeProject?.name || 'Project'}
             </h1>
           </div>
@@ -313,7 +319,7 @@ export function NexusShell() {
           </div>
         </header>
 
-        <main className="flex-1 overflow-auto bg-background p-6">
+        <main className="flex-1 overflow-auto app-main-surface p-4 md:p-6">
           {currentView === 'dashboard' && (
             <DashboardView
               store={store}
@@ -338,37 +344,38 @@ export function NexusShell() {
       </div>
 
       <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
-        <SheetContent side="left" className="p-0 w-72">
-          <div className="flex flex-col h-full bg-card">
-            <div className="p-4 border-b">
-              <p className="text-sm font-semibold truncate">{store.activeWorkspace?.name}</p>
-              <p className="text-xs text-muted-foreground">Navigation</p>
+        <SheetContent side="left" className="p-0 w-72 border-none app-sidebar">
+          <div className="flex flex-col h-full">
+            <div className="p-4 border-b border-white/10">
+              <p className="text-sm font-semibold truncate text-white">{store.activeWorkspace?.name}</p>
+              <p className="text-xs text-white/50">Menu</p>
             </div>
             <ScrollArea className="flex-1 px-3 py-4">
               <div className="space-y-1 mb-6">
-                <Button variant={currentView === 'dashboard' ? 'secondary' : 'ghost'} className="w-full justify-start gap-3" onClick={() => handleNavClick('dashboard')}>
+                <Button variant="ghost" data-active={currentView === 'dashboard'} className="sidebar-nav-btn" onClick={() => handleNavClick('dashboard')}>
                   <LayoutDashboard className="h-4 w-4" /> Home
                 </Button>
-                <Button variant={currentView === 'my-tasks' ? 'secondary' : 'ghost'} className="w-full justify-start gap-3" onClick={() => handleNavClick('my-tasks')}>
+                <Button variant="ghost" data-active={currentView === 'my-tasks'} className="sidebar-nav-btn" onClick={() => handleNavClick('my-tasks')}>
                   <ListTodo className="h-4 w-4" /> My Tasks
                 </Button>
-                <Button variant={currentView === 'notifications' ? 'secondary' : 'ghost'} className="w-full justify-start gap-3" onClick={() => handleNavClick('notifications')}>
+                <Button variant="ghost" data-active={currentView === 'notifications'} className="sidebar-nav-btn" onClick={() => handleNavClick('notifications')}>
                   <Bell className="h-4 w-4" /> Inbox
                 </Button>
-                <Button variant={currentView === 'attendance' ? 'secondary' : 'ghost'} className="w-full justify-start gap-3" onClick={() => handleNavClick('attendance')}>
-                  <Clock className="h-4 w-4" /> {store.isAdmin ? 'Time & Attendance' : 'My Time'}
+                <Button variant="ghost" data-active={currentView === 'attendance'} className="sidebar-nav-btn" onClick={() => handleNavClick('attendance')}>
+                  <Clock className="h-4 w-4" /> {store.isAdmin ? 'Team time' : 'My time'}
                 </Button>
-                <Button variant={currentView === 'members' ? 'secondary' : 'ghost'} className="w-full justify-start gap-3" onClick={() => handleNavClick('members')}>
-                  <Users className="h-4 w-4" /> Members
+                <Button variant="ghost" data-active={currentView === 'members'} className="sidebar-nav-btn" onClick={() => handleNavClick('members')}>
+                  <Users className="h-4 w-4" /> People
                 </Button>
               </div>
               <div className="space-y-1">
-                <p className="px-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Projects</p>
+                <p className="px-2 text-[10px] font-semibold text-white/50 uppercase tracking-wider mb-2">Projects</p>
                 {store.workspaceProjects?.map((p: any) => (
                   <Button
                     key={p.id}
-                    variant={store.activeProject?.id === p.id && currentView === 'project' ? 'secondary' : 'ghost'}
-                    className="w-full justify-start gap-3 font-normal"
+                    variant="ghost"
+                    data-active={store.activeProject?.id === p.id && currentView === 'project'}
+                    className="sidebar-nav-btn font-normal"
                     onClick={() => handleProjectClick(p.id)}
                   >
                     <Box className="h-4 w-4" style={{ color: p.color }} />

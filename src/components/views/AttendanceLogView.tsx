@@ -19,11 +19,13 @@ import {
   formatAttendanceDate,
   formatAttendanceTime,
   formatDuration,
-  getAttendanceDurationMs,
+  getBreakMs,
+  getWorkMs,
   getAttendanceStatus,
+  statusLabel,
 } from '@/lib/attendance';
 import { AttendanceEntry } from '@/lib/types';
-import { AttendanceCard } from '@/components/dashboard/AttendanceCard';
+import { TimeTrackingWidget } from '@/components/dashboard/TimeTrackingWidget';
 
 export function AttendanceLogView({ store }: { store: any }) {
   const {
@@ -65,6 +67,7 @@ export function AttendanceLogView({ store }: { store: any }) {
     const byUser = new Map(todayEntries.map((e) => [e.userId, e]));
     const members = workspaceMembers || [];
     const working: any[] = [];
+    const onBreak: any[] = [];
     const done: any[] = [];
     const away: any[] = [];
 
@@ -73,11 +76,12 @@ export function AttendanceLogView({ store }: { store: any }) {
       const status = getAttendanceStatus(entry);
       const row = { member: m, entry, status };
       if (status === 'working') working.push(row);
+      else if (status === 'on_break') onBreak.push(row);
       else if (status === 'done') done.push(row);
       else away.push(row);
     });
 
-    return { working, done, away };
+    return { working, onBreak, done, away };
   }, [todayEntries, workspaceMembers]);
 
   const filteredHistory = useMemo(() => {
@@ -120,13 +124,14 @@ export function AttendanceLogView({ store }: { store: any }) {
     const startKey = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`;
     return myHistory
       .filter((e: AttendanceEntry) => e.dateKey >= startKey)
-      .reduce((sum: number, e: AttendanceEntry) => sum + getAttendanceDurationMs(e, now), 0);
+      .reduce((sum: number, e: AttendanceEntry) => sum + getWorkMs(e, now), 0);
   }, [myHistory, now]);
 
   const renderMemberRow = (entry: AttendanceEntry, showName = true) => {
     const member = memberMap.get(entry.userId);
     const status = getAttendanceStatus(entry);
-    const duration = formatDuration(getAttendanceDurationMs(entry, now));
+    const work = formatDuration(getWorkMs(entry, now));
+    const brk = formatDuration(getBreakMs(entry, now));
     return (
       <div
         key={entry.id}
@@ -153,14 +158,21 @@ export function AttendanceLogView({ store }: { store: any }) {
                 {formatAttendanceTime(entry.checkOutTime, mounted)}
               </span>
             )}
-            <span className="font-medium text-foreground/80">{duration}</span>
+            <span className="font-medium text-foreground/80">Work {work}</span>
+            {brk !== '0m' && <span className="text-amber-700">Break {brk}</span>}
           </div>
         </div>
         <Badge
           variant={status === 'working' ? 'default' : 'secondary'}
-          className={status === 'working' ? 'bg-emerald-600 hover:bg-emerald-600' : ''}
+          className={
+            status === 'working'
+              ? 'bg-emerald-600 hover:bg-emerald-600'
+              : status === 'on_break'
+                ? 'bg-amber-500 hover:bg-amber-500 text-white'
+                : ''
+          }
         >
-          {status === 'working' ? 'Working' : status === 'done' ? 'Done' : 'Away'}
+          {statusLabel(status)}
         </Badge>
       </div>
     );
@@ -169,7 +181,7 @@ export function AttendanceLogView({ store }: { store: any }) {
   const memberContent = (
     <div className="space-y-6">
       <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-6">
-        <AttendanceCard store={store} />
+        <TimeTrackingWidget store={store} />
         <Card className="border-border/60 shadow-sm">
           <CardContent className="p-5 space-y-4">
             <div className="flex items-center justify-between">
@@ -194,7 +206,7 @@ export function AttendanceLogView({ store }: { store: any }) {
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-sm font-medium">{formatAttendanceDate(entry.dateKey, mounted)}</p>
                       <span className="text-xs font-semibold tabular-nums">
-                        {formatDuration(getAttendanceDurationMs(entry, now))}
+                        {formatDuration(getWorkMs(entry, now))}
                       </span>
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">
@@ -202,6 +214,8 @@ export function AttendanceLogView({ store }: { store: any }) {
                       {entry.checkOutTime
                         ? ` → ${formatAttendanceTime(entry.checkOutTime, mounted)}`
                         : ' · in progress'}
+                      {' · '}Work {formatDuration(getWorkMs(entry, now))} · Break{' '}
+                      {formatDuration(getBreakMs(entry, now))}
                     </p>
                   </div>
                 ))}
@@ -247,11 +261,17 @@ export function AttendanceLogView({ store }: { store: any }) {
         </TabsList>
 
         <TabsContent value="team" className="space-y-6 mt-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <Card className="border-border/60 shadow-sm">
               <CardContent className="p-4">
-                <p className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">Working now</p>
+                <p className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">Working</p>
                 <p className="text-3xl font-semibold mt-1 text-emerald-600">{presence.working.length}</p>
+              </CardContent>
+            </Card>
+            <Card className="border-border/60 shadow-sm">
+              <CardContent className="p-4">
+                <p className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">On break</p>
+                <p className="text-3xl font-semibold mt-1 text-amber-600">{presence.onBreak.length}</p>
               </CardContent>
             </Card>
             <Card className="border-border/60 shadow-sm">
@@ -262,15 +282,16 @@ export function AttendanceLogView({ store }: { store: any }) {
             </Card>
             <Card className="border-border/60 shadow-sm">
               <CardContent className="p-4">
-                <p className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">Not checked in</p>
+                <p className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">Away</p>
                 <p className="text-3xl font-semibold mt-1 text-muted-foreground">{presence.away.length}</p>
               </CardContent>
             </Card>
           </div>
 
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 xl:grid-cols-4 gap-4">
             {[
-              { title: 'Working', rows: presence.working, empty: 'Nobody is checked in.' },
+              { title: 'Working', rows: presence.working, empty: 'Nobody is working.' },
+              { title: 'On break', rows: presence.onBreak, empty: 'Nobody on break.' },
               { title: 'Completed', rows: presence.done, empty: 'No completed check-outs yet.' },
               { title: 'Away', rows: presence.away, empty: 'Everyone has checked in.' },
             ].map((col) => (

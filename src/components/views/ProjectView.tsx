@@ -187,10 +187,10 @@ export function ProjectView({ store }: { store: any }) {
   if (!activeProject) return null;
 
   return (
-    <div className="flex flex-col h-full space-y-6">
+    <div className="flex flex-col h-full space-y-6 max-w-[1400px] mx-auto w-full">
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-1 bg-muted/50 p-1 rounded-md w-fit">
+          <div className="view-toolbar w-fit">
           <Button 
             variant={view === 'list' ? 'secondary' : 'ghost'} 
             size="sm" 

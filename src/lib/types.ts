@@ -130,6 +130,11 @@ export interface Notification {
   createdAt: string;
 }
 
+export interface AttendanceBreak {
+  startTime: string;
+  endTime?: string | null;
+}
+
 export interface AttendanceEntry {
   /** Document ID: `{userId}_{dateKey}` */
   id: string;
@@ -138,6 +143,10 @@ export interface AttendanceEntry {
   dateKey: string; // YYYY-MM-DD (local)
   checkInTime: string; // ISO timestamp
   checkOutTime: string | null; // ISO timestamp, null until checkout
+  /** Break segments for the day (open break has no endTime). */
+  breaks?: AttendanceBreak[];
+  /** Cached total break ms (optional, updated on check-out). */
+  totalBreakMs?: number;
   createdAt: string;
   updatedAt: string;
 }

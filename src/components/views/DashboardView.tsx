@@ -16,7 +16,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
 import { TodayCard } from '@/components/dashboard/TodayCard';
-import { AttendanceCard } from '@/components/dashboard/AttendanceCard';
+import { TimeTrackingWidget } from '@/components/dashboard/TimeTrackingWidget';
 import { TaskDetailPanel } from '@/components/tasks/TaskDetailPanel';
 
 export function DashboardView({
@@ -81,70 +81,73 @@ export function DashboardView({
   }
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-        <Card className="bg-card shadow-sm border-none">
-          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-            <CardTitle className="text-sm font-medium">Projects</CardTitle>
-            <FolderKanban className="h-4 w-4 text-primary" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.totalProjects}</div>
-            <p className="text-xs text-muted-foreground mt-1 truncate">In {activeWorkspace.name}</p>
-          </CardContent>
-        </Card>
-        <Card className="bg-card shadow-sm border-none">
-          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-            <CardTitle className="text-sm font-medium">Total Tasks</CardTitle>
-            <CheckCircle2 className="h-4 w-4 text-green-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.totalTasks}</div>
-            <div className="mt-2">
-              <Progress value={completionRate} className="h-1.5" />
-              <p className="text-[10px] text-muted-foreground mt-1">
-                {mounted ? Math.round(completionRate) : '0'}% completed
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="bg-card shadow-sm border-none">
-          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-            <CardTitle className="text-sm font-medium">Planned Tasks</CardTitle>
-            <CalendarDays className="h-4 w-4 text-accent" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.todo + stats.inProgress}</div>
-            <p className="text-xs text-muted-foreground mt-1">Needs attention</p>
-          </CardContent>
-        </Card>
-        <Card className="bg-card shadow-sm border-none">
-          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-            <CardTitle className="text-sm font-medium">On Hold Tasks</CardTitle>
-            <PauseCircle className="h-4 w-4 text-amber-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.onHold}</div>
-            <p className="text-xs text-muted-foreground mt-1">Paused items</p>
-          </CardContent>
-        </Card>
-        <Card className="bg-card shadow-sm border-none">
-          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-            <CardTitle className="text-sm font-medium">Critical</CardTitle>
-            <AlertCircle className="h-4 w-4 text-destructive" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{mounted ? stats.overdue + stats.urgent : '...'}</div>
-            <p className="text-xs text-muted-foreground mt-1">Overdue or Urgent</p>
-          </CardContent>
-        </Card>
-        <AttendanceCard store={store} />
+    <div className="max-w-[1400px] mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
+      <div className="flex flex-col gap-1">
+        <h2 className="text-2xl font-bold tracking-tight">
+          Good {mounted && new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening'}
+          {store.currentUser?.name ? `, ${store.currentUser.name.split(' ')[0]}` : ''}
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          {activeWorkspace?.name} · {stats.totalTasks} tasks across {stats.totalProjects} projects
+        </p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card className="shadow-sm border-none">
+      <TimeTrackingWidget store={store} />
+
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+        <Card className="bg-card/80 shadow-sm border border-border/50">
+          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0 py-3">
+            <CardTitle className="text-xs font-medium text-muted-foreground">Projects</CardTitle>
+            <FolderKanban className="h-4 w-4 text-primary/80" />
+          </CardHeader>
+          <CardContent className="pt-0 pb-4">
+            <div className="text-xl font-bold">{stats.totalProjects}</div>
+          </CardContent>
+        </Card>
+        <Card className="bg-card/80 shadow-sm border border-border/50">
+          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0 py-3">
+            <CardTitle className="text-xs font-medium text-muted-foreground">Tasks</CardTitle>
+            <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+          </CardHeader>
+          <CardContent className="pt-0 pb-4">
+            <div className="text-xl font-bold">{stats.totalTasks}</div>
+            <Progress value={completionRate} className="h-1 mt-2" />
+            <p className="text-[10px] text-muted-foreground mt-1">{mounted ? Math.round(completionRate) : 0}% done</p>
+          </CardContent>
+        </Card>
+        <Card className="bg-card/80 shadow-sm border border-border/50">
+          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0 py-3">
+            <CardTitle className="text-xs font-medium text-muted-foreground">Active</CardTitle>
+            <CalendarDays className="h-4 w-4 text-accent" />
+          </CardHeader>
+          <CardContent className="pt-0 pb-4">
+            <div className="text-xl font-bold">{stats.todo + stats.inProgress}</div>
+          </CardContent>
+        </Card>
+        <Card className="bg-card/80 shadow-sm border border-border/50">
+          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0 py-3">
+            <CardTitle className="text-xs font-medium text-muted-foreground">On hold</CardTitle>
+            <PauseCircle className="h-4 w-4 text-amber-600" />
+          </CardHeader>
+          <CardContent className="pt-0 pb-4">
+            <div className="text-xl font-bold">{stats.onHold}</div>
+          </CardContent>
+        </Card>
+        <Card className="bg-card/80 shadow-sm border border-border/50 col-span-2 md:col-span-1">
+          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0 py-3">
+            <CardTitle className="text-xs font-medium text-muted-foreground">Critical</CardTitle>
+            <AlertCircle className="h-4 w-4 text-destructive" />
+          </CardHeader>
+          <CardContent className="pt-0 pb-4">
+            <div className="text-xl font-bold">{mounted ? stats.overdue + stats.urgent : '—'}</div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <Card className="shadow-sm border border-border/50 lg:col-span-2">
           <CardHeader className="flex items-center justify-between flex-row">
-            <CardTitle className="text-lg">Recent Activity</CardTitle>
+            <CardTitle className="text-base font-semibold">Recent updates</CardTitle>
             {isTasksLoading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
           </CardHeader>
           <CardContent>
@@ -207,9 +210,9 @@ export function DashboardView({
 
         <TodayCard store={store} onTaskClick={(id: string) => store.openTask?.(id)} />
 
-        <Card className="shadow-sm border-none">
+        <Card className="shadow-sm border border-border/50">
           <CardHeader>
-            <CardTitle className="text-lg">Projects Breakdown</CardTitle>
+            <CardTitle className="text-base font-semibold">Projects</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">

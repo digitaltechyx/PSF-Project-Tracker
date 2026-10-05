@@ -746,6 +746,8 @@ export function useNexusStore() {
       dateKey,
       checkInTime: new Date().toISOString(),
       checkOutTime: null,
+      breaks: [],
+      totalBreakMs: 0,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -776,14 +778,73 @@ export function useNexusStore() {
     const docId = `${user.uid}_${dateKey}`;
     const attendanceRef = doc(db, 'workspaces', wsId, 'attendance', docId);
 
+    const nowIso = new Date().toISOString();
+    const breaks = [...(todayAttendance.breaks || [])];
+    const openIdx = breaks.findIndex((b) => b.startTime && !b.endTime);
+    if (openIdx >= 0) {
+      breaks[openIdx] = { ...breaks[openIdx], endTime: nowIso };
+    }
+    const totalBreakMs = breaks.reduce((sum, b) => {
+      if (!b.startTime) return sum;
+      const end = b.endTime ? new Date(b.endTime).getTime() : Date.now();
+      return sum + Math.max(0, end - new Date(b.startTime).getTime());
+    }, 0);
+
     try {
       await updateDocumentNonBlocking(attendanceRef, {
-        checkOutTime: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        checkOutTime: nowIso,
+        breaks,
+        totalBreakMs,
+        updatedAt: nowIso,
       });
       return { ok: true };
     } catch (e) {
       console.error('Failed to check out:', e);
+      throw e;
+    }
+  }, [db, user, activeWorkspace?.id, todayAttendance, getTodayDateKey]);
+
+  const startBreak = useCallback(async (): Promise<{ ok: boolean; reason?: string }> => {
+    const wsId = activeWorkspace?.id;
+    if (!db || !user?.uid || !wsId || !todayAttendance?.checkInTime || todayAttendance.checkOutTime) {
+      return { ok: false, reason: 'not_checked_in' };
+    }
+    const open = (todayAttendance.breaks || []).some((b) => b.startTime && !b.endTime);
+    if (open) return { ok: false, reason: 'already_on_break' };
+
+    const dateKey = getTodayDateKey();
+    const docId = `${user.uid}_${dateKey}`;
+    const attendanceRef = doc(db, 'workspaces', wsId, 'attendance', docId);
+    const breaks = [...(todayAttendance.breaks || []), { startTime: new Date().toISOString(), endTime: null }];
+
+    try {
+      await updateDocumentNonBlocking(attendanceRef, { breaks, updatedAt: new Date().toISOString() });
+      return { ok: true };
+    } catch (e) {
+      console.error('Failed to start break:', e);
+      throw e;
+    }
+  }, [db, user, activeWorkspace?.id, todayAttendance, getTodayDateKey]);
+
+  const endBreak = useCallback(async (): Promise<{ ok: boolean; reason?: string }> => {
+    const wsId = activeWorkspace?.id;
+    if (!db || !user?.uid || !wsId || !todayAttendance?.checkInTime) {
+      return { ok: false, reason: 'not_checked_in' };
+    }
+    const breaks = [...(todayAttendance.breaks || [])];
+    const openIdx = breaks.findIndex((b) => b.startTime && !b.endTime);
+    if (openIdx < 0) return { ok: false, reason: 'not_on_break' };
+
+    breaks[openIdx] = { ...breaks[openIdx], endTime: new Date().toISOString() };
+    const dateKey = getTodayDateKey();
+    const docId = `${user.uid}_${dateKey}`;
+    const attendanceRef = doc(db, 'workspaces', wsId, 'attendance', docId);
+
+    try {
+      await updateDocumentNonBlocking(attendanceRef, { breaks, updatedAt: new Date().toISOString() });
+      return { ok: true };
+    } catch (e) {
+      console.error('Failed to end break:', e);
       throw e;
     }
   }, [db, user, activeWorkspace?.id, todayAttendance, getTodayDateKey]);
@@ -959,5 +1020,7 @@ export function useNexusStore() {
     directAddMember,
     checkIn,
     checkOut,
+    startBreak,
+    endBreak,
   };
 }

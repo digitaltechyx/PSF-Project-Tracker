@@ -4,26 +4,47 @@
 
 @layer base {
   :root {
-    --background: 250 20% 96%; /* #F4F3F7 */
-    --foreground: 240 10% 3.9%;
+    --background: 220 20% 97%;
+    --foreground: 224 20% 12%;
     --card: 0 0% 100%;
-    --card-foreground: 240 10% 3.9%;
+    --card-foreground: 224 20% 12%;
     --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 3.9%;
-    --primary: 248 64% 50%; /* #452ED2 - Sophisticated Blue/Violet */
+    --popover-foreground: 224 20% 12%;
+    --primary: 248 64% 50%;
     --primary-foreground: 0 0% 98%;
-    --secondary: 240 4.8% 95.9%;
-    --secondary-foreground: 240 5.9% 10%;
-    --muted: 240 4.8% 95.9%;
-    --muted-foreground: 240 3.8% 46.1%;
-    --accent: 211 83% 67%; /* #66A9F0 - Brighter Active Blue */
-    --accent-foreground: 240 5.9% 10%;
+    --secondary: 220 14% 96%;
+    --secondary-foreground: 224 20% 12%;
+    --muted: 220 14% 96%;
+    --muted-foreground: 220 9% 46%;
+    --accent: 211 83% 67%;
+    --accent-foreground: 224 20% 12%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 98%;
-    --border: 240 5.9% 90%;
-    --input: 240 5.9% 90%;
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
     --ring: 248 64% 50%;
-    --radius: 0.75rem;
+    --radius: 0.625rem;
+    --sidebar: 224 28% 14%;
+    --sidebar-foreground: 210 20% 96%;
+  }
+}
+
+@layer components {
+  .app-sidebar {
+    @apply bg-[hsl(var(--sidebar))] text-[hsl(var(--sidebar-foreground))] border-r border-white/5;
+  }
+  .app-sidebar .sidebar-nav-btn {
+    @apply w-full justify-start gap-3 rounded-lg text-[hsl(var(--sidebar-foreground))]/80 hover:bg-white/10 hover:text-white;
+  }
+  .app-sidebar .sidebar-nav-btn[data-active="true"] {
+    @apply bg-white/15 text-white font-medium shadow-sm;
+  }
+  .app-main-surface {
+    @apply bg-[hsl(var(--background))];
+    background-image: radial-gradient(ellipse 80% 50% at 50% -20%, hsl(var(--primary) / 0.08), transparent);
+  }
+  .view-toolbar {
+    @apply flex flex-wrap items-center gap-2 bg-card/80 border border-border/50 rounded-xl p-1.5 shadow-sm;
   }
 }
 
