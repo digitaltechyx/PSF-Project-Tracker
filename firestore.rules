@@ -28,6 +28,31 @@ service cloud.firestore {
       );
     }
 
+    // Invitee joining: may only add their own uid to memberRoles (member|lead), nothing else.
+    function isSelfJoiningWorkspace() {
+      let beforeRoles = resource.data.get('memberRoles', {});
+      let afterRoles = request.resource.data.get('memberRoles', {});
+      let rolesDiff = afterRoles.diff(beforeRoles);
+      return isSignedIn()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberRoles', 'updatedAt'])
+        && rolesDiff.addedKeys().hasOnly([request.auth.uid])
+        && rolesDiff.removedKeys().size() == 0
+        && rolesDiff.changedKeys().size() == 0
+        && afterRoles[request.auth.uid] in ['member', 'lead'];
+    }
+
+    // After joining: member may only append their own uid to a project's allowedUserIds.
+    function isSelfAddingProjectAccess() {
+      let before = resource.data.get('allowedUserIds', []);
+      let after = request.resource.data.get('allowedUserIds', []);
+      return isSignedIn()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['allowedUserIds', 'updatedAt'])
+        && !(request.auth.uid in before)
+        && request.auth.uid in after
+        && after.hasAll(before)
+        && after.size() == before.size() + 1;
+    }
+
     match /notifications/{notificationId} {
       allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
       allow create: if isSignedIn() &&
@@ -69,7 +94,7 @@ service cloud.firestore {
     match /workspaces/{workspaceId} {
       allow read: if isSignedIn();
       allow create: if isSignedIn() && request.resource.data.ownerUserId == request.auth.uid;
-      allow update: if isWorkspaceMember(workspaceId);
+      allow update: if isWorkspaceMember(workspaceId) || isSelfJoiningWorkspace();
       allow delete: if isSignedIn() && resource.data.ownerUserId == request.auth.uid;
 
       match /members/{memberUserId} {
@@ -95,7 +120,9 @@ service cloud.firestore {
       match /projects/{projectId} {
         allow read: if isSignedIn();
         allow create: if isWorkspaceAdmin(workspaceId);
-        allow update, delete: if isWorkspaceAdmin(workspaceId);
+        allow update: if isWorkspaceAdmin(workspaceId)
+          || (isWorkspaceMember(workspaceId) && isSelfAddingProjectAccess());
+        allow delete: if isWorkspaceAdmin(workspaceId);
 
         match /tasks/{taskId} {
           allow read: if isSignedIn();

@@ -176,21 +176,13 @@ export default function JoinWorkspacePage() {
         (!invitation.targetProjectIds || invitation.targetProjectIds.length === 0);
 
       if (!isAlreadyMember) {
-        // 1. Update Workspace Roles
+        // 1. Add self to workspace roles (rules allow self-join only)
         await updateDoc(workspaceRef, {
           [`memberRoles.${user.uid}`]: invitation.role || 'member',
           updatedAt: serverTimestamp(),
         });
 
-        // 2. Increment usage and complete email invites
-        const inviteRef = doc(db, 'invitations', invitation.id);
-        if (invitation.type === 'email' || invitation.maxUses === 1) {
-          await updateDoc(inviteRef, { usageCount: increment(1), status: 'used' });
-        } else {
-          await updateDoc(inviteRef, { usageCount: increment(1) });
-        }
-
-        // 3. Create Member Profile
+        // 2. Create member profile
         const memberRef = doc(db, 'workspaces', invitation.workspaceId, 'members', user.uid);
         await setDoc(memberRef, {
           id: user.uid,
@@ -200,28 +192,40 @@ export default function JoinWorkspacePage() {
           email: user.email?.toLowerCase() || '',
           avatarUrl: user.photoURL || null,
         }, { merge: true });
-      }
 
-      // 4. Grant access to projects (project-level scoping)
-      // Email invites:
-      // - member + no project selection => grant ALL workspace projects
-      // - member + specific selections => grant only those projects
-      if (invitation.role === 'member' && isEmailInvite) {
-        const projectIds = grantAllProjectsForMember
-          ? (await getDocs(collection(db, 'workspaces', invitation.workspaceId, 'projects'))).docs.map((d) => d.id)
-          : (invitation.targetProjectIds || []);
-
-        for (const projId of projectIds) {
-          const projRef = doc(db, 'workspaces', invitation.workspaceId, 'projects', projId);
-          const projSnap = await getDoc(projRef);
-          if (!projSnap.exists()) continue;
-          const projData = projSnap.data();
-          const allowedIds = [...(projData.allowedUserIds || []), user.uid];
-          await updateDoc(projRef, { allowedUserIds: Array.from(new Set(allowedIds)) });
+        // 3. Mark invitation used
+        const inviteRef = doc(db, 'invitations', invitation.id);
+        if (invitation.type === 'email' || invitation.maxUses === 1) {
+          await updateDoc(inviteRef, { usageCount: increment(1), status: 'used' });
+        } else {
+          await updateDoc(inviteRef, { usageCount: increment(1) });
         }
       }
 
-      // 5. Sync User Profile
+      // 4. Grant project access (best-effort; membership already saved)
+      if (invitation.role === 'member' && isEmailInvite) {
+        try {
+          const projectIds = grantAllProjectsForMember
+            ? (await getDocs(collection(db, 'workspaces', invitation.workspaceId, 'projects'))).docs.map((d) => d.id)
+            : (invitation.targetProjectIds || []);
+
+          for (const projId of projectIds) {
+            const projRef = doc(db, 'workspaces', invitation.workspaceId, 'projects', projId);
+            const projSnap = await getDoc(projRef);
+            if (!projSnap.exists()) continue;
+            const projData = projSnap.data();
+            const allowedIds = [...(projData.allowedUserIds || []), user.uid];
+            await updateDoc(projRef, {
+              allowedUserIds: Array.from(new Set(allowedIds)),
+              updatedAt: new Date().toISOString(),
+            });
+          }
+        } catch (projectErr) {
+          console.warn('Joined workspace, but project access grant failed:', projectErr);
+        }
+      }
+
+      // 5. Sync user profile
       const userRef = doc(db, 'users', user.uid);
       await setDoc(userRef, {
         id: user.uid,
@@ -234,7 +238,8 @@ export default function JoinWorkspacePage() {
       setJoined(true);
       setTimeout(() => router.push('/'), 1500);
     } catch (error: any) {
-      setInviteError('Failed to join: ' + (error.message || 'Check your permissions.'));
+      const code = error?.code ? ` (${error.code})` : '';
+      setInviteError('Failed to join: ' + (error.message || 'Check your permissions.') + code);
     } finally {
       setJoining(false);
     }
