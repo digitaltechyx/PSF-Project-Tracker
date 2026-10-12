@@ -197,6 +197,17 @@ export function TargetsView({ store }: { store: any }) {
     setEditOpen(true);
   };
 
+  /** Open dialogs after a menu closes so Radix doesn't leave body pointer-events:none. */
+  const afterMenu = (fn: () => void) => {
+    window.setTimeout(fn, 50);
+  };
+
+  const unlockUi = () => {
+    if (typeof document === 'undefined') return;
+    document.body.style.pointerEvents = '';
+    document.body.style.overflow = '';
+  };
+
   const openShare = (ids: string[]) => {
     setShareTargetIds(ids);
     setShareRecipient('link');
@@ -403,6 +414,7 @@ export function TargetsView({ store }: { store: any }) {
         toast({ title: 'Copied as task', description: 'Original target is unchanged.' });
       }
       setCopyOpen(false);
+      unlockUi();
     } catch (e: any) {
       toast({
         variant: 'destructive',
@@ -528,7 +540,7 @@ export function TargetsView({ store }: { store: any }) {
                         <Share2 className="h-3.5 w-3.5" />
                         <span className="hidden sm:inline">Share</span>
                       </Button>
-                      <DropdownMenu>
+                      <DropdownMenu modal={false}>
                         <DropdownMenuTrigger asChild>
                           <Button variant="ghost" size="sm" disabled={busyId === t.id}>
                             {busyId === t.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Actions'}
@@ -536,22 +548,40 @@ export function TargetsView({ store }: { store: any }) {
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="w-56">
                           {STATUS_OPTIONS.map((o) => (
-                            <DropdownMenuItem key={o.value} onClick={() => handleStatus(t, o.value)}>
+                            <DropdownMenuItem key={o.value} onSelect={() => handleStatus(t, o.value)}>
                               Mark {o.label.toLowerCase()}
                             </DropdownMenuItem>
                           ))}
                           <DropdownMenuSeparator />
-                          <DropdownMenuItem onClick={() => openCopyTask(t)}>
+                          <DropdownMenuItem
+                            onSelect={(e) => {
+                              e.preventDefault();
+                              afterMenu(() => openCopyTask(t));
+                            }}
+                          >
                             <ListTodo className="h-4 w-4 mr-2" /> Copy as task…
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => openCopyProject(t)}>
+                          <DropdownMenuItem
+                            onSelect={(e) => {
+                              e.preventDefault();
+                              afterMenu(() => openCopyProject(t));
+                            }}
+                          >
                             <FolderPlus className="h-4 w-4 mr-2" /> Copy as project
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => openShare([t.id])}>
+                          <DropdownMenuItem
+                            onSelect={(e) => {
+                              e.preventDefault();
+                              afterMenu(() => openShare([t.id]));
+                            }}
+                          >
                             <Share2 className="h-4 w-4 mr-2" /> Share…
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
-                          <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => handleDelete(t)}>
+                          <DropdownMenuItem
+                            className="text-destructive focus:text-destructive"
+                            onSelect={() => afterMenu(() => handleDelete(t))}
+                          >
                             <Trash2 className="h-4 w-4 mr-2" /> Delete
                           </DropdownMenuItem>
                         </DropdownMenuContent>
@@ -664,8 +694,20 @@ export function TargetsView({ store }: { store: any }) {
       </Dialog>
 
       {/* Copy-share: one, many, or all → recipient gets their own copies */}
-      <Dialog open={shareOpen} onOpenChange={setShareOpen}>
-        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+      <Dialog
+        open={shareOpen}
+        onOpenChange={(open) => {
+          setShareOpen(open);
+          if (!open) unlockUi();
+        }}
+      >
+        <DialogContent
+          className="sm:max-w-md max-h-[90vh] overflow-y-auto"
+          onCloseAutoFocus={(e) => {
+            e.preventDefault();
+            unlockUi();
+          }}
+        >
           <DialogHeader>
             <DialogTitle>Share targets</DialogTitle>
             <DialogDescription>
@@ -827,8 +869,20 @@ export function TargetsView({ store }: { store: any }) {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={copyOpen} onOpenChange={setCopyOpen}>
-        <DialogContent className="sm:max-w-md">
+      <Dialog
+        open={copyOpen}
+        onOpenChange={(open) => {
+          setCopyOpen(open);
+          if (!open) unlockUi();
+        }}
+      >
+        <DialogContent
+          className="sm:max-w-md"
+          onCloseAutoFocus={(e) => {
+            e.preventDefault();
+            unlockUi();
+          }}
+        >
           <DialogHeader>
             <DialogTitle>{copyMode === 'project' ? 'Copy as project' : 'Copy as task'}</DialogTitle>
             <DialogDescription>
