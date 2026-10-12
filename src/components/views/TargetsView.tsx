@@ -15,6 +15,8 @@ import {
   Check,
   Settings2,
   Loader2,
+  Pencil,
+  Eye,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -84,7 +86,13 @@ function progressOf(t: Target) {
   return Math.round((done / subs.length) * 100);
 }
 
-type DraftSub = { title: string; startDate: string; endDate: string };
+type DraftSub = {
+  id?: string;
+  title: string;
+  startDate: string;
+  endDate: string;
+  status?: TargetStatus;
+};
 
 export function TargetsView({ store }: { store: any }) {
   const {
@@ -106,6 +114,9 @@ export function TargetsView({ store }: { store: any }) {
   const { toast } = useToast();
 
   const [createOpen, setCreateOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editingTarget, setEditingTarget] = useState<Target | null>(null);
+  const [editStatus, setEditStatus] = useState<TargetStatus>('planned');
   const [accessOpen, setAccessOpen] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
@@ -139,12 +150,33 @@ export function TargetsView({ store }: { store: any }) {
   );
 
   const openCreate = () => {
+    setEditingTarget(null);
     setTitle('');
     setDescription('');
     setStartDate(todayISO());
     setEndDate(todayISO());
+    setEditStatus('planned');
     setDraftSubs([]);
     setCreateOpen(true);
+  };
+
+  const openEdit = (t: Target) => {
+    setEditingTarget(t);
+    setTitle(t.title || '');
+    setDescription(t.description || '');
+    setStartDate(t.startDate || todayISO());
+    setEndDate(t.endDate || todayISO());
+    setEditStatus(t.status || 'planned');
+    setDraftSubs(
+      (t.subTargets || []).map((s) => ({
+        id: s.id,
+        title: s.title,
+        startDate: s.startDate,
+        endDate: s.endDate,
+        status: s.status,
+      }))
+    );
+    setEditOpen(true);
   };
 
   const openAccess = () => {
@@ -181,6 +213,45 @@ export function TargetsView({ store }: { store: any }) {
       setCreateOpen(false);
     } catch (e: any) {
       toast({ variant: 'destructive', title: 'Could not create target', description: e?.message });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingTarget) return;
+    if (!title.trim()) {
+      toast({ variant: 'destructive', title: 'Title required' });
+      return;
+    }
+    if (endDate < startDate) {
+      toast({ variant: 'destructive', title: 'End date must be on or after start' });
+      return;
+    }
+    setSaving(true);
+    try {
+      const subTargets: SubTarget[] = draftSubs
+        .filter((s) => s.title.trim())
+        .map((s, i) => ({
+          id: s.id || `st_${Date.now().toString(36)}_${i}`,
+          title: s.title.trim(),
+          startDate: s.startDate || startDate,
+          endDate: s.endDate || endDate,
+          status: s.status || 'planned',
+        }));
+      await updateTarget(editingTarget.id, {
+        title: title.trim(),
+        description: description.trim(),
+        startDate,
+        endDate,
+        status: editStatus,
+        subTargets,
+      });
+      toast({ title: 'Target updated' });
+      setEditOpen(false);
+      setEditingTarget(null);
+    } catch (e: any) {
+      toast({ variant: 'destructive', title: 'Could not save', description: e?.message });
     } finally {
       setSaving(false);
     }
@@ -354,7 +425,11 @@ export function TargetsView({ store }: { store: any }) {
                     >
                       {open ? <ChevronDown className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}
                     </button>
-                    <div className="flex-1 min-w-0">
+                    <button
+                      type="button"
+                      className="flex-1 min-w-0 text-left rounded-xl -m-1 p-1 hover:bg-muted/40 transition-colors"
+                      onClick={() => openEdit(t)}
+                    >
                       <div className="flex flex-wrap items-center gap-2 mb-1">
                         <h3 className="font-semibold text-base truncate">{t.title}</h3>
                         <Badge variant="outline" className={cn('text-[10px] font-medium', STATUS_CLASS[t.status])}>
@@ -367,8 +442,10 @@ export function TargetsView({ store }: { store: any }) {
                         )}
                       </div>
                       {t.description ? (
-                        <p className="text-sm text-muted-foreground line-clamp-2 mb-2">{t.description}</p>
-                      ) : null}
+                        <p className="text-sm text-muted-foreground line-clamp-2 mb-2 whitespace-pre-wrap">{t.description}</p>
+                      ) : (
+                        <p className="text-sm text-muted-foreground/60 italic mb-2">No description — click to add</p>
+                      )}
                       <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
                         <span className="inline-flex items-center gap-1">
                           <Calendar className="h-3.5 w-3.5" />
@@ -386,7 +463,17 @@ export function TargetsView({ store }: { store: any }) {
                           style={{ width: `${pct}%` }}
                         />
                       </div>
-                    </div>
+                    </button>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 gap-1.5"
+                        onClick={() => openEdit(t)}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                        <span className="hidden sm:inline">Edit</span>
+                      </Button>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button variant="ghost" size="sm" disabled={busyId === t.id}>
@@ -394,6 +481,10 @@ export function TargetsView({ store }: { store: any }) {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="w-52">
+                        <DropdownMenuItem onClick={() => openEdit(t)}>
+                          <Eye className="h-4 w-4 mr-2" /> View & edit
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
                         <DropdownMenuItem onClick={() => handleStatus(t, 'planned')}>Mark planned</DropdownMenuItem>
                         <DropdownMenuItem onClick={() => handleStatus(t, 'in_progress')}>Mark in progress</DropdownMenuItem>
                         <DropdownMenuItem onClick={() => handleStatus(t, 'done')}>Mark done</DropdownMenuItem>
@@ -423,6 +514,7 @@ export function TargetsView({ store }: { store: any }) {
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
+                    </div>
                   </div>
                 </div>
 
@@ -472,97 +564,65 @@ export function TargetsView({ store }: { store: any }) {
             <DialogTitle>New target</DialogTitle>
             <DialogDescription>Set an overall goal with a timeline. Add optional sub-targets.</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label htmlFor="t-title">Title</Label>
-              <Input id="t-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Q4 product launch" />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="t-desc">Description</Label>
-              <Textarea id="t-desc" value={description} onChange={(e) => setDescription(e.target.value)} rows={3} placeholder="Optional context…" />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label htmlFor="t-start">Start</Label>
-                <Input id="t-start" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="t-end">End</Label>
-                <Input id="t-end" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label>Sub-targets</Label>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 gap-1"
-                  onClick={() =>
-                    setDraftSubs((d) => [...d, { title: '', startDate, endDate }])
-                  }
-                >
-                  <Plus className="h-3.5 w-3.5" /> Add
-                </Button>
-              </div>
-              {draftSubs.length === 0 ? (
-                <p className="text-xs text-muted-foreground">Optional. Break the goal into smaller pieces.</p>
-              ) : (
-                <div className="space-y-3">
-                  {draftSubs.map((s, i) => (
-                    <div key={i} className="rounded-xl border border-border/60 p-3 space-y-2">
-                      <div className="flex gap-2">
-                        <Input
-                          placeholder="Sub-target title"
-                          value={s.title}
-                          onChange={(e) => {
-                            const next = [...draftSubs];
-                            next[i] = { ...next[i], title: e.target.value };
-                            setDraftSubs(next);
-                          }}
-                        />
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="shrink-0"
-                          onClick={() => setDraftSubs((d) => d.filter((_, j) => j !== i))}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <Input
-                          type="date"
-                          value={s.startDate}
-                          onChange={(e) => {
-                            const next = [...draftSubs];
-                            next[i] = { ...next[i], startDate: e.target.value };
-                            setDraftSubs(next);
-                          }}
-                        />
-                        <Input
-                          type="date"
-                          value={s.endDate}
-                          onChange={(e) => {
-                            const next = [...draftSubs];
-                            next[i] = { ...next[i], endDate: e.target.value };
-                            setDraftSubs(next);
-                          }}
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
+          <TargetFormFields
+            title={title}
+            setTitle={setTitle}
+            description={description}
+            setDescription={setDescription}
+            startDate={startDate}
+            setStartDate={setStartDate}
+            endDate={endDate}
+            setEndDate={setEndDate}
+            draftSubs={draftSubs}
+            setDraftSubs={setDraftSubs}
+            status={editStatus}
+            setStatus={setEditStatus}
+            showStatus={false}
+          />
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
             <Button onClick={handleCreate} disabled={saving}>
               {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Create
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* View & edit dialog */}
+      <Dialog
+        open={editOpen}
+        onOpenChange={(open) => {
+          setEditOpen(open);
+          if (!open) setEditingTarget(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Target details</DialogTitle>
+            <DialogDescription>View and edit the full description, dates, and sub-targets.</DialogDescription>
+          </DialogHeader>
+          <TargetFormFields
+            title={title}
+            setTitle={setTitle}
+            description={description}
+            setDescription={setDescription}
+            startDate={startDate}
+            setStartDate={setStartDate}
+            endDate={endDate}
+            setEndDate={setEndDate}
+            draftSubs={draftSubs}
+            setDraftSubs={setDraftSubs}
+            status={editStatus}
+            setStatus={setEditStatus}
+            showStatus
+            descriptionRows={8}
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
+            <Button onClick={handleSaveEdit} disabled={saving}>
+              {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Save changes
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -650,6 +710,168 @@ export function TargetsView({ store }: { store: any }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+function TargetFormFields({
+  title,
+  setTitle,
+  description,
+  setDescription,
+  startDate,
+  setStartDate,
+  endDate,
+  setEndDate,
+  draftSubs,
+  setDraftSubs,
+  status,
+  setStatus,
+  showStatus,
+  descriptionRows = 3,
+}: {
+  title: string;
+  setTitle: (v: string) => void;
+  description: string;
+  setDescription: (v: string) => void;
+  startDate: string;
+  setStartDate: (v: string) => void;
+  endDate: string;
+  setEndDate: (v: string) => void;
+  draftSubs: DraftSub[];
+  setDraftSubs: React.Dispatch<React.SetStateAction<DraftSub[]>>;
+  status: TargetStatus;
+  setStatus: (v: TargetStatus) => void;
+  showStatus: boolean;
+  descriptionRows?: number;
+}) {
+  return (
+    <div className="space-y-4 py-2">
+      <div className="space-y-2">
+        <Label htmlFor="t-title">Title</Label>
+        <Input id="t-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Q4 product launch" />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="t-desc">Description</Label>
+        <Textarea
+          id="t-desc"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          rows={descriptionRows}
+          placeholder="Full details, notes, scope…"
+          className="min-h-[120px] resize-y"
+        />
+      </div>
+      {showStatus && (
+        <div className="space-y-2">
+          <Label>Status</Label>
+          <Select value={status} onValueChange={(v) => setStatus(v as TargetStatus)}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="planned">Planned</SelectItem>
+              <SelectItem value="in_progress">In progress</SelectItem>
+              <SelectItem value="done">Done</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-2">
+          <Label htmlFor="t-start">Start</Label>
+          <Input id="t-start" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="t-end">End</Label>
+          <Input id="t-end" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+        </div>
+      </div>
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <Label>Sub-targets</Label>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-8 gap-1"
+            onClick={() =>
+              setDraftSubs((d) => [...d, { title: '', startDate, endDate, status: 'planned' }])
+            }
+          >
+            <Plus className="h-3.5 w-3.5" /> Add
+          </Button>
+        </div>
+        {draftSubs.length === 0 ? (
+          <p className="text-xs text-muted-foreground">Optional. Break the goal into smaller pieces.</p>
+        ) : (
+          <div className="space-y-3">
+            {draftSubs.map((s, i) => (
+              <div key={s.id || i} className="rounded-xl border border-border/60 p-3 space-y-2">
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Sub-target title"
+                    value={s.title}
+                    onChange={(e) => {
+                      const next = [...draftSubs];
+                      next[i] = { ...next[i], title: e.target.value };
+                      setDraftSubs(next);
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="shrink-0"
+                    onClick={() => setDraftSubs((d) => d.filter((_, j) => j !== i))}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <Input
+                    type="date"
+                    value={s.startDate}
+                    onChange={(e) => {
+                      const next = [...draftSubs];
+                      next[i] = { ...next[i], startDate: e.target.value };
+                      setDraftSubs(next);
+                    }}
+                  />
+                  <Input
+                    type="date"
+                    value={s.endDate}
+                    onChange={(e) => {
+                      const next = [...draftSubs];
+                      next[i] = { ...next[i], endDate: e.target.value };
+                      setDraftSubs(next);
+                    }}
+                  />
+                </div>
+                {showStatus && (
+                  <Select
+                    value={s.status || 'planned'}
+                    onValueChange={(v) => {
+                      const next = [...draftSubs];
+                      next[i] = { ...next[i], status: v as TargetStatus };
+                      setDraftSubs(next);
+                    }}
+                  >
+                    <SelectTrigger className="h-8 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="planned">Planned</SelectItem>
+                      <SelectItem value="in_progress">In progress</SelectItem>
+                      <SelectItem value="done">Done</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
