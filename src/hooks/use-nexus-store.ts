@@ -126,7 +126,16 @@ export function useNexusStore() {
   }, [db, user?.uid, activeWorkspace?.id, isAuthReady, canAccessTargets]);
 
   const { data: targetsData, isLoading: isTargetsLoading } = useCollection<Target>(targetsQuery);
-  const workspaceTargets = useMemo(() => targetsData || [], [targetsData]);
+  const workspaceTargets = useMemo(() => {
+    const all = targetsData || [];
+    if (isAdmin) return all;
+    const uid = user?.uid || '';
+    return all.filter(
+      (t) =>
+        t.createdByUserId === uid ||
+        Boolean(t.sharedWithUserIds?.includes(uid))
+    );
+  }, [targetsData, isAdmin, user?.uid]);
 
   const activeProject = useMemo(() => 
     projects.find(p => p.id === activeProjectId) || null,
@@ -878,6 +887,7 @@ export function useNexusStore() {
       status: 'planned',
       subTargets,
       createdByUserId: user.uid,
+      sharedWithUserIds: [user.uid],
       shareEnabled: false,
       shareToken: null,
       createdAt: new Date().toISOString(),
@@ -895,29 +905,7 @@ export function useNexusStore() {
       ...rest,
       updatedAt: new Date().toISOString(),
     });
-
-    // Keep public share snapshot in sync when sharing is on
-    const existing = workspaceTargets.find((t) => t.id === targetId);
-    const nextShareEnabled = data.shareEnabled ?? existing?.shareEnabled;
-    const token = data.shareToken ?? existing?.shareToken;
-    if (nextShareEnabled && token) {
-      const merged = { ...existing, ...data } as Target;
-      const share: TargetShare = {
-        id: token,
-        workspaceId: wsId,
-        targetId,
-        workspaceName: activeWorkspace?.name || '',
-        title: merged.title,
-        description: merged.description || '',
-        startDate: merged.startDate,
-        endDate: merged.endDate,
-        status: merged.status,
-        subTargets: merged.subTargets || [],
-        updatedAt: new Date().toISOString(),
-      };
-      await setDocumentNonBlocking(doc(db, 'targetShares', token), share, { merge: true });
-    }
-  }, [db, activeWorkspace?.id, activeWorkspace?.name, canAccessTargets, workspaceTargets]);
+  }, [db, activeWorkspace?.id, canAccessTargets]);
 
   const deleteTarget = useCallback(async (targetId: string) => {
     const wsId = activeWorkspace?.id;
@@ -931,31 +919,58 @@ export function useNexusStore() {
     }
   }, [db, activeWorkspace?.id, canAccessTargets, workspaceTargets]);
 
+  const setTargetSharedMembers = useCallback(async (targetId: string, memberUserIds: string[]) => {
+    const wsId = activeWorkspace?.id;
+    if (!db || !wsId || !canAccessTargets || !user) return;
+    const existing = workspaceTargets.find((t) => t.id === targetId);
+    const creatorId = existing?.createdByUserId || user.uid;
+    const sharedWithUserIds = Array.from(new Set([creatorId, ...memberUserIds]));
+    await updateTarget(targetId, { sharedWithUserIds });
+
+    // Ensure shared members can open the Targets page
+    const currentAllowed = activeWorkspace?.targetsAllowedUserIds || [];
+    const toGrant = memberUserIds.filter((id) => !currentAllowed.includes(id) && id !== user.uid);
+    if (toGrant.length && isAdmin) {
+      await updateTargetsAccess([...currentAllowed, ...toGrant]);
+    }
+  }, [db, activeWorkspace?.id, activeWorkspace?.targetsAllowedUserIds, canAccessTargets, user, workspaceTargets, updateTarget, isAdmin, updateTargetsAccess]);
+
   const enableTargetShare = useCallback(async (targetId: string) => {
     const wsId = activeWorkspace?.id;
-    if (!db || !wsId || !canAccessTargets) return null;
+    if (!db || !wsId || !canAccessTargets || !user) return null;
     const existing = workspaceTargets.find((t) => t.id === targetId);
     if (!existing) return null;
+    const isNewToken = !existing.shareToken;
     const token = existing.shareToken || (typeof crypto !== 'undefined' && crypto.randomUUID
       ? crypto.randomUUID().replace(/-/g, '')
       : `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`);
     await updateTarget(targetId, { shareEnabled: true, shareToken: token });
-    const share: TargetShare = {
-      id: token,
-      workspaceId: wsId,
-      targetId,
-      workspaceName: activeWorkspace?.name || '',
-      title: existing.title,
-      description: existing.description || '',
-      startDate: existing.startDate,
-      endDate: existing.endDate,
-      status: existing.status,
-      subTargets: existing.subTargets || [],
-      updatedAt: new Date().toISOString(),
-    };
-    await setDocumentNonBlocking(doc(db, 'targetShares', token), share, { merge: true });
+    const shareRef = doc(db, 'targetShares', token);
+    if (isNewToken) {
+      const share: TargetShare = {
+        id: token,
+        workspaceId: wsId,
+        targetId,
+        workspaceName: activeWorkspace?.name || '',
+        enabled: true,
+        permission: 'edit',
+        acceptedUserIds: [],
+        createdByUserId: user.uid,
+        updatedAt: new Date().toISOString(),
+      };
+      await setDocumentNonBlocking(shareRef, share, { merge: true });
+    } else {
+      await setDocumentNonBlocking(shareRef, {
+        enabled: true,
+        permission: 'edit',
+        workspaceId: wsId,
+        targetId,
+        workspaceName: activeWorkspace?.name || '',
+        updatedAt: new Date().toISOString(),
+      }, { merge: true });
+    }
     return token;
-  }, [db, activeWorkspace?.id, activeWorkspace?.name, canAccessTargets, workspaceTargets, updateTarget]);
+  }, [db, activeWorkspace?.id, activeWorkspace?.name, canAccessTargets, workspaceTargets, updateTarget, user]);
 
   const disableTargetShare = useCallback(async (targetId: string) => {
     const existing = workspaceTargets.find((t) => t.id === targetId);
@@ -964,13 +979,16 @@ export function useNexusStore() {
       return;
     }
     const token = existing.shareToken;
-    await updateTarget(targetId, { shareEnabled: false, shareToken: null });
+    await updateTarget(targetId, { shareEnabled: false });
     try {
-      await deleteDocumentNonBlocking(doc(db, 'targetShares', token));
+      await updateDocumentNonBlocking(doc(db, 'targetShares', token), {
+        enabled: false,
+        updatedAt: new Date().toISOString(),
+      });
     } catch {}
   }, [workspaceTargets, updateTarget, db]);
 
-  const assignTargetAsTask = useCallback(async (opts: {
+  const copyTargetAsTask = useCallback(async (opts: {
     projectId: string;
     title: string;
     description?: string;
@@ -990,6 +1008,42 @@ export function useNexusStore() {
       tags: ['from-target'],
     });
   }, [activeWorkspace?.id, createTask, user?.uid]);
+
+  const copyTargetAsProject = useCallback(async (targetId: string) => {
+    const wsId = activeWorkspace?.id;
+    if (!db || !wsId || !user) throw new Error('No workspace');
+    const target = workspaceTargets.find((t) => t.id === targetId);
+    if (!target) throw new Error('Target not found');
+
+    const projRef = doc(collection(db, 'workspaces', wsId, 'projects'));
+    const projData: Project = {
+      id: projRef.id,
+      workspaceId: wsId,
+      name: target.title,
+      description: target.description || '',
+      color: '#' + Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0'),
+      allowedUserIds: [user.uid],
+      createdByUserId: user.uid,
+      pipelines: DEFAULT_PIPELINES.map((p) => ({ ...p })),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    await setDocumentNonBlocking(projRef, projData, { merge: true });
+
+    for (const sub of target.subTargets || []) {
+      await createTask(wsId, projRef.id, {
+        title: sub.title,
+        description: `Copied from target: ${target.title}`,
+        status: 'todo',
+        priority: 'medium',
+        dueDate: sub.endDate || target.endDate || null,
+        assigneeUserIds: [user.uid],
+        tags: ['from-target'],
+      });
+    }
+
+    return projRef.id;
+  }, [db, activeWorkspace?.id, user, workspaceTargets, createTask]);
 
   const endBreak = useCallback(async (): Promise<{ ok: boolean; reason?: string }> => {
     const wsId = activeWorkspace?.id;
@@ -1199,8 +1253,10 @@ export function useNexusStore() {
     createTarget,
     updateTarget,
     deleteTarget,
+    setTargetSharedMembers,
     enableTargetShare,
     disableTargetShare,
-    assignTargetAsTask,
+    copyTargetAsTask,
+    copyTargetAsProject,
   };
 }

@@ -34,7 +34,8 @@ export interface Workspace {
   updatedAt: string;
 }
 
-export type TargetStatus = 'planned' | 'in_progress' | 'done';
+/** Target / sub-target status. Legacy `done` may still exist in older docs. */
+export type TargetStatus = 'planned' | 'in_progress' | 'hold' | 'complete' | 'cancelled' | 'done';
 
 export interface SubTarget {
   id: string;
@@ -54,24 +55,25 @@ export interface Target {
   status: TargetStatus;
   subTargets: SubTarget[];
   createdByUserId: string;
+  /** Workspace members given edit access to this specific target. */
+  sharedWithUserIds?: string[];
+  /** Invite link enabled for people outside the workspace (same edit access after they accept). */
   shareEnabled: boolean;
   shareToken: string | null;
   createdAt: string;
   updatedAt: string;
 }
 
-/** Public snapshot used by /share/t/[token] (anyone with the link). */
+/** Invite record for /share/t/[token] — grants edit access after sign-in (not view-only). */
 export interface TargetShare {
   id: string; // same as shareToken
   workspaceId: string;
   targetId: string;
   workspaceName: string;
-  title: string;
-  description: string;
-  startDate: string;
-  endDate: string;
-  status: TargetStatus;
-  subTargets: SubTarget[];
+  enabled: boolean;
+  permission: 'edit';
+  acceptedUserIds: string[];
+  createdByUserId: string;
   updatedAt: string;
 }
 

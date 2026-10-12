@@ -16,7 +16,9 @@ import {
   Settings2,
   Loader2,
   Pencil,
-  Eye,
+  Share2,
+  FolderPlus,
+  ListTodo,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -51,17 +53,33 @@ import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import type { SubTarget, Target, TargetStatus } from '@/lib/types';
 
-const STATUS_LABEL: Record<TargetStatus, string> = {
-  planned: 'Planned',
-  in_progress: 'In progress',
-  done: 'Done',
-};
+const STATUS_OPTIONS: { value: TargetStatus; label: string }[] = [
+  { value: 'planned', label: 'Planned' },
+  { value: 'in_progress', label: 'In progress' },
+  { value: 'hold', label: 'Hold' },
+  { value: 'complete', label: 'Complete' },
+  { value: 'cancelled', label: 'Cancelled' },
+];
 
-const STATUS_CLASS: Record<TargetStatus, string> = {
+const STATUS_CLASS: Record<string, string> = {
   planned: 'bg-slate-100 text-slate-700 border-slate-200',
   in_progress: 'bg-amber-50 text-amber-800 border-amber-200',
+  hold: 'bg-orange-50 text-orange-800 border-orange-200',
+  complete: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+  cancelled: 'bg-rose-50 text-rose-800 border-rose-200',
   done: 'bg-emerald-50 text-emerald-800 border-emerald-200',
 };
+
+function normalizeStatus(s?: string): TargetStatus {
+  if (s === 'done') return 'complete';
+  if (STATUS_OPTIONS.some((o) => o.value === s)) return s as TargetStatus;
+  return 'planned';
+}
+
+function statusLabel(s?: string) {
+  const n = normalizeStatus(s);
+  return STATUS_OPTIONS.find((o) => o.value === n)?.label || 'Planned';
+}
 
 function todayISO() {
   const d = new Date();
@@ -77,13 +95,6 @@ function formatRange(start: string, end: string) {
   } catch {
     return `${start} → ${end}`;
   }
-}
-
-function progressOf(t: Target) {
-  const subs = t.subTargets || [];
-  if (!subs.length) return t.status === 'done' ? 100 : t.status === 'in_progress' ? 50 : 0;
-  const done = subs.filter((s) => s.status === 'done').length;
-  return Math.round((done / subs.length) * 100);
 }
 
 type DraftSub = {
@@ -103,7 +114,9 @@ export function TargetsView({ store }: { store: any }) {
     deleteTarget,
     enableTargetShare,
     disableTargetShare,
-    assignTargetAsTask,
+    setTargetSharedMembers,
+    copyTargetAsTask,
+    copyTargetAsProject,
     updateTargetsAccess,
     workspaceProjects,
     workspaceMembers,
@@ -118,10 +131,17 @@ export function TargetsView({ store }: { store: any }) {
   const [editingTarget, setEditingTarget] = useState<Target | null>(null);
   const [editStatus, setEditStatus] = useState<TargetStatus>('planned');
   const [accessOpen, setAccessOpen] = useState(false);
-  const [assignOpen, setAssignOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareTarget, setShareTarget] = useState<Target | null>(null);
+  const [shareMemberIds, setShareMemberIds] = useState<string[]>([]);
+  const [shareLink, setShareLink] = useState<string | null>(null);
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [copyOpen, setCopyOpen] = useState(false);
+  const [copyMode, setCopyMode] = useState<'task' | 'project'>('task');
+  const [copyTarget, setCopyTarget] = useState<Target | null>(null);
+  const [copyProjectId, setCopyProjectId] = useState('');
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [copiedToken, setCopiedToken] = useState<string | null>(null);
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -129,12 +149,7 @@ export function TargetsView({ store }: { store: any }) {
   const [endDate, setEndDate] = useState(todayISO());
   const [draftSubs, setDraftSubs] = useState<DraftSub[]>([]);
   const [saving, setSaving] = useState(false);
-
   const [accessIds, setAccessIds] = useState<string[]>([]);
-  const [assignTarget, setAssignTarget] = useState<Target | null>(null);
-  const [assignSub, setAssignSub] = useState<SubTarget | null>(null);
-  const [assignProjectId, setAssignProjectId] = useState('');
-  const [assigning, setAssigning] = useState(false);
 
   const targets: Target[] = workspaceTargets || [];
   const members = workspaceMembers || [];
@@ -144,9 +159,14 @@ export function TargetsView({ store }: { store: any }) {
     () =>
       members.filter((m: any) => {
         const role = activeWorkspace?.memberRoles?.[m.userId];
-        return role !== 'owner' && role !== 'lead';
+        return role !== 'owner' && role !== 'lead' && m.userId !== currentUser?.id;
       }),
-    [members, activeWorkspace]
+    [members, activeWorkspace, currentUser?.id]
+  );
+
+  const shareableMembers = useMemo(
+    () => members.filter((m: any) => m.userId !== currentUser?.id),
+    [members, currentUser?.id]
   );
 
   const openCreate = () => {
@@ -166,22 +186,48 @@ export function TargetsView({ store }: { store: any }) {
     setDescription(t.description || '');
     setStartDate(t.startDate || todayISO());
     setEndDate(t.endDate || todayISO());
-    setEditStatus(t.status || 'planned');
+    setEditStatus(normalizeStatus(t.status));
     setDraftSubs(
       (t.subTargets || []).map((s) => ({
         id: s.id,
         title: s.title,
         startDate: s.startDate,
         endDate: s.endDate,
-        status: s.status,
+        status: normalizeStatus(s.status),
       }))
     );
     setEditOpen(true);
   };
 
+  const openShare = async (t: Target) => {
+    setShareTarget(t);
+    const creator = t.createdByUserId;
+    setShareMemberIds((t.sharedWithUserIds || []).filter((id) => id !== creator));
+    setShareLink(
+      t.shareEnabled && t.shareToken
+        ? `${typeof window !== 'undefined' ? window.location.origin : ''}/share/t/${t.shareToken}`
+        : null
+    );
+    setCopiedLink(false);
+    setShareOpen(true);
+  };
+
   const openAccess = () => {
     setAccessIds([...(activeWorkspace?.targetsAllowedUserIds || [])]);
     setAccessOpen(true);
+  };
+
+  const openCopyTask = (t: Target) => {
+    setCopyTarget(t);
+    setCopyMode('task');
+    setCopyProjectId(projects[0]?.id || '');
+    setCopyOpen(true);
+  };
+
+  const openCopyProject = (t: Target) => {
+    setCopyTarget(t);
+    setCopyMode('project');
+    setCopyOpen(true);
   };
 
   const handleCreate = async () => {
@@ -206,7 +252,7 @@ export function TargetsView({ store }: { store: any }) {
             title: s.title.trim(),
             startDate: s.startDate || startDate,
             endDate: s.endDate || endDate,
-            status: 'planned' as TargetStatus,
+            status: normalizeStatus(s.status),
           })),
       });
       toast({ title: 'Target created' });
@@ -237,7 +283,7 @@ export function TargetsView({ store }: { store: any }) {
           title: s.title.trim(),
           startDate: s.startDate || startDate,
           endDate: s.endDate || endDate,
-          status: s.status || 'planned',
+          status: normalizeStatus(s.status),
         }));
       await updateTarget(editingTarget.id, {
         title: title.trim(),
@@ -270,34 +316,60 @@ export function TargetsView({ store }: { store: any }) {
     }
   };
 
-  const handleShare = async (t: Target) => {
-    setBusyId(t.id);
+  const handleSaveShareMembers = async () => {
+    if (!shareTarget) return;
+    setSaving(true);
     try {
-      if (t.shareEnabled && t.shareToken) {
-        await disableTargetShare(t.id);
-        toast({ title: 'Share link disabled' });
-      } else {
-        const token = await enableTargetShare(t.id);
-        if (token && typeof window !== 'undefined') {
-          const url = `${window.location.origin}/share/t/${token}`;
-          await navigator.clipboard?.writeText(url);
-          setCopiedToken(token);
-          toast({ title: 'Share link copied', description: 'Anyone with the link can view (read-only).' });
-        }
+      await setTargetSharedMembers(shareTarget.id, shareMemberIds);
+      toast({ title: 'Shared with selected members' });
+    } catch {
+      toast({ variant: 'destructive', title: 'Could not update member share' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleEnableLink = async () => {
+    if (!shareTarget) return;
+    setBusyId(shareTarget.id);
+    try {
+      const token = await enableTargetShare(shareTarget.id);
+      if (token) {
+        const url = `${window.location.origin}/share/t/${token}`;
+        setShareLink(url);
+        await navigator.clipboard?.writeText(url);
+        setCopiedLink(true);
+        toast({
+          title: 'Share link ready',
+          description: 'Anyone with the link can sign in and edit this target (same as a member).',
+        });
       }
     } catch {
-      toast({ variant: 'destructive', title: 'Share action failed' });
+      toast({ variant: 'destructive', title: 'Could not create share link' });
     } finally {
       setBusyId(null);
     }
   };
 
-  const copyShare = async (token: string) => {
-    const url = `${window.location.origin}/share/t/${token}`;
-    await navigator.clipboard?.writeText(url);
-    setCopiedToken(token);
+  const handleDisableLink = async () => {
+    if (!shareTarget) return;
+    setBusyId(shareTarget.id);
+    try {
+      await disableTargetShare(shareTarget.id);
+      setShareLink(null);
+      toast({ title: 'Outside share link disabled' });
+    } catch {
+      toast({ variant: 'destructive', title: 'Could not disable link' });
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const handleCopyLink = async () => {
+    if (!shareLink) return;
+    await navigator.clipboard?.writeText(shareLink);
+    setCopiedLink(true);
     toast({ title: 'Link copied' });
-    setTimeout(() => setCopiedToken(null), 2000);
   };
 
   const handleStatus = async (t: Target, status: TargetStatus) => {
@@ -322,43 +394,39 @@ export function TargetsView({ store }: { store: any }) {
     }
   };
 
-  const openAssign = (t: Target, sub?: SubTarget) => {
-    setAssignTarget(t);
-    setAssignSub(sub || null);
-    setAssignProjectId(projects[0]?.id || '');
-    setAssignOpen(true);
-  };
-
-  const handleAssign = async () => {
-    if (!assignTarget || !assignProjectId) {
-      toast({ variant: 'destructive', title: 'Choose a project' });
-      return;
-    }
-    setAssigning(true);
+  const handleCopy = async () => {
+    if (!copyTarget) return;
+    setSaving(true);
     try {
-      const titleText = assignSub ? assignSub.title : assignTarget.title;
-      const due = assignSub?.endDate || assignTarget.endDate || null;
-      const desc = assignSub
-        ? `From target: ${assignTarget.title}\n${assignTarget.description || ''}`.trim()
-        : assignTarget.description || '';
-      const taskId = await assignTargetAsTask({
-        projectId: assignProjectId,
-        title: titleText,
-        description: desc,
-        dueDate: due,
-        assigneeUserIds: currentUser?.id ? [currentUser.id] : [],
-      });
-      if (!taskId) throw new Error('Task was not created');
-      toast({ title: 'Assigned as task', description: 'Opened in the chosen project.' });
-      setAssignOpen(false);
+      if (copyMode === 'project') {
+        const projId = await copyTargetAsProject(copyTarget.id);
+        if (!projId) throw new Error('Project was not created');
+        toast({ title: 'Copied as project', description: 'Original target is unchanged.' });
+      } else {
+        if (!copyProjectId) {
+          toast({ variant: 'destructive', title: 'Choose a project' });
+          setSaving(false);
+          return;
+        }
+        const taskId = await copyTargetAsTask({
+          projectId: copyProjectId,
+          title: copyTarget.title,
+          description: copyTarget.description || '',
+          dueDate: copyTarget.endDate || null,
+          assigneeUserIds: currentUser?.id ? [currentUser.id] : [],
+        });
+        if (!taskId) throw new Error('Task was not created');
+        toast({ title: 'Copied as task', description: 'Original target is unchanged.' });
+      }
+      setCopyOpen(false);
     } catch (e: any) {
       toast({
         variant: 'destructive',
-        title: 'Could not assign as task',
-        description: e?.message || 'Only admins can create tasks.',
+        title: 'Copy failed',
+        description: e?.message || 'Only admins can create projects/tasks.',
       });
     } finally {
-      setAssigning(false);
+      setSaving(false);
     }
   };
 
@@ -377,7 +445,7 @@ export function TargetsView({ store }: { store: any }) {
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
           <p className="page-subheading">
-            Overall goals and sub-targets for {activeWorkspace?.name || 'this workspace'}.
+            Write and manage goals for {activeWorkspace?.name || 'this workspace'}. No progress tracking — status only.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -399,7 +467,7 @@ export function TargetsView({ store }: { store: any }) {
           <TargetIcon className="h-10 w-10 mx-auto text-muted-foreground/50 mb-3" />
           <h3 className="font-semibold text-lg mb-1">No targets yet</h3>
           <p className="text-sm text-muted-foreground mb-4 max-w-sm mx-auto">
-            Create an overall target with a start and end date, then break it into sub-targets.
+            Create a target with a start and end date, then optionally break it into sub-targets.
           </p>
           <Button onClick={openCreate} className="gap-2">
             <Plus className="h-4 w-4" /> Create first target
@@ -409,7 +477,7 @@ export function TargetsView({ store }: { store: any }) {
         <div className="space-y-3">
           {targets.map((t) => {
             const open = expanded[t.id] ?? true;
-            const pct = progressOf(t);
+            const st = normalizeStatus(t.status);
             return (
               <div
                 key={t.id}
@@ -432,12 +500,17 @@ export function TargetsView({ store }: { store: any }) {
                     >
                       <div className="flex flex-wrap items-center gap-2 mb-1">
                         <h3 className="font-semibold text-base truncate">{t.title}</h3>
-                        <Badge variant="outline" className={cn('text-[10px] font-medium', STATUS_CLASS[t.status])}>
-                          {STATUS_LABEL[t.status]}
+                        <Badge variant="outline" className={cn('text-[10px] font-medium', STATUS_CLASS[st])}>
+                          {statusLabel(st)}
                         </Badge>
                         {t.shareEnabled && (
                           <Badge variant="outline" className="text-[10px] gap-1 text-sky-700 border-sky-200 bg-sky-50">
-                            <Link2 className="h-3 w-3" /> Shared
+                            <Link2 className="h-3 w-3" /> Link shared
+                          </Badge>
+                        )}
+                        {(t.sharedWithUserIds || []).length > 1 && (
+                          <Badge variant="outline" className="text-[10px] text-violet-700 border-violet-200 bg-violet-50">
+                            Shared with members
                           </Badge>
                         )}
                       </div>
@@ -455,65 +528,45 @@ export function TargetsView({ store }: { store: any }) {
                           <ListChecks className="h-3.5 w-3.5" />
                           {(t.subTargets || []).length} sub-target{(t.subTargets || []).length === 1 ? '' : 's'}
                         </span>
-                        <span>{pct}% done</span>
-                      </div>
-                      <div className="mt-2 h-1.5 rounded-full bg-muted overflow-hidden">
-                        <div
-                          className="h-full rounded-full bg-primary/80 transition-all"
-                          style={{ width: `${pct}%` }}
-                        />
                       </div>
                     </button>
                     <div className="flex items-center gap-1 shrink-0">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-8 gap-1.5"
-                        onClick={() => openEdit(t)}
-                      >
+                      <Button variant="outline" size="sm" className="h-8 gap-1.5" onClick={() => openEdit(t)}>
                         <Pencil className="h-3.5 w-3.5" />
                         <span className="hidden sm:inline">Edit</span>
                       </Button>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="sm" disabled={busyId === t.id}>
-                          {busyId === t.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Actions'}
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-52">
-                        <DropdownMenuItem onClick={() => openEdit(t)}>
-                          <Eye className="h-4 w-4 mr-2" /> View & edit
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={() => handleStatus(t, 'planned')}>Mark planned</DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleStatus(t, 'in_progress')}>Mark in progress</DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleStatus(t, 'done')}>Mark done</DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={() => openAssign(t)}>
-                          Assign as task…
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleShare(t)}>
-                          {t.shareEnabled ? (
-                            <><Link2Off className="h-4 w-4 mr-2" /> Disable share link</>
-                          ) : (
-                            <><Link2 className="h-4 w-4 mr-2" /> Share view link</>
-                          )}
-                        </DropdownMenuItem>
-                        {t.shareEnabled && t.shareToken && (
-                          <DropdownMenuItem onClick={() => copyShare(t.shareToken!)}>
-                            {copiedToken === t.shareToken ? (
-                              <><Check className="h-4 w-4 mr-2" /> Copied</>
-                            ) : (
-                              <><Copy className="h-4 w-4 mr-2" /> Copy link</>
-                            )}
+                      <Button variant="outline" size="sm" className="h-8 gap-1.5" onClick={() => openShare(t)}>
+                        <Share2 className="h-3.5 w-3.5" />
+                        <span className="hidden sm:inline">Share</span>
+                      </Button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="sm" disabled={busyId === t.id}>
+                            {busyId === t.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Actions'}
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-56">
+                          {STATUS_OPTIONS.map((o) => (
+                            <DropdownMenuItem key={o.value} onClick={() => handleStatus(t, o.value)}>
+                              Mark {o.label.toLowerCase()}
+                            </DropdownMenuItem>
+                          ))}
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={() => openCopyTask(t)}>
+                            <ListTodo className="h-4 w-4 mr-2" /> Copy as task…
                           </DropdownMenuItem>
-                        )}
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => handleDelete(t)}>
-                          <Trash2 className="h-4 w-4 mr-2" /> Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                          <DropdownMenuItem onClick={() => openCopyProject(t)}>
+                            <FolderPlus className="h-4 w-4 mr-2" /> Copy as project
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => openShare(t)}>
+                            <Share2 className="h-4 w-4 mr-2" /> Share…
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => handleDelete(t)}>
+                            <Trash2 className="h-4 w-4 mr-2" /> Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </div>
                 </div>
@@ -529,24 +582,19 @@ export function TargetsView({ store }: { store: any }) {
                           <p className="text-sm font-medium truncate">{s.title}</p>
                           <p className="text-[11px] text-muted-foreground">{formatRange(s.startDate, s.endDate)}</p>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Select
-                            value={s.status}
-                            onValueChange={(v) => handleSubStatus(t, s.id, v as TargetStatus)}
-                          >
-                            <SelectTrigger className="h-8 w-[130px] text-xs">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="planned">Planned</SelectItem>
-                              <SelectItem value="in_progress">In progress</SelectItem>
-                              <SelectItem value="done">Done</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => openAssign(t, s)}>
-                            To task
-                          </Button>
-                        </div>
+                        <Select
+                          value={normalizeStatus(s.status)}
+                          onValueChange={(v) => handleSubStatus(t, s.id, v as TargetStatus)}
+                        >
+                          <SelectTrigger className="h-8 w-[140px] text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {STATUS_OPTIONS.map((o) => (
+                              <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </div>
                     ))}
                   </div>
@@ -557,12 +605,11 @@ export function TargetsView({ store }: { store: any }) {
         </div>
       )}
 
-      {/* Create dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>New target</DialogTitle>
-            <DialogDescription>Set an overall goal with a timeline. Add optional sub-targets.</DialogDescription>
+            <DialogDescription>Set a goal with a timeline. Add optional sub-targets.</DialogDescription>
           </DialogHeader>
           <TargetFormFields
             title={title}
@@ -589,7 +636,6 @@ export function TargetsView({ store }: { store: any }) {
         </DialogContent>
       </Dialog>
 
-      {/* View & edit dialog */}
       <Dialog
         open={editOpen}
         onOpenChange={(open) => {
@@ -600,7 +646,7 @@ export function TargetsView({ store }: { store: any }) {
         <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Target details</DialogTitle>
-            <DialogDescription>View and edit the full description, dates, and sub-targets.</DialogDescription>
+            <DialogDescription>View and edit description, dates, status, and sub-targets.</DialogDescription>
           </DialogHeader>
           <TargetFormFields
             title={title}
@@ -628,13 +674,106 @@ export function TargetsView({ store }: { store: any }) {
         </DialogContent>
       </Dialog>
 
-      {/* Access dialog */}
+      {/* Per-target share */}
+      <Dialog open={shareOpen} onOpenChange={setShareOpen}>
+        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Share “{shareTarget?.title}”</DialogTitle>
+            <DialogDescription>
+              Choose who can edit this target. Outside links require sign-in and grant the same edit access as a member.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-5 py-2">
+            <div className="space-y-2">
+              <Label>Workspace members</Label>
+              {shareableMembers.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No other members to share with.</p>
+              ) : (
+                <div className="max-h-40 overflow-y-auto space-y-2">
+                  {shareableMembers.map((m: any) => {
+                    const checked = shareMemberIds.includes(m.userId);
+                    return (
+                      <label
+                        key={m.userId}
+                        className="flex items-center gap-3 rounded-xl border border-border/50 px-3 py-2 cursor-pointer hover:bg-muted/40"
+                      >
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={(v) => {
+                            setShareMemberIds((ids) =>
+                              v ? [...ids, m.userId] : ids.filter((id) => id !== m.userId)
+                            );
+                          }}
+                        />
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate">{m.displayName}</p>
+                          <p className="text-xs text-muted-foreground truncate">{m.email}</p>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+              <Button size="sm" variant="secondary" onClick={handleSaveShareMembers} disabled={saving || !shareTarget}>
+                {saving && <Loader2 className="h-3.5 w-3.5 mr-2 animate-spin" />}
+                Save member share
+              </Button>
+            </div>
+
+            <div className="border-t border-border/50 pt-4 space-y-3">
+              <Label>Anyone outside the workspace</Label>
+              <p className="text-xs text-muted-foreground">
+                They sign in with the link, then can edit this target — not view-only.
+              </p>
+              {shareLink ? (
+                <div className="space-y-2">
+                  <Input readOnly value={shareLink} className="text-xs" />
+                  <div className="flex flex-wrap gap-2">
+                    <Button size="sm" variant="outline" className="gap-1.5" onClick={handleCopyLink}>
+                      {copiedLink ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                      Copy link
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="gap-1.5 text-destructive"
+                      onClick={handleDisableLink}
+                      disabled={busyId === shareTarget?.id}
+                    >
+                      <Link2Off className="h-3.5 w-3.5" />
+                      Disable link
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <Button
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={handleEnableLink}
+                  disabled={busyId === shareTarget?.id}
+                >
+                  {busyId === shareTarget?.id ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Link2 className="h-3.5 w-3.5" />
+                  )}
+                  Create share link
+                </Button>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShareOpen(false)}>Done</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={accessOpen} onOpenChange={setAccessOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Who can open Targets</DialogTitle>
             <DialogDescription>
-              Admins always have access. Select members who can view and manage targets.
+              Admins always have access. Selected members can open the Targets page (they see targets shared with them or that they created).
             </DialogDescription>
           </DialogHeader>
           <div className="max-h-64 overflow-y-auto space-y-2 py-2">
@@ -675,37 +814,43 @@ export function TargetsView({ store }: { store: any }) {
         </DialogContent>
       </Dialog>
 
-      {/* Assign as task */}
-      <Dialog open={assignOpen} onOpenChange={setAssignOpen}>
+      <Dialog open={copyOpen} onOpenChange={setCopyOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Assign as task</DialogTitle>
+            <DialogTitle>{copyMode === 'project' ? 'Copy as project' : 'Copy as task'}</DialogTitle>
             <DialogDescription>
-              Create a task from {assignSub ? `“${assignSub.title}”` : `“${assignTarget?.title}”`} in a project you choose.
+              Creates a {copyMode} from “{copyTarget?.title}”. The original target stays as-is.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3 py-2">
-            <Label>Project</Label>
-            {projects.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No projects available.</p>
-            ) : (
-              <Select value={assignProjectId} onValueChange={setAssignProjectId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Choose project" />
-                </SelectTrigger>
-                <SelectContent>
-                  {projects.map((p: any) => (
-                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-          </div>
+          {copyMode === 'task' && (
+            <div className="space-y-3 py-2">
+              <Label>Project</Label>
+              {projects.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No projects available.</p>
+              ) : (
+                <Select value={copyProjectId} onValueChange={setCopyProjectId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Choose project" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {projects.map((p: any) => (
+                      <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+          )}
+          {copyMode === 'project' && (
+            <p className="text-sm text-muted-foreground py-2">
+              A new project will be created with this target’s title and description. Sub-targets become tasks.
+            </p>
+          )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setAssignOpen(false)}>Cancel</Button>
-            <Button onClick={handleAssign} disabled={assigning || !assignProjectId}>
-              {assigning && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Create task
+            <Button variant="outline" onClick={() => setCopyOpen(false)}>Cancel</Button>
+            <Button onClick={handleCopy} disabled={saving || (copyMode === 'task' && !copyProjectId)}>
+              {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              {copyMode === 'project' ? 'Create project copy' : 'Create task copy'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -765,14 +910,14 @@ function TargetFormFields({
       {showStatus && (
         <div className="space-y-2">
           <Label>Status</Label>
-          <Select value={status} onValueChange={(v) => setStatus(v as TargetStatus)}>
+          <Select value={normalizeStatus(status)} onValueChange={(v) => setStatus(v as TargetStatus)}>
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="planned">Planned</SelectItem>
-              <SelectItem value="in_progress">In progress</SelectItem>
-              <SelectItem value="done">Done</SelectItem>
+              {STATUS_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
@@ -850,7 +995,7 @@ function TargetFormFields({
                 </div>
                 {showStatus && (
                   <Select
-                    value={s.status || 'planned'}
+                    value={normalizeStatus(s.status)}
                     onValueChange={(v) => {
                       const next = [...draftSubs];
                       next[i] = { ...next[i], status: v as TargetStatus };
@@ -861,9 +1006,9 @@ function TargetFormFields({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="planned">Planned</SelectItem>
-                      <SelectItem value="in_progress">In progress</SelectItem>
-                      <SelectItem value="done">Done</SelectItem>
+                      {STATUS_OPTIONS.map((o) => (
+                        <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 )}
