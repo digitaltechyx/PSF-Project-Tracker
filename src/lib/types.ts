@@ -55,25 +55,50 @@ export interface Target {
   status: TargetStatus;
   subTargets: SubTarget[];
   createdByUserId: string;
-  /** Workspace members given edit access to this specific target. */
+  /** @deprecated legacy collaborator share */
   sharedWithUserIds?: string[];
-  /** Invite link enabled for people outside the workspace (same edit access after they accept). */
-  shareEnabled: boolean;
-  shareToken: string | null;
+  /** @deprecated legacy live-edit share link */
+  shareEnabled?: boolean;
+  shareToken?: string | null;
+  /** Set when this target was received as a copy from someone else */
+  copiedFromTransferId?: string | null;
   createdAt: string;
   updatedAt: string;
 }
 
-/** Invite record for /share/t/[token] — grants edit access after sign-in (not view-only). */
-export interface TargetShare {
-  id: string; // same as shareToken
+/** Snapshot of a target packaged for copy-share (not live co-edit). */
+export interface TargetSnapshot {
+  title: string;
+  description: string;
+  startDate: string;
+  endDate: string;
+  status: TargetStatus;
+  subTargets: SubTarget[];
+}
+
+export interface TargetTransferAcceptance {
+  userId: string;
   workspaceId: string;
-  targetId: string;
-  workspaceName: string;
-  enabled: boolean;
-  permission: 'edit';
-  acceptedUserIds: string[];
-  createdByUserId: string;
+  acceptedAt: string;
+}
+
+/**
+ * Copy-share package at /share/t/[token].
+ * Recipient accepts → targets are copied into a workspace they choose.
+ */
+export interface TargetTransfer {
+  id: string; // token in URL
+  fromUserId: string;
+  fromUserName: string;
+  fromWorkspaceId: string;
+  fromWorkspaceName: string;
+  /** Optional directed member */
+  toUserId: string | null;
+  toUserName: string | null;
+  toEmail: string | null;
+  targets: TargetSnapshot[];
+  acceptances: TargetTransferAcceptance[];
+  createdAt: string;
   updatedAt: string;
 }
 

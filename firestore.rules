@@ -62,40 +62,22 @@ service cloud.firestore {
         );
     }
 
-    function targetData(workspaceId, targetId) {
-      return get(/databases/$(database)/documents/workspaces/$(workspaceId)/targets/$(targetId)).data;
+    // Recipient may create their own target copies when accepting a transfer.
+    function canCreateOwnTarget(workspaceId) {
+      return isWorkspaceMember(workspaceId)
+        && request.resource.data.createdByUserId == request.auth.uid
+        && request.resource.data.workspaceId == workspaceId;
     }
 
-    function hasAcceptedTargetShare(workspaceId, targetId) {
-      let t = targetData(workspaceId, targetId);
+    // Accepting a copy-share: only append an acceptance row for self.
+    function isAcceptingTargetTransfer() {
+      let before = resource.data.get('acceptances', []);
+      let after = request.resource.data.get('acceptances', []);
       return isSignedIn()
-        && t.get('shareEnabled', false) == true
-        && t.get('shareToken', null) is string
-        && exists(/databases/$(database)/documents/targetShares/$(t.shareToken))
-        && get(/databases/$(database)/documents/targetShares/$(t.shareToken)).data.get('enabled', true) != false
-        && request.auth.uid in get(/databases/$(database)/documents/targetShares/$(t.shareToken)).data.get('acceptedUserIds', []);
-    }
-
-    function isTargetCollaborator(workspaceId, targetId) {
-      return isSignedIn() && (
-        request.auth.uid in targetData(workspaceId, targetId).get('sharedWithUserIds', [])
-        || hasAcceptedTargetShare(workspaceId, targetId)
-      );
-    }
-
-    // Outsider accepting an invite link: may only append their own uid to acceptedUserIds.
-    function isAcceptingTargetShare() {
-      let before = resource.data.get('acceptedUserIds', []);
-      let after = request.resource.data.get('acceptedUserIds', []);
-      // Accept may also normalize legacy invite docs (enabled / permission).
-      let keys = request.resource.data.diff(resource.data).affectedKeys();
-      return isSignedIn()
-        && resource.data.get('enabled', true) != false
-        && keys.hasOnly(['acceptedUserIds', 'updatedAt', 'enabled', 'permission'])
-        && !(request.auth.uid in before)
-        && request.auth.uid in after
-        && after.hasAll(before)
-        && after.size() == before.size() + 1;
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['acceptances', 'updatedAt'])
+        && after.size() == before.size() + 1
+        && after[after.size() - 1].userId == request.auth.uid
+        && after[after.size() - 1].workspaceId is string;
     }
 
     match /notifications/{notificationId} {
@@ -189,28 +171,28 @@ service cloud.firestore {
       }
 
       match /targets/{targetId} {
-        allow read: if canAccessTargets(workspaceId) || isTargetCollaborator(workspaceId, targetId);
-        allow create: if canAccessTargets(workspaceId)
-          && request.resource.data.createdByUserId == request.auth.uid
-          && request.resource.data.workspaceId == workspaceId;
-        allow update: if canAccessTargets(workspaceId) || isTargetCollaborator(workspaceId, targetId);
-        allow delete: if canAccessTargets(workspaceId);
+        allow read: if canAccessTargets(workspaceId)
+          || (isWorkspaceMember(workspaceId) && resource.data.createdByUserId == request.auth.uid);
+        allow create: if canCreateOwnTarget(workspaceId);
+        allow update: if canAccessTargets(workspaceId)
+          || (isWorkspaceMember(workspaceId) && resource.data.createdByUserId == request.auth.uid);
+        allow delete: if canAccessTargets(workspaceId)
+          || (isWorkspaceMember(workspaceId) && resource.data.createdByUserId == request.auth.uid);
       }
     }
 
-    // Invite links for targets (token in URL is the secret). Edit access after accept — not view-only.
-    match /targetShares/{token} {
+    // Copy-share packages (token in URL). Recipient copies snapshots into their workspace.
+    match /targetTransfers/{token} {
       allow read: if isSignedIn();
       allow create: if isSignedIn()
-        && request.resource.data.workspaceId is string
-        && canAccessTargets(request.resource.data.workspaceId);
+        && request.resource.data.fromUserId == request.auth.uid
+        && request.resource.data.fromWorkspaceId is string
+        && canAccessTargets(request.resource.data.fromWorkspaceId);
       allow update: if isSignedIn() && (
-        canAccessTargets(resource.data.workspaceId)
-        || isAcceptingTargetShare()
+        resource.data.fromUserId == request.auth.uid
+        || isAcceptingTargetTransfer()
       );
-      allow delete: if isSignedIn()
-        && resource.data.workspaceId is string
-        && canAccessTargets(resource.data.workspaceId);
+      allow delete: if isSignedIn() && resource.data.fromUserId == request.auth.uid;
     }
 
     match /invitations/{invitationId} {

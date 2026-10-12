@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useParams, useRouter } from 'next/navigation';
 import {
   onAuthStateChanged,
   signInWithPopup,
@@ -11,20 +11,24 @@ import {
   updateProfile,
   User,
 } from 'firebase/auth';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  setDoc,
+} from 'firebase/firestore';
 import { useFirestore, useAuth } from '@/firebase';
 import {
   AlertCircle,
-  Calendar,
+  CheckCircle2,
   Loader2,
-  Target as TargetIcon,
   LogIn,
+  Target as TargetIcon,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Badge } from '@/components/ui/badge';
 import {
   Select,
   SelectContent,
@@ -33,58 +37,30 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import type { SubTarget, Target, TargetShare, TargetStatus } from '@/lib/types';
-import { cn } from '@/lib/utils';
+import type { TargetTransfer, Workspace } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
+import { acceptTargetTransferInline } from './accept';
 
-const STATUS_OPTIONS: { value: TargetStatus; label: string }[] = [
-  { value: 'planned', label: 'Planned' },
-  { value: 'in_progress', label: 'In progress' },
-  { value: 'hold', label: 'Hold' },
-  { value: 'complete', label: 'Complete' },
-  { value: 'cancelled', label: 'Cancelled' },
-];
-
-const STATUS_CLASS: Record<string, string> = {
-  planned: 'bg-slate-100 text-slate-700 border-slate-200',
-  in_progress: 'bg-amber-50 text-amber-800 border-amber-200',
-  hold: 'bg-orange-50 text-orange-800 border-orange-200',
-  complete: 'bg-emerald-50 text-emerald-800 border-emerald-200',
-  cancelled: 'bg-rose-50 text-rose-800 border-rose-200',
-  done: 'bg-emerald-50 text-emerald-800 border-emerald-200',
-};
-
-function normalizeStatus(s?: string): TargetStatus {
-  if (s === 'done') return 'complete';
-  if (STATUS_OPTIONS.some((o) => o.value === s)) return s as TargetStatus;
-  return 'planned';
-}
-
-function formatRange(start: string, end: string) {
-  try {
-    const s = start ? new Date(start + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
-    const e = end ? new Date(end + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
-    return `${s} → ${e}`;
-  } catch {
-    return `${start} → ${end}`;
-  }
-}
-
-export default function SharedTargetPage() {
+export default function SharedTargetTransferPage() {
   const params = useParams();
   const token = params.token as string;
   const db = useFirestore();
   const auth = useAuth();
+  const router = useRouter();
   const { toast } = useToast();
 
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
-  const [share, setShare] = useState<TargetShare | null>(null);
-  const [target, setTarget] = useState<Target | null>(null);
+  const [transfer, setTransfer] = useState<TargetTransfer | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
+
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [wsLoading, setWsLoading] = useState(false);
+  const [workspaceId, setWorkspaceId] = useState('');
+  const [newWsName, setNewWsName] = useState('');
   const [accepting, setAccepting] = useState(false);
+  const [done, setDone] = useState<{ count: number; workspaceName: string } | null>(null);
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -92,13 +68,6 @@ export default function SharedTargetPage() {
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
   const [signingIn, setSigningIn] = useState(false);
   const [signInError, setSignInError] = useState<string | null>(null);
-
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const [status, setStatus] = useState<TargetStatus>('planned');
-  const [subTargets, setSubTargets] = useState<SubTarget[]>([]);
 
   useEffect(() => {
     if (!auth) return;
@@ -108,102 +77,68 @@ export default function SharedTargetPage() {
     });
   }, [auth]);
 
-  const loadShareAndTarget = useCallback(async () => {
+  const loadTransfer = useCallback(async () => {
     if (!db || !token || !user) return;
     setLoading(true);
     setError(null);
     try {
-      const shareSnap = await getDoc(doc(db, 'targetShares', token));
-      if (!shareSnap.exists()) {
-        setError('This share link is invalid or has been removed.');
-        setShare(null);
-        setTarget(null);
-        setLoading(false);
-        return;
-      }
-      const shareData = { id: shareSnap.id, ...shareSnap.data() } as TargetShare;
-      // Support legacy snapshot docs that lack `enabled`
-      const enabled = shareData.enabled !== false && (shareData as any).permission !== undefined
-        ? shareData.enabled !== false
-        : shareData.enabled !== false;
-
-      if (shareData.enabled === false) {
-        setError('This share link has been disabled.');
-        setShare(shareData);
-        setTarget(null);
-        setLoading(false);
-        return;
-      }
-
-      setShare({ ...shareData, enabled: enabled !== false, permission: 'edit', acceptedUserIds: shareData.acceptedUserIds || [] });
-
-      const accepted = (shareData.acceptedUserIds || []).includes(user.uid);
-      if (!accepted) {
-        setAccepting(true);
-        try {
-          await updateDoc(doc(db, 'targetShares', token), {
-            acceptedUserIds: [...(shareData.acceptedUserIds || []), user.uid],
-            enabled: true,
-            permission: 'edit',
-            updatedAt: new Date().toISOString(),
-          });
-          setShare((prev) =>
-            prev
-              ? { ...prev, acceptedUserIds: [...(prev.acceptedUserIds || []), user.uid], enabled: true }
-              : prev
-          );
-        } catch (e) {
-          console.error(e);
-          setError('Could not accept this share invite. Ask the owner to reshare the link.');
-          setAccepting(false);
-          setLoading(false);
-          return;
+      const snap = await getDoc(doc(db, 'targetTransfers', token));
+      if (!snap.exists()) {
+        // Legacy live-edit share docs are no longer supported for new flow
+        const legacy = await getDoc(doc(db, 'targetShares', token));
+        if (legacy.exists()) {
+          setError('This old share link is no longer supported. Ask them to share again with a new link.');
+        } else {
+          setError('This share link is invalid or has been removed.');
         }
-        setAccepting(false);
-      }
-
-      const targetSnap = await getDoc(
-        doc(db, 'workspaces', shareData.workspaceId, 'targets', shareData.targetId)
-      );
-      if (!targetSnap.exists()) {
-        setError('The shared target no longer exists.');
-        setTarget(null);
-        setLoading(false);
+        setTransfer(null);
         return;
       }
-
-      const t = { id: targetSnap.id, ...targetSnap.data() } as Target;
-      if (t.shareEnabled === false) {
-        setError('Sharing for this target has been turned off.');
-        setTarget(null);
-        setLoading(false);
-        return;
-      }
-
-      setTarget(t);
-      setTitle(t.title || '');
-      setDescription(t.description || '');
-      setStartDate(t.startDate || '');
-      setEndDate(t.endDate || '');
-      setStatus(normalizeStatus(t.status));
-      setSubTargets(
-        (t.subTargets || []).map((s) => ({ ...s, status: normalizeStatus(s.status) }))
-      );
+      setTransfer({ id: snap.id, ...snap.data() } as TargetTransfer);
     } catch (e) {
       console.error(e);
-      setError('Could not load this shared target.');
+      setError('Could not load this share.');
     } finally {
       setLoading(false);
     }
   }, [db, token, user]);
 
-  useEffect(() => {
-    if (user && db && token) {
-      loadShareAndTarget();
-    } else if (!authLoading && !user) {
-      setLoading(false);
+  const loadWorkspaces = useCallback(async () => {
+    if (!db || !user) return;
+    setWsLoading(true);
+    try {
+      const all = await getDocs(collection(db, 'workspaces'));
+      const list = all.docs
+        .map((d) => ({ id: d.id, ...d.data() } as Workspace))
+        .filter(
+          (w) =>
+            w.ownerUserId === user.uid ||
+            ['owner', 'lead', 'member'].includes(w.memberRoles?.[user.uid] || '')
+        );
+      setWorkspaces(list);
+      if (list.length === 1) setWorkspaceId(list[0].id);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setWsLoading(false);
     }
-  }, [user, db, token, authLoading, loadShareAndTarget]);
+  }, [db, user]);
+
+  useEffect(() => {
+    if (user && db && token) loadTransfer();
+    else if (!authLoading && !user) setLoading(false);
+  }, [user, db, token, authLoading, loadTransfer]);
+
+  useEffect(() => {
+    if (user && db && transfer) loadWorkspaces();
+  }, [user, db, transfer, loadWorkspaces]);
+
+  const alreadyAcceptedHere = useMemo(() => {
+    if (!user || !transfer || !workspaceId) return false;
+    return (transfer.acceptances || []).some(
+      (a) => a.userId === user.uid && a.workspaceId === workspaceId
+    );
+  }, [user, transfer, workspaceId]);
 
   const handleGoogle = async () => {
     if (!auth) return;
@@ -227,9 +162,7 @@ export default function SharedTargetPage() {
         await signInWithEmailAndPassword(auth, email, password);
       } else {
         const cred = await createUserWithEmailAndPassword(auth, email, password);
-        if (name.trim()) {
-          await updateProfile(cred.user, { displayName: name.trim() });
-        }
+        if (name.trim()) await updateProfile(cred.user, { displayName: name.trim() });
       }
     } catch (e: any) {
       setSignInError(e?.message || 'Authentication failed');
@@ -238,67 +171,111 @@ export default function SharedTargetPage() {
     }
   };
 
-  const handleSave = async () => {
-    if (!db || !share || !target || !user) return;
-    if (!title.trim()) {
-      toast({ variant: 'destructive', title: 'Title required' });
+  const createWorkspaceAndAccept = async () => {
+    if (!db || !user || !transfer || !newWsName.trim()) {
+      toast({ variant: 'destructive', title: 'Enter a workspace name' });
       return;
     }
-    setSaving(true);
+    setAccepting(true);
     try {
-      await updateDoc(doc(db, 'workspaces', share.workspaceId, 'targets', share.targetId), {
-        title: title.trim(),
-        description: description.trim(),
-        startDate,
-        endDate,
-        status: normalizeStatus(status),
-        subTargets,
-        updatedAt: new Date().toISOString(),
+      const wsRef = doc(collection(db, 'workspaces'));
+      const now = new Date().toISOString();
+      const ws: Workspace = {
+        id: wsRef.id,
+        name: newWsName.trim(),
+        description: '',
+        color: '#' + Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0'),
+        ownerUserId: user.uid,
+        memberRoles: { [user.uid]: 'owner' },
+        targetsAllowedUserIds: [user.uid],
+        createdAt: now,
+        updatedAt: now,
+      };
+      await setDoc(wsRef, ws);
+      await setDoc(doc(db, 'workspaces', wsRef.id, 'members', user.uid), {
+        id: user.uid,
+        workspaceId: wsRef.id,
+        userId: user.uid,
+        displayName: user.displayName || 'User',
+        email: user.email || '',
+        avatarUrl: user.photoURL || null,
+        role: 'owner',
       });
-      toast({ title: 'Target saved' });
-      setTarget((prev) =>
+
+      const result = await acceptTargetTransferInline(db, user, token, wsRef.id, transfer);
+      setDone({ count: result.count, workspaceName: ws.name });
+      toast({ title: 'Targets copied', description: `${result.count} target(s) added to ${ws.name}.` });
+    } catch (e: any) {
+      toast({ variant: 'destructive', title: 'Could not accept', description: e?.message });
+    } finally {
+      setAccepting(false);
+    }
+  };
+
+  const handleAccept = async () => {
+    if (!db || !user || !transfer) return;
+    if (workspaces.length > 1 && !workspaceId) {
+      toast({ variant: 'destructive', title: 'Choose a workspace' });
+      return;
+    }
+    if (workspaces.length === 0) {
+      toast({ variant: 'destructive', title: 'Create a workspace first' });
+      return;
+    }
+    const dest = workspaceId || workspaces[0]?.id;
+    if (!dest) return;
+    if (alreadyAcceptedHere) {
+      toast({ title: 'Already copied into this workspace' });
+      return;
+    }
+
+    setAccepting(true);
+    try {
+      const result = await acceptTargetTransferInline(db, user, token, dest, transfer);
+      const wsName = workspaces.find((w) => w.id === dest)?.name || 'your workspace';
+      setDone({ count: result.count, workspaceName: wsName });
+      setTransfer((prev) =>
         prev
           ? {
               ...prev,
-              title: title.trim(),
-              description: description.trim(),
-              startDate,
-              endDate,
-              status: normalizeStatus(status),
-              subTargets,
+              acceptances: [
+                ...(prev.acceptances || []),
+                { userId: user.uid, workspaceId: dest, acceptedAt: new Date().toISOString() },
+              ],
             }
           : prev
       );
+      toast({ title: 'Targets copied', description: `${result.count} target(s) are now yours in ${wsName}.` });
     } catch (e: any) {
-      toast({ variant: 'destructive', title: 'Save failed', description: e?.message });
+      toast({ variant: 'destructive', title: 'Could not accept', description: e?.message });
     } finally {
-      setSaving(false);
+      setAccepting(false);
     }
   };
 
   return (
     <div className="min-h-screen bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-slate-100 via-background to-background">
-      <div className="max-w-2xl mx-auto px-4 py-10 sm:py-16">
+      <div className="max-w-lg mx-auto px-4 py-10 sm:py-16">
         <div className="flex items-center gap-2 text-muted-foreground mb-8">
           <TargetIcon className="h-5 w-5" />
           <span className="text-xs font-semibold uppercase tracking-[0.14em]">
-            Shared target · edit access
+            Shared targets · copy into your workspace
           </span>
         </div>
 
-        {(authLoading || (user && loading) || accepting) && (
+        {(authLoading || (user && loading)) && (
           <div className="flex items-center justify-center py-24 text-muted-foreground gap-2">
             <Loader2 className="h-5 w-5 animate-spin" />
-            {accepting ? 'Accepting invite…' : 'Loading…'}
+            Loading…
           </div>
         )}
 
         {!authLoading && !user && (
           <div className="rounded-2xl border border-border/60 bg-card shadow-sm p-6 sm:p-8 space-y-5">
             <div>
-              <h1 className="text-xl font-semibold font-headline mb-1">Sign in to open this target</h1>
+              <h1 className="text-xl font-semibold font-headline mb-1">Sign in to receive targets</h1>
               <p className="text-sm text-muted-foreground">
-                You don’t need to join the workspace. After sign-in you can view and edit this shared target.
+                After sign-in you’ll copy these targets into a workspace you choose. They become yours.
               </p>
             </div>
             <Button className="w-full gap-2" onClick={handleGoogle} disabled={signingIn}>
@@ -339,130 +316,108 @@ export default function SharedTargetPage() {
           </div>
         )}
 
-        {!authLoading && user && !loading && !accepting && error && (
+        {!authLoading && user && !loading && error && (
           <div className="rounded-2xl border border-destructive/20 bg-destructive/5 p-8 text-center">
             <AlertCircle className="h-8 w-8 mx-auto text-destructive mb-3" />
             <p className="font-medium">{error}</p>
           </div>
         )}
 
-        {!authLoading && user && !loading && !accepting && target && share && (
-          <div className="rounded-2xl border border-border/60 bg-card shadow-sm overflow-hidden">
-            <div className="p-6 sm:p-8 space-y-5">
-              {share.workspaceName && (
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  {share.workspaceName}
-                </p>
-              )}
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="outline" className={cn('text-[10px]', STATUS_CLASS[normalizeStatus(status)])}>
-                  {STATUS_OPTIONS.find((o) => o.value === normalizeStatus(status))?.label}
-                </Badge>
-                <span className="text-xs text-muted-foreground inline-flex items-center gap-1">
-                  <Calendar className="h-3.5 w-3.5" />
-                  {formatRange(startDate, endDate)}
-                </span>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Title</Label>
-                <Input value={title} onChange={(e) => setTitle(e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label>Description</Label>
-                <Textarea
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  rows={8}
-                  className="min-h-[140px] resize-y"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Status</Label>
-                <Select value={normalizeStatus(status)} onValueChange={(v) => setStatus(v as TargetStatus)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {STATUS_OPTIONS.map((o) => (
-                      <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <Label>Start</Label>
-                  <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
-                </div>
-                <div className="space-y-2">
-                  <Label>End</Label>
-                  <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
-                </div>
-              </div>
-
-              {(subTargets || []).length > 0 && (
-                <div className="space-y-2">
-                  <Label>Sub-targets</Label>
-                  <div className="space-y-2">
-                    {subTargets.map((s, i) => (
-                      <div key={s.id} className="rounded-xl border border-border/50 p-3 space-y-2">
-                        <Input
-                          value={s.title}
-                          onChange={(e) => {
-                            const next = [...subTargets];
-                            next[i] = { ...next[i], title: e.target.value };
-                            setSubTargets(next);
-                          }}
-                        />
-                        <div className="grid grid-cols-2 gap-2">
-                          <Input
-                            type="date"
-                            value={s.startDate}
-                            onChange={(e) => {
-                              const next = [...subTargets];
-                              next[i] = { ...next[i], startDate: e.target.value };
-                              setSubTargets(next);
-                            }}
-                          />
-                          <Input
-                            type="date"
-                            value={s.endDate}
-                            onChange={(e) => {
-                              const next = [...subTargets];
-                              next[i] = { ...next[i], endDate: e.target.value };
-                              setSubTargets(next);
-                            }}
-                          />
-                        </div>
-                        <Select
-                          value={normalizeStatus(s.status)}
-                          onValueChange={(v) => {
-                            const next = [...subTargets];
-                            next[i] = { ...next[i], status: v as TargetStatus };
-                            setSubTargets(next);
-                          }}
-                        >
-                          <SelectTrigger className="h-8 text-xs">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {STATUS_OPTIONS.map((o) => (
-                              <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <Button className="w-full sm:w-auto" onClick={handleSave} disabled={saving}>
-                {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                Save changes
-              </Button>
+        {!authLoading && user && !loading && transfer && !done && (
+          <div className="rounded-2xl border border-border/60 bg-card shadow-sm p-6 sm:p-8 space-y-5">
+            <div>
+              <h1 className="text-xl font-semibold font-headline mb-1">
+                {transfer.targets.length} target{transfer.targets.length === 1 ? '' : 's'} from {transfer.fromUserName}
+              </h1>
+              <p className="text-sm text-muted-foreground">
+                From workspace “{transfer.fromWorkspaceName}”. Copies will be added to your workspace — originals stay with them.
+              </p>
             </div>
+
+            <ul className="space-y-2 max-h-48 overflow-y-auto">
+              {transfer.targets.map((t, i) => (
+                <li key={i} className="rounded-xl border border-border/50 px-3 py-2.5">
+                  <p className="text-sm font-medium">{t.title}</p>
+                  {t.description ? (
+                    <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{t.description}</p>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+
+            {wsLoading ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" /> Loading your workspaces…
+              </div>
+            ) : workspaces.length === 0 ? (
+              <div className="space-y-3">
+                <p className="text-sm text-muted-foreground">
+                  You don’t have a workspace yet. Create one to receive these targets.
+                </p>
+                <div className="space-y-2">
+                  <Label>New workspace name</Label>
+                  <Input
+                    value={newWsName}
+                    onChange={(e) => setNewWsName(e.target.value)}
+                    placeholder="My workspace"
+                  />
+                </div>
+                <Button className="w-full" onClick={createWorkspaceAndAccept} disabled={accepting || !newWsName.trim()}>
+                  {accepting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                  Create workspace & copy targets
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {workspaces.length > 1 ? (
+                  <div className="space-y-2">
+                    <Label>Copy into which workspace?</Label>
+                    <Select value={workspaceId} onValueChange={setWorkspaceId}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Choose workspace" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {workspaces.map((w) => (
+                          <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    Will copy into <span className="font-medium text-foreground">{workspaces[0].name}</span>.
+                  </p>
+                )}
+
+                {alreadyAcceptedHere && (
+                  <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+                    You already copied these into this workspace.
+                  </p>
+                )}
+
+                <Button
+                  className="w-full"
+                  onClick={handleAccept}
+                  disabled={accepting || alreadyAcceptedHere || (workspaces.length > 1 && !workspaceId)}
+                >
+                  {accepting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                  Copy into my Targets
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {done && (
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50/50 p-8 text-center space-y-3">
+            <CheckCircle2 className="h-10 w-10 mx-auto text-emerald-600" />
+            <h2 className="text-lg font-semibold">
+              {done.count} target{done.count === 1 ? '' : 's'} copied
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              They’re now in <span className="font-medium text-foreground">{done.workspaceName}</span> under Targets.
+            </p>
+            <Button onClick={() => router.push('/')}>Open app</Button>
           </div>
         )}
       </div>

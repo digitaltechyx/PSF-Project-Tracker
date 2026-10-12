@@ -25,7 +25,7 @@ import {
   orderBy,
   addDoc
 } from 'firebase/firestore';
-import { Workspace, Project, Task, WorkspaceMember, Invitation, Subtask, AttendanceEntry, Pipeline, Target, SubTarget, TargetShare } from '@/lib/types';
+import { Workspace, Project, Task, WorkspaceMember, Invitation, Subtask, AttendanceEntry, Pipeline, Target, SubTarget, TargetTransfer, TargetSnapshot, TargetTransferAcceptance } from '@/lib/types';
 import { createNotification, notifyTaskAssigned, notifyTaskUpdated, notifySubtaskAssigned } from '@/lib/notifications';
 import { sendWorkspaceInviteEmail } from '@/app/actions/send-workspace-invite-email';
 import { DEFAULT_PIPELINES } from '@/lib/pipelines';
@@ -887,9 +887,6 @@ export function useNexusStore() {
       status: 'planned',
       subTargets,
       createdByUserId: user.uid,
-      sharedWithUserIds: [user.uid],
-      shareEnabled: false,
-      shareToken: null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -910,83 +907,142 @@ export function useNexusStore() {
   const deleteTarget = useCallback(async (targetId: string) => {
     const wsId = activeWorkspace?.id;
     if (!db || !wsId || !canAccessTargets) return;
-    const existing = workspaceTargets.find((t) => t.id === targetId);
     await deleteDocumentNonBlocking(doc(db, 'workspaces', wsId, 'targets', targetId));
-    if (existing?.shareToken) {
+  }, [db, activeWorkspace?.id, canAccessTargets]);
+
+  const createTargetTransfer = useCallback(async (opts: {
+    targetIds: string[];
+    toUserId?: string | null;
+    toUserName?: string | null;
+    toEmail?: string | null;
+  }) => {
+    const wsId = activeWorkspace?.id;
+    if (!db || !wsId || !user || !canAccessTargets) throw new Error('No access to targets.');
+    const selected = workspaceTargets.filter((t) => opts.targetIds.includes(t.id));
+    if (!selected.length) throw new Error('Select at least one target.');
+
+    const snapshots: TargetSnapshot[] = selected.map((t) => ({
+      title: t.title,
+      description: t.description || '',
+      startDate: t.startDate,
+      endDate: t.endDate,
+      status: t.status === 'done' ? 'complete' : t.status,
+      subTargets: (t.subTargets || []).map((s) => ({
+        ...s,
+        status: s.status === 'done' ? 'complete' : s.status,
+      })),
+    }));
+
+    const token =
+      typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID().replace(/-/g, '')
+        : `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`;
+
+    const transfer: TargetTransfer = {
+      id: token,
+      fromUserId: user.uid,
+      fromUserName: user.displayName || user.email || 'User',
+      fromWorkspaceId: wsId,
+      fromWorkspaceName: activeWorkspace?.name || '',
+      toUserId: opts.toUserId || null,
+      toUserName: opts.toUserName || null,
+      toEmail: opts.toEmail || null,
+      targets: snapshots,
+      acceptances: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    await setDocumentNonBlocking(doc(db, 'targetTransfers', token), transfer, { merge: true });
+
+    if (opts.toUserId) {
       try {
-        await deleteDocumentNonBlocking(doc(db, 'targetShares', existing.shareToken));
+        await createNotification(db, {
+          userId: opts.toUserId,
+          actorId: user.uid,
+          actorName: user.displayName || 'User',
+          type: 'comment_added',
+          title: 'Targets shared with you',
+          message: `${user.displayName || 'Someone'} shared ${snapshots.length} target${snapshots.length === 1 ? '' : 's'} with you. Open the link to copy them into your workspace.`,
+          workspaceId: wsId,
+          projectId: '',
+          taskId: '',
+        });
       } catch {}
     }
-  }, [db, activeWorkspace?.id, canAccessTargets, workspaceTargets]);
 
-  const setTargetSharedMembers = useCallback(async (targetId: string, memberUserIds: string[]) => {
-    const wsId = activeWorkspace?.id;
-    if (!db || !wsId || !canAccessTargets || !user) return;
-    const existing = workspaceTargets.find((t) => t.id === targetId);
-    const creatorId = existing?.createdByUserId || user.uid;
-    const sharedWithUserIds = Array.from(new Set([creatorId, ...memberUserIds]));
-    await updateTarget(targetId, { sharedWithUserIds });
+    return token;
+  }, [db, activeWorkspace?.id, activeWorkspace?.name, user, canAccessTargets, workspaceTargets]);
 
-    // Ensure shared members can open the Targets page
-    const currentAllowed = activeWorkspace?.targetsAllowedUserIds || [];
-    const toGrant = memberUserIds.filter((id) => !currentAllowed.includes(id) && id !== user.uid);
-    if (toGrant.length && isAdmin) {
-      await updateTargetsAccess([...currentAllowed, ...toGrant]);
+  const acceptTargetTransfer = useCallback(async (token: string, destinationWorkspaceId: string) => {
+    if (!db || !user) throw new Error('Sign in required');
+    const transferRef = doc(db, 'targetTransfers', token);
+    const snap = await getDoc(transferRef);
+    if (!snap.exists()) throw new Error('Share link is invalid or expired.');
+    const transfer = { id: snap.id, ...snap.data() } as TargetTransfer;
+    if (!transfer.targets?.length) throw new Error('Nothing to copy.');
+
+    const already = (transfer.acceptances || []).some(
+      (a) => a.userId === user.uid && a.workspaceId === destinationWorkspaceId
+    );
+    if (already) throw new Error('You already copied these targets into that workspace.');
+
+    // Ensure recipient can open Targets in destination workspace
+    const wsSnap = await getDoc(doc(db, 'workspaces', destinationWorkspaceId));
+    if (!wsSnap.exists()) throw new Error('Workspace not found.');
+    const ws = wsSnap.data() as Workspace;
+    const isDestAdmin =
+      ws.ownerUserId === user.uid ||
+      ws.memberRoles?.[user.uid] === 'owner' ||
+      ws.memberRoles?.[user.uid] === 'lead';
+    if (!isDestAdmin) {
+      const allowed = ws.targetsAllowedUserIds || [];
+      if (!allowed.includes(user.uid)) {
+        await updateDocumentNonBlocking(doc(db, 'workspaces', destinationWorkspaceId), {
+          targetsAllowedUserIds: [...allowed, user.uid],
+          updatedAt: new Date().toISOString(),
+        });
+      }
     }
-  }, [db, activeWorkspace?.id, activeWorkspace?.targetsAllowedUserIds, canAccessTargets, user, workspaceTargets, updateTarget, isAdmin, updateTargetsAccess]);
 
-  const enableTargetShare = useCallback(async (targetId: string) => {
-    const wsId = activeWorkspace?.id;
-    if (!db || !wsId || !canAccessTargets || !user) return null;
-    const existing = workspaceTargets.find((t) => t.id === targetId);
-    if (!existing) return null;
-    const isNewToken = !existing.shareToken;
-    const token = existing.shareToken || (typeof crypto !== 'undefined' && crypto.randomUUID
-      ? crypto.randomUUID().replace(/-/g, '')
-      : `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`);
-    await updateTarget(targetId, { shareEnabled: true, shareToken: token });
-    const shareRef = doc(db, 'targetShares', token);
-    if (isNewToken) {
-      const share: TargetShare = {
-        id: token,
-        workspaceId: wsId,
-        targetId,
-        workspaceName: activeWorkspace?.name || '',
-        enabled: true,
-        permission: 'edit',
-        acceptedUserIds: [],
+    for (const t of transfer.targets) {
+      const ref = doc(collection(db, 'workspaces', destinationWorkspaceId, 'targets'));
+      const subTargets: SubTarget[] = (t.subTargets || []).map((s, i) => ({
+        id: s.id || `st_${Date.now().toString(36)}_${i}`,
+        title: s.title,
+        startDate: s.startDate,
+        endDate: s.endDate,
+        status: s.status === 'done' ? 'complete' : s.status || 'planned',
+      }));
+      const payload: Target = {
+        id: ref.id,
+        workspaceId: destinationWorkspaceId,
+        title: t.title,
+        description: t.description || '',
+        startDate: t.startDate,
+        endDate: t.endDate,
+        status: t.status === 'done' ? 'complete' : t.status || 'planned',
+        subTargets,
         createdByUserId: user.uid,
+        copiedFromTransferId: token,
+        createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
-      await setDocumentNonBlocking(shareRef, share, { merge: true });
-    } else {
-      await setDocumentNonBlocking(shareRef, {
-        enabled: true,
-        permission: 'edit',
-        workspaceId: wsId,
-        targetId,
-        workspaceName: activeWorkspace?.name || '',
-        updatedAt: new Date().toISOString(),
-      }, { merge: true });
+      await setDocumentNonBlocking(ref, payload, { merge: true });
     }
-    return token;
-  }, [db, activeWorkspace?.id, activeWorkspace?.name, canAccessTargets, workspaceTargets, updateTarget, user]);
 
-  const disableTargetShare = useCallback(async (targetId: string) => {
-    const existing = workspaceTargets.find((t) => t.id === targetId);
-    if (!existing?.shareToken) {
-      await updateTarget(targetId, { shareEnabled: false, shareToken: null });
-      return;
-    }
-    const token = existing.shareToken;
-    await updateTarget(targetId, { shareEnabled: false });
-    try {
-      await updateDocumentNonBlocking(doc(db, 'targetShares', token), {
-        enabled: false,
-        updatedAt: new Date().toISOString(),
-      });
-    } catch {}
-  }, [workspaceTargets, updateTarget, db]);
+    const acceptance: TargetTransferAcceptance = {
+      userId: user.uid,
+      workspaceId: destinationWorkspaceId,
+      acceptedAt: new Date().toISOString(),
+    };
+    await updateDocumentNonBlocking(transferRef, {
+      acceptances: [...(transfer.acceptances || []), acceptance],
+      updatedAt: new Date().toISOString(),
+    });
+
+    return { count: transfer.targets.length, workspaceId: destinationWorkspaceId };
+  }, [db, user]);
 
   const copyTargetAsTask = useCallback(async (opts: {
     projectId: string;
@@ -1253,9 +1309,8 @@ export function useNexusStore() {
     createTarget,
     updateTarget,
     deleteTarget,
-    setTargetSharedMembers,
-    enableTargetShare,
-    disableTargetShare,
+    createTargetTransfer,
+    acceptTargetTransfer,
     copyTargetAsTask,
     copyTargetAsProject,
   };

@@ -6,7 +6,6 @@ import {
   Plus,
   Calendar,
   Link2,
-  Link2Off,
   Trash2,
   ListChecks,
   ChevronDown,
@@ -112,9 +111,7 @@ export function TargetsView({ store }: { store: any }) {
     createTarget,
     updateTarget,
     deleteTarget,
-    enableTargetShare,
-    disableTargetShare,
-    setTargetSharedMembers,
+    createTargetTransfer,
     copyTargetAsTask,
     copyTargetAsProject,
     updateTargetsAccess,
@@ -132,8 +129,9 @@ export function TargetsView({ store }: { store: any }) {
   const [editStatus, setEditStatus] = useState<TargetStatus>('planned');
   const [accessOpen, setAccessOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
-  const [shareTarget, setShareTarget] = useState<Target | null>(null);
-  const [shareMemberIds, setShareMemberIds] = useState<string[]>([]);
+  const [shareTargetIds, setShareTargetIds] = useState<string[]>([]);
+  const [shareRecipient, setShareRecipient] = useState<'link' | 'member'>('link');
+  const [shareMemberId, setShareMemberId] = useState('');
   const [shareLink, setShareLink] = useState<string | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
   const [copyOpen, setCopyOpen] = useState(false);
@@ -199,15 +197,11 @@ export function TargetsView({ store }: { store: any }) {
     setEditOpen(true);
   };
 
-  const openShare = async (t: Target) => {
-    setShareTarget(t);
-    const creator = t.createdByUserId;
-    setShareMemberIds((t.sharedWithUserIds || []).filter((id) => id !== creator));
-    setShareLink(
-      t.shareEnabled && t.shareToken
-        ? `${typeof window !== 'undefined' ? window.location.origin : ''}/share/t/${t.shareToken}`
-        : null
-    );
+  const openShare = (ids: string[]) => {
+    setShareTargetIds(ids);
+    setShareRecipient('link');
+    setShareMemberId('');
+    setShareLink(null);
     setCopiedLink(false);
     setShareOpen(true);
   };
@@ -316,52 +310,42 @@ export function TargetsView({ store }: { store: any }) {
     }
   };
 
-  const handleSaveShareMembers = async () => {
-    if (!shareTarget) return;
+  const handleCreateShare = async () => {
+    if (!shareTargetIds.length) {
+      toast({ variant: 'destructive', title: 'Select at least one target' });
+      return;
+    }
     setSaving(true);
     try {
-      await setTargetSharedMembers(shareTarget.id, shareMemberIds);
-      toast({ title: 'Shared with selected members' });
-    } catch {
-      toast({ variant: 'destructive', title: 'Could not update member share' });
+      let toUserId: string | null = null;
+      let toUserName: string | null = null;
+      if (shareRecipient === 'member') {
+        if (!shareMemberId) {
+          toast({ variant: 'destructive', title: 'Choose a member' });
+          setSaving(false);
+          return;
+        }
+        const m = shareableMembers.find((x: any) => x.userId === shareMemberId);
+        toUserId = shareMemberId;
+        toUserName = m?.displayName || m?.email || null;
+      }
+      const token = await createTargetTransfer({
+        targetIds: shareTargetIds,
+        toUserId,
+        toUserName,
+      });
+      const url = `${window.location.origin}/share/t/${token}`;
+      setShareLink(url);
+      await navigator.clipboard?.writeText(url);
+      setCopiedLink(true);
+      toast({
+        title: 'Share link ready',
+        description: 'They open the link, pick a workspace if needed, and get their own copies.',
+      });
+    } catch (e: any) {
+      toast({ variant: 'destructive', title: 'Share failed', description: e?.message });
     } finally {
       setSaving(false);
-    }
-  };
-
-  const handleEnableLink = async () => {
-    if (!shareTarget) return;
-    setBusyId(shareTarget.id);
-    try {
-      const token = await enableTargetShare(shareTarget.id);
-      if (token) {
-        const url = `${window.location.origin}/share/t/${token}`;
-        setShareLink(url);
-        await navigator.clipboard?.writeText(url);
-        setCopiedLink(true);
-        toast({
-          title: 'Share link ready',
-          description: 'Anyone with the link can sign in and edit this target (same as a member).',
-        });
-      }
-    } catch {
-      toast({ variant: 'destructive', title: 'Could not create share link' });
-    } finally {
-      setBusyId(null);
-    }
-  };
-
-  const handleDisableLink = async () => {
-    if (!shareTarget) return;
-    setBusyId(shareTarget.id);
-    try {
-      await disableTargetShare(shareTarget.id);
-      setShareLink(null);
-      toast({ title: 'Outside share link disabled' });
-    } catch {
-      toast({ variant: 'destructive', title: 'Could not disable link' });
-    } finally {
-      setBusyId(null);
     }
   };
 
@@ -445,7 +429,7 @@ export function TargetsView({ store }: { store: any }) {
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
           <p className="page-subheading">
-            Write and manage goals for {activeWorkspace?.name || 'this workspace'}. No progress tracking — status only.
+            Write and manage goals for {activeWorkspace?.name || 'this workspace'}. Share copies with members or anyone via link.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -453,6 +437,16 @@ export function TargetsView({ store }: { store: any }) {
             <Button variant="outline" className="gap-2" onClick={openAccess}>
               <Settings2 className="h-4 w-4" />
               Who can access
+            </Button>
+          )}
+          {targets.length > 0 && (
+            <Button
+              variant="outline"
+              className="gap-2"
+              onClick={() => openShare(targets.map((t) => t.id))}
+            >
+              <Share2 className="h-4 w-4" />
+              Share all
             </Button>
           )}
           <Button className="gap-2 shadow-sm" onClick={openCreate}>
@@ -503,14 +497,9 @@ export function TargetsView({ store }: { store: any }) {
                         <Badge variant="outline" className={cn('text-[10px] font-medium', STATUS_CLASS[st])}>
                           {statusLabel(st)}
                         </Badge>
-                        {t.shareEnabled && (
+                        {t.copiedFromTransferId && (
                           <Badge variant="outline" className="text-[10px] gap-1 text-sky-700 border-sky-200 bg-sky-50">
-                            <Link2 className="h-3 w-3" /> Link shared
-                          </Badge>
-                        )}
-                        {(t.sharedWithUserIds || []).length > 1 && (
-                          <Badge variant="outline" className="text-[10px] text-violet-700 border-violet-200 bg-violet-50">
-                            Shared with members
+                            Received copy
                           </Badge>
                         )}
                       </div>
@@ -535,7 +524,7 @@ export function TargetsView({ store }: { store: any }) {
                         <Pencil className="h-3.5 w-3.5" />
                         <span className="hidden sm:inline">Edit</span>
                       </Button>
-                      <Button variant="outline" size="sm" className="h-8 gap-1.5" onClick={() => openShare(t)}>
+                      <Button variant="outline" size="sm" className="h-8 gap-1.5" onClick={() => openShare([t.id])}>
                         <Share2 className="h-3.5 w-3.5" />
                         <span className="hidden sm:inline">Share</span>
                       </Button>
@@ -558,7 +547,7 @@ export function TargetsView({ store }: { store: any }) {
                           <DropdownMenuItem onClick={() => openCopyProject(t)}>
                             <FolderPlus className="h-4 w-4 mr-2" /> Copy as project
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => openShare(t)}>
+                          <DropdownMenuItem onClick={() => openShare([t.id])}>
                             <Share2 className="h-4 w-4 mr-2" /> Share…
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
@@ -674,93 +663,117 @@ export function TargetsView({ store }: { store: any }) {
         </DialogContent>
       </Dialog>
 
-      {/* Per-target share */}
+      {/* Copy-share: one, many, or all → recipient gets their own copies */}
       <Dialog open={shareOpen} onOpenChange={setShareOpen}>
         <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Share “{shareTarget?.title}”</DialogTitle>
+            <DialogTitle>Share targets</DialogTitle>
             <DialogDescription>
-              Choose who can edit this target. Outside links require sign-in and grant the same edit access as a member.
+              Recipients get their own copies in a workspace they choose. Your originals stay unchanged.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-5 py-2">
             <div className="space-y-2">
-              <Label>Workspace members</Label>
-              {shareableMembers.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No other members to share with.</p>
-              ) : (
-                <div className="max-h-40 overflow-y-auto space-y-2">
-                  {shareableMembers.map((m: any) => {
-                    const checked = shareMemberIds.includes(m.userId);
-                    return (
-                      <label
-                        key={m.userId}
-                        className="flex items-center gap-3 rounded-xl border border-border/50 px-3 py-2 cursor-pointer hover:bg-muted/40"
-                      >
-                        <Checkbox
-                          checked={checked}
-                          onCheckedChange={(v) => {
-                            setShareMemberIds((ids) =>
-                              v ? [...ids, m.userId] : ids.filter((id) => id !== m.userId)
-                            );
-                          }}
-                        />
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium truncate">{m.displayName}</p>
-                          <p className="text-xs text-muted-foreground truncate">{m.email}</p>
-                        </div>
-                      </label>
-                    );
-                  })}
+              <div className="flex items-center justify-between">
+                <Label>Which targets</Label>
+                <div className="flex gap-1">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => setShareTargetIds(targets.map((t) => t.id))}
+                  >
+                    All
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => setShareTargetIds([])}
+                  >
+                    None
+                  </Button>
                 </div>
-              )}
-              <Button size="sm" variant="secondary" onClick={handleSaveShareMembers} disabled={saving || !shareTarget}>
-                {saving && <Loader2 className="h-3.5 w-3.5 mr-2 animate-spin" />}
-                Save member share
-              </Button>
+              </div>
+              <div className="max-h-40 overflow-y-auto space-y-2 rounded-xl border border-border/50 p-2">
+                {targets.map((t) => {
+                  const checked = shareTargetIds.includes(t.id);
+                  return (
+                    <label
+                      key={t.id}
+                      className="flex items-center gap-3 rounded-lg px-2 py-1.5 cursor-pointer hover:bg-muted/40"
+                    >
+                      <Checkbox
+                        checked={checked}
+                        onCheckedChange={(v) => {
+                          setShareTargetIds((ids) =>
+                            v ? [...ids, t.id] : ids.filter((id) => id !== t.id)
+                          );
+                        }}
+                      />
+                      <span className="text-sm truncate">{t.title}</span>
+                    </label>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-muted-foreground">{shareTargetIds.length} selected</p>
             </div>
 
-            <div className="border-t border-border/50 pt-4 space-y-3">
-              <Label>Anyone outside the workspace</Label>
-              <p className="text-xs text-muted-foreground">
-                They sign in with the link, then can edit this target — not view-only.
-              </p>
-              {shareLink ? (
-                <div className="space-y-2">
-                  <Input readOnly value={shareLink} className="text-xs" />
-                  <div className="flex flex-wrap gap-2">
-                    <Button size="sm" variant="outline" className="gap-1.5" onClick={handleCopyLink}>
-                      {copiedLink ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-                      Copy link
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="gap-1.5 text-destructive"
-                      onClick={handleDisableLink}
-                      disabled={busyId === shareTarget?.id}
-                    >
-                      <Link2Off className="h-3.5 w-3.5" />
-                      Disable link
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <Button
-                  size="sm"
-                  className="gap-1.5"
-                  onClick={handleEnableLink}
-                  disabled={busyId === shareTarget?.id}
-                >
-                  {busyId === shareTarget?.id ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <Link2 className="h-3.5 w-3.5" />
-                  )}
-                  Create share link
-                </Button>
-              )}
+            <div className="space-y-2">
+              <Label>Share with</Label>
+              <Select
+                value={shareRecipient}
+                onValueChange={(v) => setShareRecipient(v as 'link' | 'member')}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="link">Anyone with a link (not a member)</SelectItem>
+                  <SelectItem value="member">A workspace member</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
+
+            {shareRecipient === 'member' && (
+              <div className="space-y-2">
+                <Label>Member</Label>
+                {shareableMembers.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No other members.</p>
+                ) : (
+                  <Select value={shareMemberId} onValueChange={setShareMemberId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Choose member" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {shareableMembers.map((m: any) => (
+                        <SelectItem key={m.userId} value={m.userId}>
+                          {m.displayName || m.email}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+            )}
+
+            {shareLink ? (
+              <div className="space-y-2 rounded-xl border border-border/50 bg-muted/20 p-3">
+                <p className="text-xs text-muted-foreground">Send this link. They sign in and copy targets into their workspace.</p>
+                <Input readOnly value={shareLink} className="text-xs" />
+                <Button size="sm" variant="outline" className="gap-1.5" onClick={handleCopyLink}>
+                  {copiedLink ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                  Copy link
+                </Button>
+              </div>
+            ) : (
+              <Button className="w-full gap-1.5" onClick={handleCreateShare} disabled={saving || !shareTargetIds.length}>
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
+                Create share link
+              </Button>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShareOpen(false)}>Done</Button>
