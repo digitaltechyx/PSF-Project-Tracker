@@ -15,7 +15,8 @@ import {
   Settings,
   Trash2,
   Clock,
-  Menu
+  Menu,
+  Target
 } from 'lucide-react';
 import { useNexusStore } from '@/hooks/use-nexus-store';
 import { useAuth } from '@/firebase';
@@ -45,13 +46,14 @@ import { MembersView } from './views/MembersView';
 import { MyTasksView } from './views/MyTasksView';
 import { NotificationsView } from './views/NotificationsView';
 import { AttendanceLogView } from './views/AttendanceLogView';
+import { TargetsView } from './views/TargetsView';
 import { InviteMembersModal } from './invitations/InviteMembersModal';
 import { NotificationBell } from './notifications/NotificationBell';
 import { EditWorkspaceModal } from './workspaces/EditWorkspaceModal';
 import { DeleteWorkspaceButton } from './workspaces/DeleteWorkspaceButton';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 
-type ViewType = 'dashboard' | 'project' | 'members' | 'my-tasks' | 'notifications' | 'attendance';
+type ViewType = 'dashboard' | 'project' | 'members' | 'my-tasks' | 'notifications' | 'attendance' | 'targets';
 
 export function NexusShell() {
   const store = useNexusStore();
@@ -74,6 +76,12 @@ export function NexusShell() {
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    if (currentView === 'targets' && !store.canAccessTargets) {
+      setCurrentView('dashboard');
+    }
+  }, [currentView, store.canAccessTargets]);
 
   const handleNavClick = (view: ViewType) => {
     if (view !== 'project') store.selectProject(null);
@@ -220,6 +228,17 @@ export function NexusShell() {
               <Clock className="h-4 w-4" />
               {store.isAdmin ? 'Team time' : 'My time'}
             </Button>
+            {store.canAccessTargets && (
+              <Button 
+                variant="ghost"
+                data-active={currentView === 'targets'}
+                className="sidebar-nav-btn"
+                onClick={() => handleNavClick('targets')}
+              >
+                <Target className="h-4 w-4" />
+                Targets
+              </Button>
+            )}
             <Button 
               variant="ghost"
               data-active={currentView === 'members'}
@@ -303,12 +322,13 @@ export function NexusShell() {
                currentView === 'my-tasks' ? 'My Tasks' :
                currentView === 'notifications' ? 'Inbox' :
                currentView === 'attendance' ? (store.isAdmin ? 'Team time' : 'My time') :
+               currentView === 'targets' ? 'Targets' :
                store.activeProject?.name || 'Project'}
               </h1>
             </div>
           </div>
           <div className="flex items-center gap-2 md:gap-3">
-            {currentView !== 'dashboard' && currentView !== 'notifications' && currentView !== 'members' && currentView !== 'attendance' && (
+            {currentView !== 'dashboard' && currentView !== 'notifications' && currentView !== 'members' && currentView !== 'attendance' && currentView !== 'targets' && (
               <div className="relative w-40 sm:w-64 animate-in fade-in duration-300">
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input 
@@ -348,6 +368,7 @@ export function NexusShell() {
             <NotificationsView store={store} onNavigateToTask={handleNavigateToTask} />
           )}
           {currentView === 'attendance' && <AttendanceLogView store={store} />}
+          {currentView === 'targets' && store.canAccessTargets && <TargetsView store={store} />}
         </main>
       </div>
 
@@ -372,6 +393,11 @@ export function NexusShell() {
                 <Button variant="ghost" data-active={currentView === 'attendance'} className="sidebar-nav-btn" onClick={() => handleNavClick('attendance')}>
                   <Clock className="h-4 w-4" /> {store.isAdmin ? 'Team time' : 'My time'}
                 </Button>
+                {store.canAccessTargets && (
+                  <Button variant="ghost" data-active={currentView === 'targets'} className="sidebar-nav-btn" onClick={() => handleNavClick('targets')}>
+                    <Target className="h-4 w-4" /> Targets
+                  </Button>
+                )}
                 <Button variant="ghost" data-active={currentView === 'members'} className="sidebar-nav-btn" onClick={() => handleNavClick('members')}>
                   <Users className="h-4 w-4" /> People
                 </Button>

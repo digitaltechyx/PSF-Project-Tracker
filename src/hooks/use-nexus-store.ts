@@ -25,7 +25,7 @@ import {
   orderBy,
   addDoc
 } from 'firebase/firestore';
-import { Workspace, Project, Task, WorkspaceMember, Invitation, Subtask, AttendanceEntry, Pipeline } from '@/lib/types';
+import { Workspace, Project, Task, WorkspaceMember, Invitation, Subtask, AttendanceEntry, Pipeline, Target, SubTarget, TargetShare } from '@/lib/types';
 import { createNotification, notifyTaskAssigned, notifyTaskUpdated, notifySubtaskAssigned } from '@/lib/notifications';
 import { sendWorkspaceInviteEmail } from '@/app/actions/send-workspace-invite-email';
 import { DEFAULT_PIPELINES } from '@/lib/pipelines';
@@ -112,6 +112,21 @@ export function useNexusStore() {
     if (isAdmin) return projectsData;
     return projectsData.filter(p => p.allowedUserIds?.includes(user?.uid || ''));
   }, [projectsData, isAdmin, user?.uid]);
+
+  const canAccessTargets = useMemo(() => {
+    if (!user?.uid || !activeWorkspace?.id) return false;
+    if (isAdmin) return true;
+    return Boolean(activeWorkspace.targetsAllowedUserIds?.includes(user.uid));
+  }, [user?.uid, activeWorkspace, isAdmin]);
+
+  const targetsQuery = useMemoFirebase(() => {
+    const wsId = activeWorkspace?.id;
+    if (!db || !user?.uid || !wsId || !isAuthReady || !canAccessTargets) return null;
+    return query(collection(db, 'workspaces', wsId, 'targets'), orderBy('updatedAt', 'desc'));
+  }, [db, user?.uid, activeWorkspace?.id, isAuthReady, canAccessTargets]);
+
+  const { data: targetsData, isLoading: isTargetsLoading } = useCollection<Target>(targetsQuery);
+  const workspaceTargets = useMemo(() => targetsData || [], [targetsData]);
 
   const activeProject = useMemo(() => 
     projects.find(p => p.id === activeProjectId) || null,
@@ -827,6 +842,155 @@ export function useNexusStore() {
     }
   }, [db, user, activeWorkspace?.id, todayAttendance, getTodayDateKey]);
 
+  const updateTargetsAccess = useCallback(async (allowedUserIds: string[]) => {
+    const wsId = activeWorkspace?.id;
+    if (!db || !wsId || !isAdmin) return;
+    await updateDocumentNonBlocking(doc(db, 'workspaces', wsId), {
+      targetsAllowedUserIds: allowedUserIds,
+      updatedAt: new Date().toISOString(),
+    });
+  }, [db, activeWorkspace?.id, isAdmin]);
+
+  const createTarget = useCallback(async (data: {
+    title: string;
+    description?: string;
+    startDate: string;
+    endDate: string;
+    subTargets?: Omit<SubTarget, 'id'>[];
+  }) => {
+    const wsId = activeWorkspace?.id;
+    if (!db || !wsId || !user || !canAccessTargets) throw new Error('No access to targets.');
+    const ref = doc(collection(db, 'workspaces', wsId, 'targets'));
+    const subTargets: SubTarget[] = (data.subTargets || []).map((s, i) => ({
+      id: `st_${Date.now().toString(36)}_${i}`,
+      title: s.title,
+      startDate: s.startDate,
+      endDate: s.endDate,
+      status: s.status || 'planned',
+    }));
+    const payload: Target = {
+      id: ref.id,
+      workspaceId: wsId,
+      title: data.title.trim(),
+      description: data.description?.trim() || '',
+      startDate: data.startDate,
+      endDate: data.endDate,
+      status: 'planned',
+      subTargets,
+      createdByUserId: user.uid,
+      shareEnabled: false,
+      shareToken: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    await setDocumentNonBlocking(ref, payload, { merge: true });
+    return ref.id;
+  }, [db, activeWorkspace?.id, user, canAccessTargets]);
+
+  const updateTarget = useCallback(async (targetId: string, data: Partial<Target>) => {
+    const wsId = activeWorkspace?.id;
+    if (!db || !wsId || !canAccessTargets) return;
+    const { id: _id, workspaceId: _ws, createdByUserId: _by, createdAt: _ca, ...rest } = data as any;
+    await updateDocumentNonBlocking(doc(db, 'workspaces', wsId, 'targets', targetId), {
+      ...rest,
+      updatedAt: new Date().toISOString(),
+    });
+
+    // Keep public share snapshot in sync when sharing is on
+    const existing = workspaceTargets.find((t) => t.id === targetId);
+    const nextShareEnabled = data.shareEnabled ?? existing?.shareEnabled;
+    const token = data.shareToken ?? existing?.shareToken;
+    if (nextShareEnabled && token) {
+      const merged = { ...existing, ...data } as Target;
+      const share: TargetShare = {
+        id: token,
+        workspaceId: wsId,
+        targetId,
+        workspaceName: activeWorkspace?.name || '',
+        title: merged.title,
+        description: merged.description || '',
+        startDate: merged.startDate,
+        endDate: merged.endDate,
+        status: merged.status,
+        subTargets: merged.subTargets || [],
+        updatedAt: new Date().toISOString(),
+      };
+      await setDocumentNonBlocking(doc(db, 'targetShares', token), share, { merge: true });
+    }
+  }, [db, activeWorkspace?.id, activeWorkspace?.name, canAccessTargets, workspaceTargets]);
+
+  const deleteTarget = useCallback(async (targetId: string) => {
+    const wsId = activeWorkspace?.id;
+    if (!db || !wsId || !canAccessTargets) return;
+    const existing = workspaceTargets.find((t) => t.id === targetId);
+    await deleteDocumentNonBlocking(doc(db, 'workspaces', wsId, 'targets', targetId));
+    if (existing?.shareToken) {
+      try {
+        await deleteDocumentNonBlocking(doc(db, 'targetShares', existing.shareToken));
+      } catch {}
+    }
+  }, [db, activeWorkspace?.id, canAccessTargets, workspaceTargets]);
+
+  const enableTargetShare = useCallback(async (targetId: string) => {
+    const wsId = activeWorkspace?.id;
+    if (!db || !wsId || !canAccessTargets) return null;
+    const existing = workspaceTargets.find((t) => t.id === targetId);
+    if (!existing) return null;
+    const token = existing.shareToken || (typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID().replace(/-/g, '')
+      : `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`);
+    await updateTarget(targetId, { shareEnabled: true, shareToken: token });
+    const share: TargetShare = {
+      id: token,
+      workspaceId: wsId,
+      targetId,
+      workspaceName: activeWorkspace?.name || '',
+      title: existing.title,
+      description: existing.description || '',
+      startDate: existing.startDate,
+      endDate: existing.endDate,
+      status: existing.status,
+      subTargets: existing.subTargets || [],
+      updatedAt: new Date().toISOString(),
+    };
+    await setDocumentNonBlocking(doc(db, 'targetShares', token), share, { merge: true });
+    return token;
+  }, [db, activeWorkspace?.id, activeWorkspace?.name, canAccessTargets, workspaceTargets, updateTarget]);
+
+  const disableTargetShare = useCallback(async (targetId: string) => {
+    const existing = workspaceTargets.find((t) => t.id === targetId);
+    if (!existing?.shareToken) {
+      await updateTarget(targetId, { shareEnabled: false, shareToken: null });
+      return;
+    }
+    const token = existing.shareToken;
+    await updateTarget(targetId, { shareEnabled: false, shareToken: null });
+    try {
+      await deleteDocumentNonBlocking(doc(db, 'targetShares', token));
+    } catch {}
+  }, [workspaceTargets, updateTarget, db]);
+
+  const assignTargetAsTask = useCallback(async (opts: {
+    projectId: string;
+    title: string;
+    description?: string;
+    dueDate?: string | null;
+    assigneeUserIds?: string[];
+    priority?: string;
+  }) => {
+    const wsId = activeWorkspace?.id;
+    if (!wsId) throw new Error('No workspace');
+    return createTask(wsId, opts.projectId, {
+      title: opts.title,
+      description: opts.description || '',
+      status: 'todo',
+      priority: opts.priority || 'medium',
+      dueDate: opts.dueDate || null,
+      assigneeUserIds: opts.assigneeUserIds || (user?.uid ? [user.uid] : []),
+      tags: ['from-target'],
+    });
+  }, [activeWorkspace?.id, createTask, user?.uid]);
+
   const endBreak = useCallback(async (): Promise<{ ok: boolean; reason?: string }> => {
     const wsId = activeWorkspace?.id;
     if (!db || !user?.uid || !wsId || !todayAttendance?.checkInTime) {
@@ -1028,5 +1192,15 @@ export function useNexusStore() {
     checkOut,
     startBreak,
     endBreak,
+    canAccessTargets,
+    workspaceTargets,
+    isTargetsLoading,
+    updateTargetsAccess,
+    createTarget,
+    updateTarget,
+    deleteTarget,
+    enableTargetShare,
+    disableTargetShare,
+    assignTargetAsTask,
   };
 }

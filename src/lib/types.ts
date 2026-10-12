@@ -28,7 +28,50 @@ export interface Workspace {
   color: string;
   ownerUserId: string;
   memberRoles: Record<string, 'owner' | 'lead' | 'member'>;
+  /** Members (non-admin) allowed to open the Targets page. Admins always have access. */
+  targetsAllowedUserIds?: string[];
   createdAt: string;
+  updatedAt: string;
+}
+
+export type TargetStatus = 'planned' | 'in_progress' | 'done';
+
+export interface SubTarget {
+  id: string;
+  title: string;
+  startDate: string; // YYYY-MM-DD
+  endDate: string; // YYYY-MM-DD
+  status: TargetStatus;
+}
+
+export interface Target {
+  id: string;
+  workspaceId: string;
+  title: string;
+  description: string;
+  startDate: string; // YYYY-MM-DD
+  endDate: string; // YYYY-MM-DD
+  status: TargetStatus;
+  subTargets: SubTarget[];
+  createdByUserId: string;
+  shareEnabled: boolean;
+  shareToken: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Public snapshot used by /share/t/[token] (anyone with the link). */
+export interface TargetShare {
+  id: string; // same as shareToken
+  workspaceId: string;
+  targetId: string;
+  workspaceName: string;
+  title: string;
+  description: string;
+  startDate: string;
+  endDate: string;
+  status: TargetStatus;
+  subTargets: SubTarget[];
   updatedAt: string;
 }
 

@@ -53,6 +53,15 @@ service cloud.firestore {
         && after.size() == before.size() + 1;
     }
 
+    // Targets page: workspace admins always; members only if listed on workspace.
+    function canAccessTargets(workspaceId) {
+      return isWorkspaceAdmin(workspaceId)
+        || (
+          isWorkspaceMember(workspaceId)
+          && request.auth.uid in workspaceData(workspaceId).get('targetsAllowedUserIds', [])
+        );
+    }
+
     match /notifications/{notificationId} {
       allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
       allow create: if isSignedIn() &&
@@ -142,6 +151,25 @@ service cloud.firestore {
           }
         }
       }
+
+      match /targets/{targetId} {
+        allow read: if canAccessTargets(workspaceId);
+        allow create: if canAccessTargets(workspaceId)
+          && request.resource.data.createdByUserId == request.auth.uid
+          && request.resource.data.workspaceId == workspaceId;
+        allow update, delete: if canAccessTargets(workspaceId);
+      }
+    }
+
+    // Public view-only share documents (token in URL is the secret)
+    match /targetShares/{token} {
+      allow read: if true;
+      allow create, update: if isSignedIn()
+        && request.resource.data.workspaceId is string
+        && canAccessTargets(request.resource.data.workspaceId);
+      allow delete: if isSignedIn()
+        && resource.data.workspaceId is string
+        && canAccessTargets(resource.data.workspaceId);
     }
 
     match /invitations/{invitationId} {
