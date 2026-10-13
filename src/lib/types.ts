@@ -293,6 +293,28 @@ export interface ChatMessage {
   updatedAt: string;
 }
 
+export type GoogleDocKind = 'document' | 'spreadsheet' | 'presentation' | 'unknown';
+
+/** Linked Google Doc/Sheet shown in-app on the Docs page. */
+export interface WorkspaceDoc {
+  id: string;
+  workspaceId: string;
+  title: string;
+  kind: GoogleDocKind;
+  /** Original Google URL the user pasted */
+  url: string;
+  /** Extracted Google file id */
+  fileId: string;
+  /** iframe embed URL for in-app viewing */
+  embedUrl: string;
+  createdByUserId: string;
+  createdByName: string;
+  /** Empty = visible to all workspace members; otherwise only these users (+ creator/admins). */
+  sharedWithUserIds: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface AttendanceBreak {
   startTime: string;
   endTime?: string | null;

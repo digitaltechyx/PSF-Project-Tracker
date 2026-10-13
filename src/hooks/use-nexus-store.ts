@@ -25,11 +25,12 @@ import {
   orderBy,
   addDoc
 } from 'firebase/firestore';
-import { Workspace, Project, Task, WorkspaceMember, Invitation, Subtask, AttendanceEntry, Pipeline, Target, SubTarget, TargetTransfer, TargetSnapshot, TargetTransferAcceptance, TaskAudit, TaskTimeLog } from '@/lib/types';
+import { Workspace, Project, Task, WorkspaceMember, Invitation, Subtask, AttendanceEntry, Pipeline, Target, SubTarget, TargetTransfer, TargetSnapshot, TargetTransferAcceptance, TaskAudit, TaskTimeLog, WorkspaceDoc } from '@/lib/types';
 import { createNotification, notifyTaskAssigned, notifyTaskUpdated, notifySubtaskAssigned } from '@/lib/notifications';
 import { sendWorkspaceInviteEmail } from '@/app/actions/send-workspace-invite-email';
 import { DEFAULT_PIPELINES } from '@/lib/pipelines';
 import { buildFieldChangeAudits } from '@/lib/task-audit';
+import { parseGoogleDocUrl } from '@/lib/google-docs';
 
 export function useNexusStore() {
   const { user, isAuthReady } = useUser();
@@ -137,6 +138,25 @@ export function useNexusStore() {
         Boolean(t.sharedWithUserIds?.includes(uid))
     );
   }, [targetsData, isAdmin, user?.uid]);
+
+  const docsQuery = useMemoFirebase(() => {
+    const wsId = activeWorkspace?.id;
+    if (!db || !user?.uid || !wsId || !isAuthReady) return null;
+    return query(collection(db, 'workspaces', wsId, 'docs'), orderBy('updatedAt', 'desc'));
+  }, [db, user?.uid, activeWorkspace?.id, isAuthReady]);
+
+  const { data: docsData, isLoading: isDocsLoading } = useCollection<WorkspaceDoc>(docsQuery);
+  const workspaceDocs = useMemo(() => {
+    const all = docsData || [];
+    if (isAdmin) return all;
+    const uid = user?.uid || '';
+    return all.filter((d) => {
+      if (d.createdByUserId === uid) return true;
+      const shared = d.sharedWithUserIds || [];
+      if (shared.length === 0) return true; // whole workspace
+      return shared.includes(uid);
+    });
+  }, [docsData, isAdmin, user?.uid]);
 
   const activeProject = useMemo(() => 
     projects.find(p => p.id === activeProjectId) || null,
@@ -1405,5 +1425,45 @@ export function useNexusStore() {
     acceptTargetTransfer,
     copyTargetAsTask,
     copyTargetAsProject,
+    workspaceDocs,
+    isDocsLoading,
+    createWorkspaceDoc: async (opts: { title?: string; url: string; sharedWithUserIds?: string[] }) => {
+      const wsId = activeWorkspace?.id;
+      if (!db || !wsId || !user) throw new Error('Not ready');
+      const parsed = parseGoogleDocUrl(opts.url);
+      if (!parsed) throw new Error('Paste a valid Google Doc or Sheet link.');
+      const ref = doc(collection(db, 'workspaces', wsId, 'docs'));
+      const now = new Date().toISOString();
+      const payload: WorkspaceDoc = {
+        id: ref.id,
+        workspaceId: wsId,
+        title: (opts.title || '').trim() || `Untitled ${parsed.kind}`,
+        kind: parsed.kind,
+        url: opts.url.trim(),
+        fileId: parsed.fileId,
+        embedUrl: parsed.embedUrl,
+        createdByUserId: user.uid,
+        createdByName: user.displayName || user.email || 'User',
+        sharedWithUserIds: opts.sharedWithUserIds || [],
+        createdAt: now,
+        updatedAt: now,
+      };
+      await setDocumentNonBlocking(ref, payload, { merge: true });
+      return ref.id;
+    },
+    updateWorkspaceDoc: async (docId: string, data: Partial<WorkspaceDoc>) => {
+      const wsId = activeWorkspace?.id;
+      if (!db || !wsId) return;
+      const { id: _id, workspaceId: _ws, createdByUserId: _by, createdAt: _ca, ...rest } = data as any;
+      await updateDocumentNonBlocking(doc(db, 'workspaces', wsId, 'docs', docId), {
+        ...rest,
+        updatedAt: new Date().toISOString(),
+      });
+    },
+    deleteWorkspaceDoc: async (docId: string) => {
+      const wsId = activeWorkspace?.id;
+      if (!db || !wsId) return;
+      await deleteDocumentNonBlocking(doc(db, 'workspaces', wsId, 'docs', docId));
+    },
   };
 }
