@@ -755,16 +755,16 @@ export function TaskDetailPanel({
 
   return (
     <Sheet open={isOpen} onOpenChange={onClose}>
-      <SheetContent className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-xl">
-        <SheetHeader className="space-y-3 border-b border-border/50 bg-gradient-to-b from-muted/40 to-card px-6 pb-5 pt-6 pr-16 text-left">
+      <SheetContent className="flex w-full flex-col gap-0 overflow-hidden bg-background p-0 text-foreground sm:max-w-xl">
+        <SheetHeader className="space-y-3 border-b border-border bg-card px-6 pb-5 pt-6 pr-16 text-left">
           <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 flex-wrap items-center gap-2">
               <Badge variant="secondary" className="rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em]">
                 Task
               </Badge>
               {taskProject?.name && (
-                <span className="truncate text-xs text-muted-foreground">
-                  in <span className="font-medium text-foreground/80">{taskProject.name}</span>
+                <span className="truncate text-xs text-slate-600">
+                  in <span className="font-medium text-foreground">{taskProject.name}</span>
                 </span>
               )}
             </div>
@@ -773,7 +773,7 @@ export function TaskDetailPanel({
                 variant="ghost"
                 size="icon"
                 onClick={handleDelete}
-                className="h-8 w-8 shrink-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                className="h-8 w-8 shrink-0 text-slate-600 hover:bg-destructive/10 hover:text-destructive"
               >
                 <Trash2 className="h-4 w-4" />
               </Button>
@@ -781,7 +781,7 @@ export function TaskDetailPanel({
           </div>
           <SheetTitle className="sr-only">{localTitle || 'Task detail'}</SheetTitle>
           <Input
-            className="h-auto border-none bg-transparent px-0 py-1 text-[1.65rem] font-semibold leading-tight tracking-[-0.03em] shadow-none placeholder:text-muted-foreground/50 focus-visible:ring-0"
+            className="h-auto border-none bg-transparent px-0 py-1 text-[1.65rem] font-semibold leading-tight tracking-[-0.03em] text-foreground shadow-none placeholder:text-slate-400 focus-visible:ring-0"
             value={localTitle}
             onChange={(e) => setLocalTitle(e.target.value)}
             placeholder="Task title"
@@ -789,8 +789,8 @@ export function TaskDetailPanel({
           />
         </SheetHeader>
 
-        <Tabs defaultValue="details" className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <div className="sticky top-0 z-10 border-b border-border/50 bg-card/95 px-6 py-3 backdrop-blur">
+        <Tabs defaultValue="details" className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
+          <div className="sticky top-0 z-10 border-b border-border bg-card px-6 py-3">
             <TabsList className="grid h-10 w-full grid-cols-3">
               <TabsTrigger value="details">Details</TabsTrigger>
               <TabsTrigger value="subtasks">Subtasks</TabsTrigger>
@@ -798,11 +798,11 @@ export function TaskDetailPanel({
             </TabsList>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="min-h-0 flex-1 overflow-y-auto bg-background">
             <TabsContent value="details" className="m-0 space-y-6 px-6 py-5 focus-visible:outline-none focus-visible:ring-0">
-              <div className="overflow-hidden rounded-2xl border border-border/60 bg-muted/25">
+              <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
                 <div className="grid grid-cols-[7.5rem_1fr] items-center gap-3 border-b border-border/40 px-4 py-3 sm:grid-cols-[8.5rem_1fr]">
-                  <Label className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                  <Label className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-600">
                     Status
                   </Label>
                   <Select
@@ -836,7 +836,7 @@ export function TaskDetailPanel({
 
                 <div className="grid grid-cols-[7.5rem_1fr] items-center gap-3 border-b border-border/40 px-4 py-3 sm:grid-cols-[8.5rem_1fr]">
                   <div className="flex items-center gap-1.5">
-                    <Label className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                    <Label className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-600">
                       Priority
                     </Label>
                     {canManageMeta && (
@@ -872,7 +872,7 @@ export function TaskDetailPanel({
                 </div>
 
                 <div className="grid grid-cols-[7.5rem_1fr] items-center gap-3 border-b border-border/40 px-4 py-3 sm:grid-cols-[8.5rem_1fr]">
-                  <Label className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                  <Label className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-600">
                     Due date
                   </Label>
                   <div className="relative max-w-[220px]">
@@ -895,7 +895,7 @@ export function TaskDetailPanel({
                 </div>
 
                 <div className="grid grid-cols-[7.5rem_1fr] items-start gap-3 px-4 py-3 sm:grid-cols-[8.5rem_1fr]">
-                  <Label className="pt-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                  <Label className="pt-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-600">
                     Assignees
                   </Label>
                   <div className="space-y-2.5">
@@ -1215,20 +1215,20 @@ export function TaskDetailPanel({
               />
             </TabsContent>
 
-            <TabsContent value="audit" className="m-0 space-y-6 px-6 py-5 focus-visible:outline-none focus-visible:ring-0">
-              <div className="flex items-center justify-between gap-3 rounded-2xl border border-border/60 bg-muted/25 px-4 py-4">
+            <TabsContent value="audit" className="m-0 space-y-6 bg-background px-6 py-5 focus-visible:outline-none focus-visible:ring-0">
+              <div className="flex items-center justify-between gap-3 rounded-2xl border border-border bg-card px-4 py-4 shadow-sm">
                 <div className="flex items-center gap-3">
-                  <div className="grid h-10 w-10 place-items-center rounded-xl bg-background shadow-sm ring-1 ring-border/50">
-                    <Clock3 className="h-4 w-4 text-muted-foreground" />
+                  <div className="grid h-10 w-10 place-items-center rounded-xl bg-slate-100 text-slate-700 ring-1 ring-border">
+                    <Clock3 className="h-4 w-4" />
                   </div>
                   <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-600">
                       Total time logged
                     </p>
-                    <p className="text-xl font-semibold tabular-nums tracking-tight">
+                    <p className="text-xl font-semibold tabular-nums tracking-tight text-foreground">
                       {totalLoggedMs > 0 ? formatDurationMinutes(totalLoggedMs) : '0m'}
                     </p>
-                    <p className="mt-0.5 text-[11px] text-muted-foreground">
+                    <p className="mt-0.5 text-[11px] text-slate-600">
                       {timeLogs.length > 0
                         ? `${timeLogs.length} check-out entr${timeLogs.length === 1 ? 'y' : 'ies'}`
                         : 'No daily check-out logs yet'}
@@ -1243,15 +1243,15 @@ export function TaskDetailPanel({
               </div>
 
               <div className="space-y-3">
-                <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-700">
                   <Clock3 className="h-3.5 w-3.5" />
                   Time by day
-                  <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium normal-case tracking-normal">
+                  <span className="rounded-full bg-slate-200 px-1.5 py-0.5 text-[10px] font-medium normal-case tracking-normal text-slate-700">
                     {timeLogsByDate.length}
                   </span>
                 </div>
                 {timeLogsByDate.length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-border/70 px-4 py-8 text-center text-sm text-muted-foreground">
+                  <div className="rounded-xl border border-dashed border-border bg-card px-4 py-8 text-center text-sm text-slate-600">
                     Daily time appears here when someone logs hours at check-out.
                   </div>
                 ) : (
@@ -1259,29 +1259,29 @@ export function TaskDetailPanel({
                     {timeLogsByDate.map((day) => (
                       <div
                         key={day.dateKey}
-                        className="overflow-hidden rounded-xl border border-border/50 bg-muted/10"
+                        className="overflow-hidden rounded-xl border border-border bg-card shadow-sm"
                       >
-                        <div className="flex items-center justify-between gap-3 border-b border-border/40 bg-muted/20 px-3.5 py-2.5">
+                        <div className="flex items-center justify-between gap-3 border-b border-border bg-slate-50 px-3.5 py-2.5">
                           <div>
-                            <p className="text-sm font-semibold">{day.label}</p>
-                            <p className="text-[11px] text-muted-foreground">{day.dateKey}</p>
+                            <p className="text-sm font-semibold text-foreground">{day.label}</p>
+                            <p className="text-[11px] text-slate-600">{day.dateKey}</p>
                           </div>
                           <Badge variant="secondary" className="tabular-nums">
                             {formatDurationMinutes(day.totalMs)}
                           </Badge>
                         </div>
-                        <div className="divide-y divide-border/40">
+                        <div className="divide-y divide-border bg-card">
                           {day.entries.map((log) => (
                             <div key={log.id} className="flex items-start justify-between gap-3 px-3.5 py-2.5">
                               <div className="min-w-0">
-                                <p className="text-sm font-medium">{log.userName || 'User'}</p>
-                                <p className="mt-0.5 text-xs text-muted-foreground">
+                                <p className="text-sm font-medium text-foreground">{log.userName || 'User'}</p>
+                                <p className="mt-0.5 text-xs text-slate-600">
                                   {log.description?.trim()
                                     ? log.description.trim()
                                     : 'Logged at check-out'}
                                 </p>
                                 {log.createdAt && (
-                                  <p className="mt-1 text-[11px] text-muted-foreground">
+                                  <p className="mt-1 text-[11px] text-slate-600">
                                     {new Date(log.createdAt).toLocaleTimeString([], {
                                       hour: '2-digit',
                                       minute: '2-digit',
@@ -1302,15 +1302,15 @@ export function TaskDetailPanel({
               </div>
 
               <div className="space-y-3">
-                <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-700">
                   <History className="h-3.5 w-3.5" />
                   Activity
-                  <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium normal-case tracking-normal">
+                  <span className="rounded-full bg-slate-200 px-1.5 py-0.5 text-[10px] font-medium normal-case tracking-normal text-slate-700">
                     {audits.length}
                   </span>
                 </div>
                 {audits.length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-border/70 px-4 py-10 text-center text-sm text-muted-foreground">
+                  <div className="rounded-xl border border-dashed border-border bg-card px-4 py-10 text-center text-sm text-slate-600">
                     No activity yet. Field changes and check-out logs will show here in detail.
                   </div>
                 ) : (
@@ -1333,10 +1333,10 @@ export function TaskDetailPanel({
                             : a.message;
 
                       return (
-                        <div key={a.id} className="rounded-xl border border-border/50 bg-muted/15 px-3.5 py-3">
+                        <div key={a.id} className="rounded-xl border border-border bg-card px-3.5 py-3 shadow-sm">
                           <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0 space-y-1">
-                              <p className="text-sm font-medium">
+                            <div className="min-w-0 space-y-1.5">
+                              <p className="text-sm font-semibold text-foreground">
                                 {a.kind === 'created' && 'Task created'}
                                 {a.kind === 'field_change' && (
                                   <>{formatAuditFieldLabel(a.field)} updated</>
@@ -1347,27 +1347,27 @@ export function TaskDetailPanel({
                               </p>
                               {a.kind === 'field_change' && (
                                 <div className="flex flex-wrap items-center gap-1.5 text-xs">
-                                  <span className="rounded-md bg-muted px-1.5 py-0.5 text-muted-foreground line-through">
+                                  <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-slate-600 line-through">
                                     {fromLabel}
                                   </span>
-                                  <span className="text-muted-foreground">→</span>
+                                  <span className="text-slate-500">→</span>
                                   <span className="rounded-md bg-primary/10 px-1.5 py-0.5 font-medium text-foreground">
                                     {toLabel}
                                   </span>
                                 </div>
                               )}
                               {a.reason && (
-                                <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-2.5 py-1.5">
+                                <div className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5">
                                   <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-800">
                                     Reason
                                   </p>
-                                  <p className="text-xs leading-relaxed text-foreground/90">{a.reason}</p>
+                                  <p className="text-xs leading-relaxed text-amber-950">{a.reason}</p>
                                 </div>
                               )}
                               {detailMessage && (
-                                <p className="text-xs leading-relaxed text-muted-foreground">{detailMessage}</p>
+                                <p className="text-xs leading-relaxed text-slate-700">{detailMessage}</p>
                               )}
-                              <p className="text-[11px] text-muted-foreground">
+                              <p className="text-[11px] text-slate-600">
                                 {a.actorName}
                                 {a.createdAt
                                   ? ` · ${new Date(a.createdAt).toLocaleString(undefined, {
@@ -1377,7 +1377,7 @@ export function TaskDetailPanel({
                                   : ''}
                               </p>
                             </div>
-                            <Badge variant="outline" className="shrink-0 text-[10px] capitalize">
+                            <Badge variant="outline" className="shrink-0 border-border bg-slate-50 text-[10px] capitalize text-slate-700">
                               {a.kind === 'field_change'
                                 ? 'Change'
                                 : a.kind === 'time_logged'

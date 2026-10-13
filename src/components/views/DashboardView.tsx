@@ -4,58 +4,131 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { 
-  FolderKanban, 
   CheckCircle2, 
-  AlertCircle,
-  CalendarDays,
-  Loader2
+  Loader2,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Button } from '@/components/ui/button';
 import { TodayCard } from '@/components/dashboard/TodayCard';
 import { TimeTrackingWidget } from '@/components/dashboard/TimeTrackingWidget';
+import { DashboardKpiScoreboard } from '@/components/dashboard/DashboardKpiScoreboard';
 import { TaskDetailPanel } from '@/components/tasks/TaskDetailPanel';
 import { getTaskPipelineInfo, isTaskClosed } from '@/lib/pipelines';
+import { getDateKeyInTimeZone, resolveWorkspaceTimezone } from '@/lib/timezone';
+import type { Target, TargetStatus } from '@/lib/types';
+
+function isTargetClosed(status?: TargetStatus | string) {
+  return status === 'complete' || status === 'cancelled' || status === 'done';
+}
+
+function targetStatusLabel(status?: TargetStatus | string) {
+  if (!status) return 'Planned';
+  if (status === 'done') return 'Complete';
+  return status.replace(/_/g, ' ');
+}
+
+function targetStatusClass(status?: TargetStatus | string) {
+  switch (status) {
+    case 'complete':
+    case 'done':
+      return 'bg-emerald-100 text-emerald-800';
+    case 'in_progress':
+      return 'bg-blue-100 text-blue-800';
+    case 'hold':
+      return 'bg-amber-100 text-amber-900';
+    case 'cancelled':
+      return 'bg-slate-200 text-slate-700';
+    default:
+      return 'bg-violet-100 text-violet-800';
+  }
+}
 
 export function DashboardView({
   store,
   onNavigateToProject,
   onNavigateToTask,
+  onNavigateToTargets,
 }: {
   store: any;
   onNavigateToProject: (id: string) => void;
   onNavigateToTask?: (wsId: string, projId: string, taskId: string) => void;
+  onNavigateToTargets?: () => void;
 }) {
-  const { allWorkspaceTasks, workspaceProjects, activeWorkspace, isTasksLoading } = store;
+  const {
+    allWorkspaceTasks,
+    workspaceProjects,
+    workspaceTargets,
+    canAccessTargets,
+    activeWorkspace,
+    workspaceTimezone,
+    isTasksLoading,
+  } = store;
   const [mounted, setMounted] = useState(false);
   const selectedTaskId = store.selectedTaskId as string | null;
+  const timeZone = resolveWorkspaceTimezone(workspaceTimezone || activeWorkspace?.timezone);
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  // Stats derived from raw unfiltered data (pipeline-aware closed status)
   const stats = useMemo(() => {
     const tasks = allWorkspaceTasks || [];
     const now = new Date();
+    const todayKey = getDateKeyInTimeZone(now, timeZone);
     const openTasks = tasks.filter((t: any) => !isTaskClosed(t, workspaceProjects));
     const doneTasks = tasks.filter((t: any) => isTaskClosed(t, workspaceProjects)).length;
+    const dueToday = openTasks.filter((t: any) => {
+      if (!t.dueDate) return false;
+      return String(t.dueDate).slice(0, 10) === todayKey;
+    }).length;
     return {
       totalProjects: workspaceProjects.length,
       totalTasks: tasks.length,
       doneTasks,
       active: openTasks.length,
+      dueToday,
       overdue: tasks.filter(
         (t: any) => t.dueDate && new Date(t.dueDate) < now && !isTaskClosed(t, workspaceProjects)
       ).length,
       urgent: tasks.filter((t: any) => t.priority === 'urgent' && !isTaskClosed(t, workspaceProjects)).length,
     };
-  }, [allWorkspaceTasks, workspaceProjects]);
+  }, [allWorkspaceTasks, workspaceProjects, timeZone]);
+
+  const targetStats = useMemo(() => {
+    const targets: Target[] = workspaceTargets || [];
+    const todayKey = getDateKeyInTimeZone(new Date(), timeZone);
+    const monthKey = todayKey.slice(0, 7); // YYYY-MM
+
+    const open = targets.filter((t) => !isTargetClosed(t.status));
+    const dueThisMonth = open.filter((t) => {
+      if (!t.endDate) return false;
+      return t.endDate.slice(0, 7) === monthKey;
+    });
+    const overdue = open.filter((t) => t.endDate && t.endDate < todayKey);
+    const completed = targets.filter((t) => isTargetClosed(t.status) && t.status !== 'cancelled').length;
+    const completionRate = targets.length > 0 ? (completed / targets.length) * 100 : 0;
+
+    return {
+      total: targets.length,
+      open: open.length,
+      dueThisMonth: dueThisMonth.length,
+      overdue: overdue.length,
+      completed,
+      completionRate,
+      dueThisMonthList: [...dueThisMonth].sort((a, b) =>
+        String(a.endDate || '').localeCompare(String(b.endDate || ''))
+      ),
+      upcoming: [...open]
+        .filter((t) => t.endDate)
+        .sort((a, b) => String(a.endDate || '').localeCompare(String(b.endDate || '')))
+        .slice(0, 5),
+    };
+  }, [workspaceTargets, timeZone]);
 
   const completionRate = stats.totalTasks > 0 ? (stats.doneTasks / stats.totalTasks) * 100 : 0;
 
-  // Sorted list for recent activity
   const recentTasks = useMemo(() => {
     return [...allWorkspaceTasks].sort((a: any, b: any) => 
       new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
@@ -90,51 +163,38 @@ export function DashboardView({
         </h2>
         <p className="text-sm text-muted-foreground">
           {activeWorkspace?.name} · {stats.totalTasks} tasks across {stats.totalProjects} projects
+          {canAccessTargets ? ` · ${targetStats.total} targets` : ''}
         </p>
       </div>
 
       <TimeTrackingWidget store={store} />
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Card className="bg-card/80 shadow-sm border border-border/50">
-          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0 py-3">
-            <CardTitle className="text-xs font-medium text-muted-foreground">Projects</CardTitle>
-            <FolderKanban className="h-4 w-4 text-primary/80" />
-          </CardHeader>
-          <CardContent className="pt-0 pb-4">
-            <div className="text-xl font-bold">{stats.totalProjects}</div>
-          </CardContent>
-        </Card>
-        <Card className="bg-card/80 shadow-sm border border-border/50">
-          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0 py-3">
-            <CardTitle className="text-xs font-medium text-muted-foreground">Tasks</CardTitle>
-            <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-          </CardHeader>
-          <CardContent className="pt-0 pb-4">
-            <div className="text-xl font-bold">{stats.totalTasks}</div>
-            <Progress value={completionRate} className="h-1 mt-2" />
-            <p className="text-[10px] text-muted-foreground mt-1">{mounted ? Math.round(completionRate) : 0}% done</p>
-          </CardContent>
-        </Card>
-        <Card className="bg-card/80 shadow-sm border border-border/50">
-          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0 py-3">
-            <CardTitle className="text-xs font-medium text-muted-foreground">Open</CardTitle>
-            <CalendarDays className="h-4 w-4 text-primary" />
-          </CardHeader>
-          <CardContent className="pt-0 pb-4">
-            <div className="text-xl font-bold">{stats.active}</div>
-          </CardContent>
-        </Card>
-        <Card className="bg-card/80 shadow-sm border border-border/50">
-          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0 py-3">
-            <CardTitle className="text-xs font-medium text-muted-foreground">Critical</CardTitle>
-            <AlertCircle className="h-4 w-4 text-destructive" />
-          </CardHeader>
-          <CardContent className="pt-0 pb-4">
-            <div className="text-xl font-bold">{mounted ? stats.overdue + stats.urgent : '—'}</div>
-          </CardContent>
-        </Card>
-      </div>
+      <DashboardKpiScoreboard
+        workspaceName={activeWorkspace?.name}
+        showTargets={!!canAccessTargets}
+        delivery={{
+          projects: stats.totalProjects,
+          tasks: stats.totalTasks,
+          open: stats.active,
+          done: stats.doneTasks,
+          completionRate,
+          overdue: stats.overdue,
+          urgent: stats.urgent,
+          dueToday: stats.dueToday,
+        }}
+        targets={
+          canAccessTargets
+            ? {
+                total: targetStats.total,
+                open: targetStats.open,
+                dueThisMonth: targetStats.dueThisMonth,
+                overdue: targetStats.overdue,
+                completed: targetStats.completed,
+                completionRate: targetStats.completionRate,
+              }
+            : undefined
+        }
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Card className="shadow-sm border border-border/50 lg:col-span-2">
@@ -246,6 +306,79 @@ export function DashboardView({
             </div>
           </CardContent>
         </Card>
+
+        {canAccessTargets && (
+          <Card className="shadow-sm border border-border/50 lg:col-span-2">
+            <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
+              <div>
+                <CardTitle className="text-base font-semibold">Targets</CardTitle>
+                <p className="text-xs text-slate-600 mt-1">
+                  {targetStats.dueThisMonth > 0
+                    ? `${targetStats.dueThisMonth} due this month`
+                    : 'No open targets due this month'}
+                  {targetStats.overdue > 0 ? ` · ${targetStats.overdue} overdue` : ''}
+                </p>
+              </div>
+              {onNavigateToTargets && (
+                <Button variant="outline" size="sm" className="h-8 text-xs" onClick={onNavigateToTargets}>
+                  View all
+                </Button>
+              )}
+            </CardHeader>
+            <CardContent>
+              {(targetStats.dueThisMonthList.length > 0 ? targetStats.dueThisMonthList : targetStats.upcoming).length === 0 ? (
+                <div className="rounded-xl border border-dashed border-border px-4 py-8 text-center text-sm text-slate-600">
+                  No targets yet. Create goals on the Targets page.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {(targetStats.dueThisMonthList.length > 0
+                    ? targetStats.dueThisMonthList
+                    : targetStats.upcoming
+                  ).slice(0, 6).map((target) => {
+                    const subs = target.subTargets || [];
+                    const doneSubs = subs.filter((s) => isTargetClosed(s.status)).length;
+                    const todayKey = getDateKeyInTimeZone(new Date(), timeZone);
+                    const isOverdue = !isTargetClosed(target.status) && !!target.endDate && target.endDate < todayKey;
+                    return (
+                      <button
+                        key={target.id}
+                        type="button"
+                        className="flex w-full items-start justify-between gap-3 rounded-xl border border-border bg-slate-50/80 px-3.5 py-3 text-left transition-colors hover:bg-slate-100"
+                        onClick={() => onNavigateToTargets?.()}
+                      >
+                        <div className="min-w-0 space-y-1.5">
+                          <p className="text-sm font-semibold text-foreground truncate">{target.title}</p>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Badge className={`text-[10px] capitalize border-0 ${targetStatusClass(target.status)}`}>
+                              {targetStatusLabel(target.status)}
+                            </Badge>
+                            {subs.length > 0 && (
+                              <span className="text-[11px] text-slate-600">
+                                {doneSubs}/{subs.length} sub-targets
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <p className={`text-xs font-medium tabular-nums ${isOverdue ? 'text-destructive' : 'text-slate-700'}`}>
+                            {target.endDate
+                              ? new Date(`${target.endDate}T12:00:00`).toLocaleDateString(undefined, {
+                                  month: 'short',
+                                  day: 'numeric',
+                                })
+                              : 'No end date'}
+                          </p>
+                          {isOverdue && <p className="text-[10px] text-destructive mt-0.5">Overdue</p>}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {selectedTaskId && (

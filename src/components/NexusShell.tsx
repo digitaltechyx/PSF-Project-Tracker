@@ -377,6 +377,7 @@ export function NexusShell() {
               store={store}
               onNavigateToProject={handleProjectClick}
               onNavigateToTask={handleNavigateToTask}
+              onNavigateToTargets={() => handleNavClick('targets')}
             />
           )}
           {currentView === 'project' && <ProjectView store={store} />}
