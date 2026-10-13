@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   collection,
   doc,
@@ -42,7 +42,7 @@ export function useChat(opts: {
   const db = useFirestore();
   const app = useFirebaseApp();
   const [selection, setSelection] = useState<ChatSelection>(null);
-  const [ensuringGeneral, setEnsuringGeneral] = useState(false);
+  const generalSeededRef = useRef<string | null>(null);
 
   const channelsQuery = useMemoFirebase(() => {
     if (!db || !workspaceId || !isAuthReady || !currentUser?.id) return null;
@@ -55,9 +55,23 @@ export function useChat(opts: {
     const uid = currentUser?.id;
     const all = channelsData || [];
     if (!uid) return [];
-    return all.filter(
-      (c) => !c.isPrivate || c.memberUserIds?.includes(uid) || c.createdByUserId === uid
-    );
+    // Dedupe accidental duplicate "general" channels (keep stable id `general` if present)
+    const seenNames = new Set<string>();
+    const deduped: ChatChannel[] = [];
+    const sorted = [...all].sort((a, b) => {
+      if (a.id === 'general') return -1;
+      if (b.id === 'general') return 1;
+      return (a.createdAt || '').localeCompare(b.createdAt || '');
+    });
+    for (const c of sorted) {
+      const key = (c.name || '').toLowerCase();
+      if (key === 'general' && seenNames.has(key)) continue;
+      seenNames.add(key);
+      if (!c.isPrivate || c.memberUserIds?.includes(uid) || c.createdByUserId === uid) {
+        deduped.push(c);
+      }
+    }
+    return deduped;
   }, [channelsData, currentUser?.id]);
 
   const dmsQuery = useMemoFirebase(() => {
@@ -72,37 +86,35 @@ export function useChat(opts: {
   const { data: dmsData, isLoading: dmsLoading } = useCollection<ChatDm>(dmsQuery);
   const dms = useMemo(() => dmsData || [], [dmsData]);
 
-  // Ensure #general exists
+  // Ensure a single #general channel (stable doc id so races can't create duplicates)
   useEffect(() => {
-    async function ensure() {
-      if (!db || !workspaceId || !currentUser?.id || channelsLoading || ensuringGeneral) return;
-      if ((channelsData || []).some((c) => c.name.toLowerCase() === 'general')) return;
-      setEnsuringGeneral(true);
-      try {
-        const ref = doc(collection(db, 'workspaces', workspaceId, 'channels'));
-        const now = new Date().toISOString();
-        const channel: ChatChannel = {
-          id: ref.id,
-          workspaceId,
-          name: 'general',
-          description: 'Workspace-wide chat',
-          isPrivate: false,
-          memberUserIds: [],
-          createdByUserId: currentUser.id,
-          lastMessageAt: null,
-          lastMessagePreview: null,
-          createdAt: now,
-          updatedAt: now,
-        };
-        await setDocumentNonBlocking(ref, channel, { merge: true });
-      } catch (e) {
-        console.error('Failed to create general channel', e);
-      } finally {
-        setEnsuringGeneral(false);
-      }
+    if (!db || !workspaceId || !currentUser?.id || channelsLoading) return;
+    if (generalSeededRef.current === workspaceId) return;
+    if ((channelsData || []).some((c) => c.id === 'general' || c.name.toLowerCase() === 'general')) {
+      generalSeededRef.current = workspaceId;
+      return;
     }
-    ensure();
-  }, [db, workspaceId, currentUser?.id, channelsData, channelsLoading, ensuringGeneral]);
+    generalSeededRef.current = workspaceId;
+    const ref = doc(db, 'workspaces', workspaceId, 'channels', 'general');
+    const now = new Date().toISOString();
+    const channel: ChatChannel = {
+      id: 'general',
+      workspaceId,
+      name: 'general',
+      description: 'Workspace-wide chat',
+      isPrivate: false,
+      memberUserIds: [],
+      createdByUserId: currentUser.id,
+      lastMessageAt: null,
+      lastMessagePreview: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    setDocumentNonBlocking(ref, channel, { merge: true }).catch((e) => {
+      console.error('Failed to create general channel', e);
+      generalSeededRef.current = null;
+    });
+  }, [db, workspaceId, currentUser?.id, channelsData, channelsLoading]);
 
   useEffect(() => {
     if (!selection && channels.length) {
