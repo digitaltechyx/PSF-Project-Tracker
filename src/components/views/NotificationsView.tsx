@@ -7,13 +7,15 @@ import { cn } from '@/lib/utils';
 import { useNotifications } from '@/hooks/use-notifications';
 import { formatDistanceToNow } from 'date-fns';
 
-const iconMap = {
+const iconMap: Record<string, React.ReactNode> = {
   task_assigned: <UserPlus className="h-4 w-4" />,
   task_updated: <Edit className="h-4 w-4" />,
   comment_added: <MessageSquare className="h-4 w-4" />,
   task_unassigned: <UserPlus className="h-4 w-4" />,
   task_status_changed: <Edit className="h-4 w-4" />,
   subtask_assigned: <ListIcon />,
+  chat_mention: <MessageSquare className="h-4 w-4" />,
+  chat_dm: <MessageSquare className="h-4 w-4" />,
 };
 
 function ListIcon() {

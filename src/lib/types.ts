@@ -224,7 +224,9 @@ export type NotificationType =
   | 'task_updated' 
   | 'task_status_changed' 
   | 'comment_added'
-  | 'subtask_assigned';
+  | 'subtask_assigned'
+  | 'chat_mention'
+  | 'chat_dm';
 
 export interface Notification {
   id: string;
@@ -238,7 +240,57 @@ export interface Notification {
   workspaceId?: string;
   projectId?: string;
   taskId?: string;
+  channelId?: string;
+  dmId?: string;
   createdAt: string;
+}
+
+export interface ChatAttachment {
+  name: string;
+  url: string;
+  contentType: string;
+  size: number;
+}
+
+export interface ChatChannel {
+  id: string;
+  workspaceId: string;
+  name: string;
+  description?: string;
+  /** false = all workspace members; true = only memberUserIds */
+  isPrivate: boolean;
+  memberUserIds: string[];
+  createdByUserId: string;
+  lastMessageAt?: string | null;
+  lastMessagePreview?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ChatDm {
+  id: string;
+  workspaceId: string;
+  participantUserIds: [string, string];
+  lastMessageAt?: string | null;
+  lastMessagePreview?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  workspaceId: string;
+  conversationType: 'channel' | 'dm';
+  channelId?: string | null;
+  dmId?: string | null;
+  authorUserId: string;
+  authorName: string;
+  authorAvatarUrl?: string | null;
+  body: string;
+  mentionUserIds: string[];
+  attachments: ChatAttachment[];
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface AttendanceBreak {

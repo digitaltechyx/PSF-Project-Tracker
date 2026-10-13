@@ -193,6 +193,59 @@ service cloud.firestore {
         allow delete: if canAccessTargets(workspaceId)
           || (isWorkspaceMember(workspaceId) && resource.data.createdByUserId == request.auth.uid);
       }
+
+      // Chat channels (listable by all members; private message access enforced below)
+      match /channels/{channelId} {
+        allow read: if isWorkspaceMember(workspaceId);
+        allow create: if isWorkspaceMember(workspaceId)
+          && request.resource.data.createdByUserId == request.auth.uid
+          && request.resource.data.workspaceId == workspaceId;
+        allow update: if isWorkspaceMember(workspaceId);
+        allow delete: if isWorkspaceAdmin(workspaceId)
+          || resource.data.createdByUserId == request.auth.uid;
+
+        function canAccessChannelMessages() {
+          let ch = get(/databases/$(database)/documents/workspaces/$(workspaceId)/channels/$(channelId)).data;
+          return isWorkspaceMember(workspaceId) && (
+            ch.get('isPrivate', false) == false
+            || request.auth.uid in ch.get('memberUserIds', [])
+            || isWorkspaceAdmin(workspaceId)
+          );
+        }
+
+        match /messages/{messageId} {
+          allow read: if canAccessChannelMessages();
+          allow create: if canAccessChannelMessages()
+            && request.resource.data.authorUserId == request.auth.uid;
+          allow update, delete: if canAccessChannelMessages()
+            && resource.data.authorUserId == request.auth.uid;
+        }
+      }
+
+      // Direct messages (1:1) — list filtered client-side; docs readable only by participants
+      match /dms/{dmId} {
+        allow read: if isWorkspaceMember(workspaceId)
+          && request.auth.uid in resource.data.get('participantUserIds', []);
+        allow create: if isWorkspaceMember(workspaceId)
+          && request.auth.uid in request.resource.data.participantUserIds
+          && request.resource.data.participantUserIds.size() == 2;
+        allow update: if isWorkspaceMember(workspaceId)
+          && request.auth.uid in resource.data.get('participantUserIds', []);
+        allow delete: if false;
+
+        function canAccessDmMessages() {
+          return isWorkspaceMember(workspaceId)
+            && request.auth.uid in get(/databases/$(database)/documents/workspaces/$(workspaceId)/dms/$(dmId)).data.get('participantUserIds', []);
+        }
+
+        match /messages/{messageId} {
+          allow read: if canAccessDmMessages();
+          allow create: if canAccessDmMessages()
+            && request.resource.data.authorUserId == request.auth.uid;
+          allow update, delete: if canAccessDmMessages()
+            && resource.data.authorUserId == request.auth.uid;
+        }
+      }
     }
 
     // Copy-share packages (token in URL). Recipient copies snapshots into their workspace.
