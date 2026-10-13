@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Task, Priority, Pipeline, Status } from '@/lib/types';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Clock, CheckCircle2 } from 'lucide-react';
+import { Plus, Clock, CheckCircle2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -49,10 +49,47 @@ export function KanbanBoard({
   const [mounted, setMounted] = useState(false);
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
   const [activeColumn, setActiveColumn] = useState<string | null>(null);
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  const updateScrollButtons = useCallback(() => {
+    const el = scrollerRef.current;
+    if (!el) {
+      setCanScrollLeft(false);
+      setCanScrollRight(false);
+      return;
+    }
+    const max = el.scrollWidth - el.clientWidth;
+    setCanScrollLeft(el.scrollLeft > 4);
+    setCanScrollRight(max > 4 && el.scrollLeft < max - 4);
+  }, []);
+
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    updateScrollButtons();
+    el.addEventListener('scroll', updateScrollButtons, { passive: true });
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(updateScrollButtons) : null;
+    ro?.observe(el);
+    window.addEventListener('resize', updateScrollButtons);
+    return () => {
+      el.removeEventListener('scroll', updateScrollButtons);
+      ro?.disconnect();
+      window.removeEventListener('resize', updateScrollButtons);
+    };
+  }, [updateScrollButtons, pipelines.length, tasks.length]);
+
+  const scrollBoard = (dir: 'left' | 'right') => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    const amount = Math.max(280, Math.floor(el.clientWidth * 0.7));
+    el.scrollBy({ left: dir === 'left' ? -amount : amount, behavior: 'smooth' });
+  };
 
   const closedId = getClosedStatusId(pipelines);
 
@@ -87,7 +124,36 @@ export function KanbanBoard({
   };
 
   return (
-    <div className="flex gap-3 overflow-x-auto pb-4 -mx-1 px-1 min-h-[560px] snap-x">
+    <div className="relative group/board">
+      {canScrollLeft && (
+        <Button
+          type="button"
+          variant="secondary"
+          size="icon"
+          className="absolute left-0 top-1/2 -translate-y-1/2 z-20 h-10 w-10 rounded-full shadow-md border border-border/60 bg-card/95 backdrop-blur-sm"
+          onClick={() => scrollBoard('left')}
+          aria-label="Scroll statuses left"
+        >
+          <ChevronLeft className="h-5 w-5" />
+        </Button>
+      )}
+      {canScrollRight && (
+        <Button
+          type="button"
+          variant="secondary"
+          size="icon"
+          className="absolute right-0 top-1/2 -translate-y-1/2 z-20 h-10 w-10 rounded-full shadow-md border border-border/60 bg-card/95 backdrop-blur-sm"
+          onClick={() => scrollBoard('right')}
+          aria-label="Scroll statuses right"
+        >
+          <ChevronRight className="h-5 w-5" />
+        </Button>
+      )}
+
+    <div
+      ref={scrollerRef}
+      className="flex gap-3 overflow-x-auto pb-4 -mx-1 px-1 min-h-[560px] snap-x scroll-smooth [scrollbar-width:thin]"
+    >
       {pipelines.map((col) => {
         const columnTasks = tasks.filter((t) => t.status === col.id);
         const color = col.color || '#94a3b8';
@@ -270,6 +336,7 @@ export function KanbanBoard({
           </span>
         </button>
       )}
+    </div>
     </div>
   );
 }
