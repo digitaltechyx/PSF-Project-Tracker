@@ -1,4 +1,4 @@
-import type { Pipeline, Task, TaskAudit } from '@/lib/types';
+import type { Pipeline, Subtask, Task, TaskAudit } from '@/lib/types';
 import { getPipelineInfo } from '@/lib/pipelines';
 
 const AUDIT_FIELDS: (keyof Task)[] = [
@@ -9,6 +9,14 @@ const AUDIT_FIELDS: (keyof Task)[] = [
   'dueDate',
   'assigneeUserIds',
   'tags',
+];
+
+const SUBTASK_AUDIT_FIELDS: (keyof Subtask)[] = [
+  'title',
+  'status',
+  'priority',
+  'dueDate',
+  'assigneeUserIds',
 ];
 
 /** Major fields that require a change reason in the audit trail. */
@@ -51,6 +59,11 @@ function formatDateValue(value: unknown): string | null {
   });
 }
 
+function normalizeAuditField(field?: string): string {
+  if (!field) return '';
+  return field.startsWith('subtask.') ? field.slice('subtask.'.length) : field;
+}
+
 /** Turn raw stored audit values into human-readable labels. */
 export function formatAuditDisplayValue(
   field: string | undefined,
@@ -58,8 +71,9 @@ export function formatAuditDisplayValue(
   ctx: AuditFormatContext = {}
 ): string {
   if (value === undefined || value === null || value === '') return 'Empty';
+  const key = normalizeAuditField(field);
 
-  if (field === 'assigneeUserIds') {
+  if (key === 'assigneeUserIds') {
     const ids = value
       .split(',')
       .map((s) => s.trim())
@@ -68,17 +82,21 @@ export function formatAuditDisplayValue(
     return ids.map((id) => memberLabel(id, ctx.memberNames)).join(', ');
   }
 
-  if (field === 'status') {
+  if (key === 'status') {
     const info = getPipelineInfo(ctx.pipelines || [], value);
     return info.name;
   }
 
-  if (field === 'priority') {
+  if (key === 'priority') {
     return value.charAt(0).toUpperCase() + value.slice(1);
   }
 
-  if (field === 'dueDate') {
+  if (key === 'dueDate') {
     return formatDateValue(value) || 'Empty';
+  }
+
+  if (key === 'created' || key === 'deleted') {
+    return value;
   }
 
   if (field === 'description') {
@@ -213,8 +231,100 @@ export function formatAuditFieldLabel(field?: string): string {
     dueDate: 'Due date',
     assigneeUserIds: 'Assignees',
     tags: 'Tags',
+    'subtask.title': 'Subtask title',
+    'subtask.status': 'Subtask status',
+    'subtask.priority': 'Subtask priority',
+    'subtask.dueDate': 'Subtask due date',
+    'subtask.assigneeUserIds': 'Subtask assignees',
+    'subtask.created': 'Subtask',
+    'subtask.deleted': 'Subtask',
   };
   return map[field] || field;
+}
+
+function stringifySubtaskAuditValue(
+  field: keyof Subtask,
+  value: unknown,
+  ctx: AuditFormatContext
+): string | null {
+  return stringifyAuditValue(field as keyof Task, value, ctx);
+}
+
+/** Build parent-task audit rows for subtask create / update / delete. */
+export function buildSubtaskChangeAudits(
+  parent: Pick<Task, 'id' | 'workspaceId' | 'projectId'>,
+  before: Subtask | null,
+  after: Partial<Subtask> | null,
+  meta: {
+    actorUserId: string;
+    actorName: string;
+    action: 'created' | 'updated' | 'deleted';
+    subtaskTitle?: string;
+  },
+  ctx: AuditFormatContext = {}
+): Omit<TaskAudit, 'id' | 'createdAt'>[] {
+  const title =
+    (after?.title || before?.title || meta.subtaskTitle || 'Untitled subtask').trim() ||
+    'Untitled subtask';
+  const subtaskId = after?.id || before?.id || null;
+  const base = {
+    workspaceId: parent.workspaceId,
+    projectId: parent.projectId,
+    taskId: parent.id,
+    kind: 'subtask_change' as const,
+    actorUserId: meta.actorUserId,
+    actorName: meta.actorName,
+    reason: null,
+    subtaskId,
+    subtaskTitle: title,
+  };
+
+  if (meta.action === 'created') {
+    return [
+      {
+        ...base,
+        field: 'subtask.created',
+        fromValue: null,
+        toValue: title,
+        message: `${meta.actorName} added subtask “${title}”`,
+      },
+    ];
+  }
+
+  if (meta.action === 'deleted') {
+    return [
+      {
+        ...base,
+        field: 'subtask.deleted',
+        fromValue: title,
+        toValue: null,
+        message: `${meta.actorName} deleted subtask “${title}”`,
+      },
+    ];
+  }
+
+  if (!before || !after) return [];
+
+  const rows: Omit<TaskAudit, 'id' | 'createdAt'>[] = [];
+  for (const field of SUBTASK_AUDIT_FIELDS) {
+    if (!(field in after)) continue;
+    const fromValue = stringifySubtaskAuditValue(field, before[field], ctx);
+    const toValue = stringifySubtaskAuditValue(field, after[field], ctx);
+    if (valuesEqual(fromValue, toValue)) continue;
+
+    const label = formatAuditFieldLabel(`subtask.${field}`);
+    const fromLabel =
+      fromValue || (field === 'assigneeUserIds' ? 'Unassigned' : 'Empty');
+    const toLabel = toValue || (field === 'assigneeUserIds' ? 'Unassigned' : 'Empty');
+    rows.push({
+      ...base,
+      field: `subtask.${field}`,
+      fromValue,
+      toValue,
+      message: `${meta.actorName} changed ${label.toLowerCase()} on “${title}” from “${fromLabel}” to “${toLabel}”`,
+    });
+  }
+  return rows;
 }
 
 export function formatDateKeyLabel(dateKey?: string | null): string {

@@ -29,7 +29,7 @@ import { Workspace, Project, Task, WorkspaceMember, Invitation, Subtask, Attenda
 import { createNotification, notifyTaskAssigned, notifyTaskUpdated, notifySubtaskAssigned } from '@/lib/notifications';
 import { sendWorkspaceInviteEmail } from '@/app/actions/send-workspace-invite-email';
 import { DEFAULT_PIPELINES } from '@/lib/pipelines';
-import { buildFieldChangeAudits } from '@/lib/task-audit';
+import { buildFieldChangeAudits, buildSubtaskChangeAudits } from '@/lib/task-audit';
 import { parseGoogleDocUrl } from '@/lib/google-docs';
 import { DEFAULT_WORKSPACE_TIMEZONE, getDateKeyInTimeZone, resolveWorkspaceTimezone } from '@/lib/timezone';
 
@@ -538,6 +538,36 @@ export function useNexusStore() {
     });
   }, [db, allWorkspaceTasks, isAdmin, user, workspaceMembers, projects]);
 
+  const writeTaskAudits = useCallback(
+    (
+      parent: Pick<Task, 'id' | 'workspaceId' | 'projectId'>,
+      rows: Omit<TaskAudit, 'id' | 'createdAt'>[]
+    ) => {
+      if (!db || !rows.length) return;
+      const now = new Date().toISOString();
+      rows.forEach((row) => {
+        const auditRef = doc(
+          collection(
+            db,
+            'workspaces',
+            parent.workspaceId,
+            'projects',
+            parent.projectId,
+            'tasks',
+            parent.id,
+            'audits'
+          )
+        );
+        setDocumentNonBlocking(
+          auditRef,
+          { ...row, id: auditRef.id, createdAt: now },
+          { merge: true }
+        );
+      });
+    },
+    [db]
+  );
+
   const createSubtask = useCallback(async (taskId: string, projectId: string, data: Partial<Subtask>) => {
     const wsId = activeWorkspace?.id;
     if (!db || !wsId || !projectId || !taskId || !user || !isAdmin) {
@@ -549,7 +579,13 @@ export function useNexusStore() {
 
     const subtaskRef = doc(collection(db, 'workspaces', wsId, 'projects', projectId, 'tasks', taskId, 'subtasks'));
     const taskObj = allWorkspaceTasks.find((t) => t.id === taskId);
-    const subtaskData = {
+    const dueDate =
+      data.dueDate === undefined || data.dueDate === null || data.dueDate === ''
+        ? null
+        : String(data.dueDate).slice(0, 10).length === 10
+          ? `${String(data.dueDate).slice(0, 10)}T12:00:00.000Z`
+          : data.dueDate;
+    const subtaskData: Subtask = {
       id: subtaskRef.id,
       workspaceId: wsId,
       projectId,
@@ -557,14 +593,29 @@ export function useNexusStore() {
       title,
       status: data.status || 'todo',
       priority: data.priority || 'medium',
-      dueDate: data.dueDate ?? null,
+      dueDate,
       assigneeUserIds: data.assigneeUserIds || [],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
     try {
       await setDocumentNonBlocking(subtaskRef, subtaskData, { merge: true });
-      if (subtaskData.assigneeUserIds.length > 0) {
+      if (taskObj) {
+        writeTaskAudits(
+          taskObj,
+          buildSubtaskChangeAudits(
+            taskObj,
+            null,
+            subtaskData,
+            {
+              actorUserId: user.uid,
+              actorName: user.displayName || 'User',
+              action: 'created',
+            }
+          )
+        );
+      }
+      if (subtaskData.assigneeUserIds && subtaskData.assigneeUserIds.length > 0) {
         subtaskData.assigneeUserIds.forEach((assigneeId: string) => {
           if (assigneeId !== user.uid) {
             notifySubtaskAssigned(
@@ -587,19 +638,59 @@ export function useNexusStore() {
       console.error('Failed to create subtask:', e);
       return null;
     }
-  }, [db, user, isAdmin, activeWorkspace?.id, allWorkspaceTasks]);
+  }, [db, user, isAdmin, activeWorkspace?.id, allWorkspaceTasks, writeTaskAudits]);
 
   const updateSubtask = useCallback((taskId: string, subtaskId: string, data: Partial<Subtask>) => {
     if (!db || !isAdmin || !user) return;
-    const s = allWorkspaceSubtasks.find((x) => x.id === subtaskId);
+    const s = allWorkspaceSubtasks.find((x) => x.id === subtaskId && (!taskId || x.taskId === taskId));
     if (!s) return;
 
-    const ref = doc(db, 'workspaces', s.workspaceId, 'projects', s.projectId, 'tasks', s.taskId, 'subtasks', s.id);
-    updateDocumentNonBlocking(ref, { ...data, updatedAt: new Date().toISOString() });
+    const payload: Partial<Subtask> = { ...data };
+    if (payload.dueDate !== undefined) {
+      if (payload.dueDate === null || payload.dueDate === '') {
+        payload.dueDate = null;
+      } else {
+        const day = String(payload.dueDate).slice(0, 10);
+        payload.dueDate = /^\d{4}-\d{2}-\d{2}$/.test(day) ? `${day}T12:00:00.000Z` : payload.dueDate;
+      }
+    }
+    if (payload.assigneeUserIds !== undefined) {
+      payload.assigneeUserIds = Array.isArray(payload.assigneeUserIds)
+        ? payload.assigneeUserIds.filter(Boolean)
+        : [];
+    }
 
-    if (data.assigneeUserIds !== undefined) {
+    const ref = doc(db, 'workspaces', s.workspaceId, 'projects', s.projectId, 'tasks', s.taskId, 'subtasks', s.id);
+    updateDocumentNonBlocking(ref, { ...payload, updatedAt: new Date().toISOString() });
+
+    const memberNames: Record<string, string> = {};
+    for (const m of workspaceMembers) {
+      if (m.userId) memberNames[m.userId] = m.displayName || m.email || m.userId;
+    }
+    const project = projects.find((p) => p.id === s.projectId);
+    const parent = allWorkspaceTasks.find((t) => t.id === s.taskId) || {
+      id: s.taskId,
+      workspaceId: s.workspaceId,
+      projectId: s.projectId,
+    };
+    writeTaskAudits(
+      parent,
+      buildSubtaskChangeAudits(
+        parent,
+        s,
+        payload,
+        {
+          actorUserId: user.uid,
+          actorName: user.displayName || 'User',
+          action: 'updated',
+        },
+        { memberNames, pipelines: project?.pipelines || DEFAULT_PIPELINES }
+      )
+    );
+
+    if (payload.assigneeUserIds !== undefined) {
       const oldAssignees = s.assigneeUserIds || [];
-      const newAssignees = data.assigneeUserIds || [];
+      const newAssignees = payload.assigneeUserIds || [];
       newAssignees.forEach((assigneeId) => {
         if (!oldAssignees.includes(assigneeId) && assigneeId !== user.uid) {
           const taskObj = allWorkspaceTasks.find((t) => t.id === s.taskId);
@@ -613,21 +704,38 @@ export function useNexusStore() {
               workspaceId: s.workspaceId,
               projectId: s.projectId,
             },
-            data.title || s.title
+            payload.title || s.title
           );
         }
       });
     }
-  }, [db, isAdmin, user, allWorkspaceSubtasks, allWorkspaceTasks]);
+  }, [db, isAdmin, user, allWorkspaceSubtasks, allWorkspaceTasks, workspaceMembers, projects, writeTaskAudits]);
 
   const deleteSubtask = useCallback((taskId: string, subtaskId: string) => {
-    if (!db || !isAdmin) return;
-    const s = allWorkspaceSubtasks.find(x => x.id === subtaskId);
-    if (s) {
-      const ref = doc(db, 'workspaces', s.workspaceId, 'projects', s.projectId, 'tasks', s.taskId, 'subtasks', s.id);
-      deleteDocumentNonBlocking(ref);
-    }
-  }, [db, isAdmin, allWorkspaceSubtasks]);
+    if (!db || !isAdmin || !user) return;
+    const s = allWorkspaceSubtasks.find((x) => x.id === subtaskId && (!taskId || x.taskId === taskId));
+    if (!s) return;
+    const ref = doc(db, 'workspaces', s.workspaceId, 'projects', s.projectId, 'tasks', s.taskId, 'subtasks', s.id);
+    deleteDocumentNonBlocking(ref);
+    const parent = allWorkspaceTasks.find((t) => t.id === s.taskId) || {
+      id: s.taskId,
+      workspaceId: s.workspaceId,
+      projectId: s.projectId,
+    };
+    writeTaskAudits(
+      parent,
+      buildSubtaskChangeAudits(
+        parent,
+        s,
+        null,
+        {
+          actorUserId: user.uid,
+          actorName: user.displayName || 'User',
+          action: 'deleted',
+        }
+      )
+    );
+  }, [db, isAdmin, user, allWorkspaceSubtasks, allWorkspaceTasks, writeTaskAudits]);
 
   const searchUsersByEmail = useCallback(
     async (searchTerm: string) => {

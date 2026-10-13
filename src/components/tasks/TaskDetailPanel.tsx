@@ -41,6 +41,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar as DayCalendar } from '@/components/ui/calendar';
 import { ChangeReasonDialog, type PendingMajorChange } from '@/components/tasks/ChangeReasonDialog';
 import { generateTaskDescription } from '@/ai/flows/ai-task-description-generation';
 import { suggestTaskAttributes } from '@/ai/flows/ai-task-attribute-suggestion';
@@ -117,22 +118,124 @@ const handleKeyDownBullets = (e: React.KeyboardEvent<HTMLTextAreaElement>, value
   }
 };
 
+function dateOnlyKey(value?: string | null): string {
+  if (!value) return '';
+  return String(value).slice(0, 10);
+}
+
+function parseDateOnly(value?: string | null): Date | undefined {
+  const key = dateOnlyKey(value);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) return undefined;
+  const [y, m, d] = key.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
+function formatDateOnly(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function formatShortDue(value?: string | null): string {
+  const d = parseDateOnly(value);
+  if (!d) return 'Date';
+  return d.toLocaleDateString(undefined, { month: '2-digit', day: '2-digit', year: 'numeric' });
+}
+
+function SubtaskDueDatePicker({
+  value,
+  disabled,
+  onChange,
+}: {
+  value?: string | null;
+  disabled?: boolean;
+  onChange: (isoOrNull: string | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const selected = parseDateOnly(value);
+
+  return (
+    <Popover modal open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          disabled={disabled}
+          className={cn(
+            'inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-[11px] text-muted-foreground transition-colors hover:bg-muted/60 disabled:opacity-50',
+            selected && 'text-foreground'
+          )}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <Calendar className="h-3 w-3 shrink-0" />
+          <span className="whitespace-nowrap">{formatShortDue(value)}</span>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="end"
+        className="z-[80] w-auto p-0"
+        onOpenAutoFocus={(e) => e.preventDefault()}
+      >
+        <DayCalendar
+          mode="single"
+          selected={selected}
+          onSelect={(day) => {
+            onChange(day ? formatDateOnly(day) : null);
+            setOpen(false);
+          }}
+          initialFocus
+        />
+        {selected && (
+          <div className="border-t border-border/60 p-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-8 w-full text-xs"
+              onClick={() => {
+                onChange(null);
+                setOpen(false);
+              }}
+            >
+              Clear date
+            </Button>
+          </div>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function SubtaskAssigneePicker({
-  subtask,
+  assigneeUserIds,
   projectMembers,
   disabled,
   onChange,
 }: {
-  subtask: any;
+  assigneeUserIds?: string[];
   projectMembers: any[];
   disabled?: boolean;
   onChange: (ids: string[]) => void;
 }) {
-  const ids: string[] = subtask.assigneeUserIds || [];
+  const [open, setOpen] = useState(false);
+  const [ids, setIds] = useState<string[]>(assigneeUserIds || []);
+
+  useEffect(() => {
+    setIds(assigneeUserIds || []);
+  }, [assigneeUserIds]);
+
   const selected = projectMembers.filter((m) => ids.includes(m.userId));
 
+  const toggle = (userId: string) => {
+    const next = ids.includes(userId)
+      ? ids.filter((id) => id !== userId)
+      : [...ids, userId];
+    setIds(next);
+    onChange(next);
+  };
+
   return (
-    <Popover>
+    <Popover modal open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button
           type="button"
@@ -142,6 +245,7 @@ function SubtaskAssigneePicker({
             selected.length > 0 && 'px-1.5'
           )}
           title={selected.length ? selected.map((m) => m.displayName).join(', ') : 'Assign'}
+          onClick={(e) => e.stopPropagation()}
         >
           {selected.length > 0 ? (
             <span className="flex -space-x-1.5">
@@ -162,7 +266,11 @@ function SubtaskAssigneePicker({
           )}
         </button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-56 p-2">
+      <PopoverContent
+        align="end"
+        className="z-[80] w-56 p-2"
+        onOpenAutoFocus={(e) => e.preventDefault()}
+      >
         <p className="px-2 pb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
           Assignees
         </p>
@@ -180,10 +288,11 @@ function SubtaskAssigneePicker({
                     'flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-muted/70',
                     checked && 'bg-primary/5'
                   )}
-                  onClick={() => {
-                    onChange(
-                      checked ? ids.filter((id) => id !== m.userId) : [...ids, m.userId]
-                    );
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    toggle(m.userId);
                   }}
                 >
                   <span
@@ -302,23 +411,16 @@ function SubtaskRow({ subtask, store, projectMembers, pipelines }: any) {
           </SelectContent>
         </Select>
 
-        <div className="relative hidden sm:block">
-          <Calendar className="pointer-events-none absolute left-1.5 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            type="date"
-            className="h-7 w-[8.25rem] border-none bg-transparent pl-6 text-[11px] shadow-none hover:bg-muted/60"
-            value={subtask.dueDate ? subtask.dueDate.split('T')[0] : ''}
-            onChange={(e) =>
-              store.updateSubtask(subtask.taskId, subtask.id, {
-                dueDate: e.target.value ? new Date(e.target.value).toISOString() : null,
-              })
-            }
-            disabled={!isAdmin}
-          />
-        </div>
+        <SubtaskDueDatePicker
+          value={subtask.dueDate}
+          disabled={!isAdmin}
+          onChange={(dueDate) =>
+            store.updateSubtask(subtask.taskId, subtask.id, { dueDate })
+          }
+        />
 
         <SubtaskAssigneePicker
-          subtask={subtask}
+          assigneeUserIds={subtask.assigneeUserIds || []}
           projectMembers={projectMembers || []}
           disabled={!isAdmin}
           onChange={(assigneeUserIds) =>
@@ -755,7 +857,29 @@ export function TaskDetailPanel({
 
   return (
     <Sheet open={isOpen} onOpenChange={onClose}>
-      <SheetContent className="flex w-full flex-col gap-0 overflow-hidden bg-background p-0 text-foreground sm:max-w-xl">
+      <SheetContent
+        className="flex w-full flex-col gap-0 overflow-hidden bg-background p-0 text-foreground sm:max-w-xl"
+        onPointerDownOutside={(e) => {
+          const el = e.target as HTMLElement | null;
+          if (
+            el?.closest?.('[data-radix-popper-content-wrapper]') ||
+            el?.closest?.('[data-radix-select-content]') ||
+            el?.closest?.('[role="listbox"]')
+          ) {
+            e.preventDefault();
+          }
+        }}
+        onInteractOutside={(e) => {
+          const el = e.target as HTMLElement | null;
+          if (
+            el?.closest?.('[data-radix-popper-content-wrapper]') ||
+            el?.closest?.('[data-radix-select-content]') ||
+            el?.closest?.('[role="listbox"]')
+          ) {
+            e.preventDefault();
+          }
+        }}
+      >
         <SheetHeader className="space-y-3 border-b border-border bg-card px-6 pb-5 pt-6 pr-16 text-left">
           <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -1328,9 +1452,14 @@ export function TaskDetailPanel({
                         a.message &&
                         !/[A-Za-z0-9_-]{20,}/.test(a.message)
                           ? a.message
-                          : a.kind === 'field_change'
+                          : a.kind === 'field_change' || a.kind === 'subtask_change'
                             ? `${a.actorName} changed ${formatAuditFieldLabel(a.field).toLowerCase()} from “${fromLabel}” to “${toLabel}”`
                             : a.message;
+                      const isSubtask = a.kind === 'subtask_change';
+                      const showDiff =
+                        (a.kind === 'field_change' || isSubtask) &&
+                        a.field !== 'subtask.created' &&
+                        a.field !== 'subtask.deleted';
 
                       return (
                         <div key={a.id} className="rounded-xl border border-border bg-card px-3.5 py-3 shadow-sm">
@@ -1341,11 +1470,23 @@ export function TaskDetailPanel({
                                 {a.kind === 'field_change' && (
                                   <>{formatAuditFieldLabel(a.field)} updated</>
                                 )}
+                                {isSubtask && a.field === 'subtask.created' && (
+                                  <>Subtask added{a.subtaskTitle ? ` · ${a.subtaskTitle}` : ''}</>
+                                )}
+                                {isSubtask && a.field === 'subtask.deleted' && (
+                                  <>Subtask deleted{a.subtaskTitle ? ` · ${a.subtaskTitle}` : ''}</>
+                                )}
+                                {isSubtask && showDiff && (
+                                  <>
+                                    {formatAuditFieldLabel(a.field)}
+                                    {a.subtaskTitle ? ` · ${a.subtaskTitle}` : ''}
+                                  </>
+                                )}
                                 {a.kind === 'time_logged' && (
                                   <>Time logged · {formatDurationMinutes(a.durationMs || 0)}</>
                                 )}
                               </p>
-                              {a.kind === 'field_change' && (
+                              {showDiff && (
                                 <div className="flex flex-wrap items-center gap-1.5 text-xs">
                                   <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-slate-600 line-through">
                                     {fromLabel}
@@ -1380,9 +1521,11 @@ export function TaskDetailPanel({
                             <Badge variant="outline" className="shrink-0 border-border bg-slate-50 text-[10px] capitalize text-slate-700">
                               {a.kind === 'field_change'
                                 ? 'Change'
-                                : a.kind === 'time_logged'
-                                  ? 'Time'
-                                  : 'Created'}
+                                : a.kind === 'subtask_change'
+                                  ? 'Subtask'
+                                  : a.kind === 'time_logged'
+                                    ? 'Time'
+                                    : 'Created'}
                             </Badge>
                           </div>
                         </div>

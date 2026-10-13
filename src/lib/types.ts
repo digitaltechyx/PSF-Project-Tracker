@@ -148,7 +148,7 @@ export interface Task {
   updatedAt: string;
 }
 
-export type TaskAuditKind = 'created' | 'field_change' | 'time_logged';
+export type TaskAuditKind = 'created' | 'field_change' | 'time_logged' | 'subtask_change';
 
 /** Change / activity history for a task. */
 export interface TaskAudit {
@@ -166,6 +166,9 @@ export interface TaskAudit {
   reason?: string | null;
   message?: string;
   durationMs?: number;
+  /** Present when kind is subtask_change */
+  subtaskId?: string | null;
+  subtaskTitle?: string | null;
   createdAt: string;
 }
 
