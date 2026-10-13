@@ -167,6 +167,20 @@ service cloud.firestore {
             allow update, delete: if isWorkspaceMember(workspaceId) &&
                                   resource.data.authorUserId == request.auth.uid;
           }
+
+          match /audits/{auditId} {
+            allow read: if isSignedIn();
+            allow create: if isWorkspaceMember(workspaceId)
+              && request.resource.data.actorUserId == request.auth.uid;
+            allow update, delete: if false;
+          }
+
+          match /timeLogs/{logId} {
+            allow read: if isSignedIn();
+            allow create: if isWorkspaceMember(workspaceId)
+              && request.resource.data.userId == request.auth.uid;
+            allow update, delete: if false;
+          }
         }
       }
 

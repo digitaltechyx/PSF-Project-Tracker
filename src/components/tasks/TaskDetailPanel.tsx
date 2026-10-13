@@ -32,7 +32,9 @@ import {
   MessageSquare,
   Send,
   Edit2,
-  List
+  List,
+  History,
+  Clock3
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -48,7 +50,8 @@ import {
   getProjectPipelines,
   isClosedStatus,
 } from '@/lib/pipelines';
-import { Pipeline } from '@/lib/types';
+import { Pipeline, TaskAudit } from '@/lib/types';
+import { formatAuditFieldLabel, formatDurationMinutes } from '@/lib/task-audit';
 
 const renderCommentBody = (text: string) => {
   if (!text) return null;
@@ -396,7 +399,20 @@ export function TaskDetailPanel({
   const { data: commentsData } = useCollection(commentsQuery);
   const comments = useMemo(() => commentsData || [], [commentsData]);
 
+  const auditsQuery = useMemoFirebase(() => {
+    if (!db || !task) return null;
+    return query(
+      collection(db, 'workspaces', task.workspaceId, 'projects', task.projectId, 'tasks', task.id, 'audits'),
+      orderBy('createdAt', 'desc')
+    );
+  }, [db, task]);
+
+  const { data: auditsData } = useCollection<TaskAudit>(auditsQuery);
+  const audits = useMemo(() => auditsData || [], [auditsData]);
+
   if (!task) return null;
+
+  const totalLoggedMs = task.totalLoggedMs || 0;
 
   const isAdmin = store.isAdmin;
   const canEditFields = store.canEditTask ? store.canEditTask(taskId) : isAdmin;
@@ -504,9 +520,10 @@ export function TaskDetailPanel({
 
         <Tabs defaultValue="details" className="flex-1 overflow-visible">
           <div className="px-6 border-b border-border/60 bg-card sticky top-0 z-10">
-            <TabsList className="grid h-12 w-full max-w-[400px] grid-cols-2 bg-transparent border-0 p-0 justify-start">
+            <TabsList className="grid h-12 w-full max-w-[520px] grid-cols-3 bg-transparent border-0 p-0 justify-start">
               <TabsTrigger value="details" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none shadow-none bg-transparent h-10">Details</TabsTrigger>
               <TabsTrigger value="subtasks" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none shadow-none bg-transparent h-10">Subtasks</TabsTrigger>
+              <TabsTrigger value="audit" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none shadow-none bg-transparent h-10">Audit</TabsTrigger>
             </TabsList>
           </div>
 
@@ -798,6 +815,83 @@ export function TaskDetailPanel({
               projectMembers={eligibleAssignees}
               pipelines={pipelines}
             />
+          </TabsContent>
+
+          <TabsContent value="audit" className="m-0 px-6 focus-visible:outline-none focus-visible:ring-0 space-y-6 py-6">
+            <div className="rounded-2xl border border-border/60 bg-muted/20 p-4 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <Clock3 className="h-4 w-4 text-muted-foreground" />
+                <div>
+                  <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Total time logged</p>
+                  <p className="text-xl font-semibold tabular-nums">
+                    {totalLoggedMs > 0 ? formatDurationMinutes(totalLoggedMs) : '0m'}
+                  </p>
+                </div>
+              </div>
+              {isClosedStatus(pipelines, task.status) && totalLoggedMs > 0 && (
+                <Badge variant="secondary" className="text-xs">
+                  Time to complete
+                </Badge>
+              )}
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-muted-foreground font-semibold">
+                <History className="h-3.5 w-3.5" />
+                Activity ({audits.length})
+              </div>
+              {audits.length === 0 ? (
+                <div className="text-sm text-muted-foreground border border-dashed rounded-xl px-4 py-8 text-center">
+                  No audit events yet. Changes and check-out time logs will appear here.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {audits.map((a) => (
+                    <div
+                      key={a.id}
+                      className="rounded-xl border border-border/50 bg-card px-3.5 py-3"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium">
+                            {a.kind === 'created' && 'Task created'}
+                            {a.kind === 'field_change' && (
+                              <>
+                                {formatAuditFieldLabel(a.field)} updated
+                              </>
+                            )}
+                            {a.kind === 'time_logged' && (
+                              <>
+                                Time logged · {formatDurationMinutes(a.durationMs || 0)}
+                              </>
+                            )}
+                          </p>
+                          {a.kind === 'field_change' && (
+                            <p className="text-xs text-muted-foreground mt-0.5 break-words">
+                              <span className="line-through opacity-70">{a.fromValue || 'empty'}</span>
+                              {' → '}
+                              <span>{a.toValue || 'empty'}</span>
+                            </p>
+                          )}
+                          {a.message && a.kind === 'time_logged' && (
+                            <p className="text-xs text-muted-foreground mt-0.5">{a.message}</p>
+                          )}
+                          <p className="text-[11px] text-muted-foreground mt-1">
+                            {a.actorName}
+                            {a.createdAt
+                              ? ` · ${new Date(a.createdAt).toLocaleString()}`
+                              : ''}
+                          </p>
+                        </div>
+                        <Badge variant="outline" className="text-[10px] shrink-0 capitalize">
+                          {a.kind.replace('_', ' ')}
+                        </Badge>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </TabsContent>
         </Tabs>
       </SheetContent>

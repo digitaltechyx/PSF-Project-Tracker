@@ -25,10 +25,11 @@ import {
   orderBy,
   addDoc
 } from 'firebase/firestore';
-import { Workspace, Project, Task, WorkspaceMember, Invitation, Subtask, AttendanceEntry, Pipeline, Target, SubTarget, TargetTransfer, TargetSnapshot, TargetTransferAcceptance } from '@/lib/types';
+import { Workspace, Project, Task, WorkspaceMember, Invitation, Subtask, AttendanceEntry, Pipeline, Target, SubTarget, TargetTransfer, TargetSnapshot, TargetTransferAcceptance, TaskAudit, TaskTimeLog } from '@/lib/types';
 import { createNotification, notifyTaskAssigned, notifyTaskUpdated, notifySubtaskAssigned } from '@/lib/notifications';
 import { sendWorkspaceInviteEmail } from '@/app/actions/send-workspace-invite-email';
 import { DEFAULT_PIPELINES } from '@/lib/pipelines';
+import { buildFieldChangeAudits } from '@/lib/task-audit';
 
 export function useNexusStore() {
   const { user, isAuthReady } = useUser();
@@ -373,12 +374,27 @@ export function useNexusStore() {
       id: taskRef.id,
       workspaceId: wsId,
       projectId,
+      totalLoggedMs: 0,
       ...data,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
     try {
       await setDocumentNonBlocking(taskRef, taskData, { merge: true });
+
+      const auditRef = doc(collection(db, 'workspaces', wsId, 'projects', projectId, 'tasks', taskRef.id, 'audits'));
+      const createdAudit: TaskAudit = {
+        id: auditRef.id,
+        workspaceId: wsId,
+        projectId,
+        taskId: taskRef.id,
+        kind: 'created',
+        actorUserId: user.uid,
+        actorName: user.displayName || 'User',
+        message: `${user.displayName || 'User'} created this task`,
+        createdAt: new Date().toISOString(),
+      };
+      setDocumentNonBlocking(auditRef, createdAudit, { merge: true });
       
       // Notify assignees if they're not the current user
       if (data.assigneeUserIds && data.assigneeUserIds.length > 0) {
@@ -420,6 +436,20 @@ export function useNexusStore() {
 
     const ref = doc(db, 'workspaces', t.workspaceId, 'projects', t.projectId, 'tasks', t.id);
     updateDocumentNonBlocking(ref, { ...payload, updatedAt: new Date().toISOString() });
+
+    const actorName = user.displayName || 'User';
+    const auditRows = buildFieldChangeAudits(t, payload, {
+      actorUserId: user.uid,
+      actorName,
+    });
+    auditRows.forEach((row) => {
+      const auditRef = doc(collection(db, 'workspaces', t.workspaceId, 'projects', t.projectId, 'tasks', t.id, 'audits'));
+      setDocumentNonBlocking(auditRef, {
+        ...row,
+        id: auditRef.id,
+        createdAt: new Date().toISOString(),
+      }, { merge: true });
+    });
 
     const changes: string[] = [];
     if (payload.title && payload.title !== t.title) changes.push('title');
@@ -828,6 +858,67 @@ export function useNexusStore() {
       throw e;
     }
   }, [db, user, activeWorkspace?.id, todayAttendance, getTodayDateKey]);
+
+  /** Log time against tasks at check-out (adds to each task total). */
+  const logCheckoutTaskTime = useCallback(async (
+    entries: Array<{ taskId: string; durationMinutes: number; description?: string }>
+  ) => {
+    const wsId = activeWorkspace?.id;
+    if (!db || !user || !wsId) throw new Error('Unable to log time.');
+    const dateKey = getTodayDateKey();
+    const attendanceId = `${user.uid}_${dateKey}`;
+    const actorName = user.displayName || 'User';
+
+    for (const entry of entries) {
+      if (!entry.taskId || !entry.durationMinutes || entry.durationMinutes <= 0) continue;
+      const task = allWorkspaceTasks.find((t) => t.id === entry.taskId);
+      if (!task || task.workspaceId !== wsId) continue;
+
+      const durationMs = Math.round(entry.durationMinutes * 60 * 1000);
+      const logRef = doc(
+        collection(db, 'workspaces', wsId, 'projects', task.projectId, 'tasks', task.id, 'timeLogs')
+      );
+      const log: TaskTimeLog = {
+        id: logRef.id,
+        workspaceId: wsId,
+        projectId: task.projectId,
+        taskId: task.id,
+        userId: user.uid,
+        userName: actorName,
+        description: (entry.description || '').trim(),
+        durationMs,
+        dateKey,
+        attendanceId,
+        createdAt: new Date().toISOString(),
+      };
+      await setDocumentNonBlocking(logRef, log, { merge: true });
+
+      const nextTotal = (task.totalLoggedMs || 0) + durationMs;
+      await updateDocumentNonBlocking(
+        doc(db, 'workspaces', wsId, 'projects', task.projectId, 'tasks', task.id),
+        { totalLoggedMs: nextTotal, updatedAt: new Date().toISOString() }
+      );
+
+      const auditRef = doc(
+        collection(db, 'workspaces', wsId, 'projects', task.projectId, 'tasks', task.id, 'audits')
+      );
+      const audit: TaskAudit = {
+        id: auditRef.id,
+        workspaceId: wsId,
+        projectId: task.projectId,
+        taskId: task.id,
+        kind: 'time_logged',
+        actorUserId: user.uid,
+        actorName,
+        durationMs,
+        message: entry.description?.trim()
+          ? `${actorName} logged time: ${entry.description.trim()}`
+          : `${actorName} logged time`,
+        createdAt: new Date().toISOString(),
+      };
+      await setDocumentNonBlocking(auditRef, audit, { merge: true });
+    }
+  }, [db, user, activeWorkspace?.id, allWorkspaceTasks, getTodayDateKey]);
 
   const startBreak = useCallback(async (): Promise<{ ok: boolean; reason?: string }> => {
     const wsId = activeWorkspace?.id;
@@ -1300,6 +1391,7 @@ export function useNexusStore() {
     directAddMember,
     checkIn,
     checkOut,
+    logCheckoutTaskTime,
     startBreak,
     endBreak,
     canAccessTargets,

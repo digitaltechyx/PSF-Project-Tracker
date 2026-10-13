@@ -137,8 +137,44 @@ export interface Task {
   dueDate?: string | null;
   assigneeUserIds?: string[];
   tags?: string[];
+  /** Sum of checkout time logs (ms). */
+  totalLoggedMs?: number;
   createdAt: string;
   updatedAt: string;
+}
+
+export type TaskAuditKind = 'created' | 'field_change' | 'time_logged';
+
+/** Change / activity history for a task. */
+export interface TaskAudit {
+  id: string;
+  workspaceId: string;
+  projectId: string;
+  taskId: string;
+  kind: TaskAuditKind;
+  actorUserId: string;
+  actorName: string;
+  field?: string;
+  fromValue?: string | null;
+  toValue?: string | null;
+  message?: string;
+  durationMs?: number;
+  createdAt: string;
+}
+
+/** Time spent on a task (usually logged at check-out). */
+export interface TaskTimeLog {
+  id: string;
+  workspaceId: string;
+  projectId: string;
+  taskId: string;
+  userId: string;
+  userName: string;
+  description: string;
+  durationMs: number;
+  dateKey: string;
+  attendanceId?: string | null;
+  createdAt: string;
 }
 
 export interface Subtask {
