@@ -14,7 +14,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Clock, LogIn, LogOut, Users, UserRound } from 'lucide-react';
+import { CalendarDays, Clock, LogIn, LogOut, Users, UserRound, X } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import {
   formatAttendanceDate,
   formatAttendanceTime,
@@ -27,6 +28,21 @@ import {
 import { getDateKeyInTimeZone, resolveWorkspaceTimezone } from '@/lib/timezone';
 import { AttendanceEntry } from '@/lib/types';
 import { TimeTrackingWidget } from '@/components/dashboard/TimeTrackingWidget';
+
+type HistoryPeriod = 'all' | 'day' | 'month';
+
+function monthKeyFromDateKey(dateKey: string): string {
+  return dateKey.slice(0, 7); // YYYY-MM
+}
+
+function formatMonthLabel(monthKey: string, mounted: boolean): string {
+  if (!mounted || !/^\d{4}-\d{2}$/.test(monthKey)) return monthKey;
+  const [y, m] = monthKey.split('-').map(Number);
+  return new Date(y, m - 1, 1).toLocaleDateString(undefined, {
+    month: 'long',
+    year: 'numeric',
+  });
+}
 
 export function AttendanceLogView({ store }: { store: any }) {
   const {
@@ -42,6 +58,9 @@ export function AttendanceLogView({ store }: { store: any }) {
   const [mounted, setMounted] = useState(false);
   const [memberFilter, setMemberFilter] = useState('all');
   const [search, setSearch] = useState('');
+  const [historyPeriod, setHistoryPeriod] = useState<HistoryPeriod>('all');
+  const [dayFilter, setDayFilter] = useState('');
+  const [monthFilter, setMonthFilter] = useState('');
   const [now, setNow] = useState(Date.now());
   const timeZone = resolveWorkspaceTimezone(workspaceTimezone || activeWorkspace?.timezone);
 
@@ -52,6 +71,12 @@ export function AttendanceLogView({ store }: { store: any }) {
   }, []);
 
   const todayKey = useMemo(() => getDateKeyInTimeZone(new Date(), timeZone), [timeZone, now]);
+  const currentMonthKey = useMemo(() => monthKeyFromDateKey(todayKey), [todayKey]);
+
+  useEffect(() => {
+    if (historyPeriod === 'day' && !dayFilter) setDayFilter(todayKey);
+    if (historyPeriod === 'month' && !monthFilter) setMonthFilter(currentMonthKey);
+  }, [historyPeriod, dayFilter, monthFilter, todayKey, currentMonthKey]);
 
   const memberMap = useMemo(() => {
     const map = new Map<string, any>();
@@ -90,6 +115,11 @@ export function AttendanceLogView({ store }: { store: any }) {
     if (memberFilter !== 'all') {
       rows = rows.filter((e) => e.userId === memberFilter);
     }
+    if (historyPeriod === 'day' && dayFilter) {
+      rows = rows.filter((e) => e.dateKey === dayFilter);
+    } else if (historyPeriod === 'month' && monthFilter) {
+      rows = rows.filter((e) => monthKeyFromDateKey(e.dateKey) === monthFilter);
+    }
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       rows = rows.filter((e) => {
@@ -103,7 +133,25 @@ export function AttendanceLogView({ store }: { store: any }) {
       }
       return b.dateKey.localeCompare(a.dateKey);
     });
-  }, [allWorkspaceAttendance, memberFilter, search, memberMap]);
+  }, [allWorkspaceAttendance, memberFilter, search, memberMap, historyPeriod, dayFilter, monthFilter]);
+
+  const historyFilterSummary = useMemo(() => {
+    if (historyPeriod === 'day' && dayFilter) {
+      return `Showing ${formatAttendanceDate(dayFilter, mounted)}`;
+    }
+    if (historyPeriod === 'month' && monthFilter) {
+      return `Showing ${formatMonthLabel(monthFilter, mounted)}`;
+    }
+    return 'Showing all recorded days';
+  }, [historyPeriod, dayFilter, monthFilter, mounted]);
+
+  const clearHistoryFilters = () => {
+    setHistoryPeriod('all');
+    setDayFilter('');
+    setMonthFilter('');
+    setMemberFilter('all');
+    setSearch('');
+  };
 
   const groupedHistory = useMemo(() => {
     return filteredHistory.reduce((acc: Record<string, AttendanceEntry[]>, entry) => {
@@ -335,31 +383,82 @@ export function AttendanceLogView({ store }: { store: any }) {
 
           <Card className="border-border/60 shadow-sm">
             <CardContent className="p-4 space-y-4">
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-                <div>
-                  <p className="text-sm font-semibold">History</p>
-                  <p className="text-xs text-muted-foreground">Recent check-ins across the workspace</p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Input
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Search member or date"
-                    className="h-8 w-[200px] text-sm"
-                  />
-                  <Select value={memberFilter} onValueChange={setMemberFilter}>
-                    <SelectTrigger className="h-8 w-[160px] text-xs">
-                      <SelectValue placeholder="Member" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All members</SelectItem>
-                      {(workspaceMembers || []).map((m: any) => (
-                        <SelectItem key={m.userId} value={m.userId}>
-                          {m.displayName}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+              <div className="flex flex-col gap-3">
+                <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold">History</p>
+                    <p className="text-xs text-muted-foreground">
+                      Recent check-ins across the workspace · {historyFilterSummary}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Select
+                      value={historyPeriod}
+                      onValueChange={(v) => setHistoryPeriod(v as HistoryPeriod)}
+                    >
+                      <SelectTrigger className="h-8 w-[130px] text-xs">
+                        <CalendarDays className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" />
+                        <SelectValue placeholder="Period" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All time</SelectItem>
+                        <SelectItem value="day">By day</SelectItem>
+                        <SelectItem value="month">By month</SelectItem>
+                      </SelectContent>
+                    </Select>
+
+                    {historyPeriod === 'day' && (
+                      <Input
+                        type="date"
+                        value={dayFilter || todayKey}
+                        onChange={(e) => setDayFilter(e.target.value)}
+                        className="h-8 w-[150px] text-xs"
+                      />
+                    )}
+
+                    {historyPeriod === 'month' && (
+                      <Input
+                        type="month"
+                        value={monthFilter || currentMonthKey}
+                        onChange={(e) => setMonthFilter(e.target.value)}
+                        className="h-8 w-[150px] text-xs"
+                      />
+                    )}
+
+                    <Select value={memberFilter} onValueChange={setMemberFilter}>
+                      <SelectTrigger className="h-8 w-[160px] text-xs">
+                        <SelectValue placeholder="Member" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All members</SelectItem>
+                        {(workspaceMembers || []).map((m: any) => (
+                          <SelectItem key={m.userId} value={m.userId}>
+                            {m.displayName}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+
+                    <Input
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      placeholder="Search member"
+                      className="h-8 w-[160px] text-sm"
+                    />
+
+                    {(historyPeriod !== 'all' || memberFilter !== 'all' || search.trim()) && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 px-2 text-xs text-muted-foreground"
+                        onClick={clearHistoryFilters}
+                      >
+                        <X className="mr-1 h-3.5 w-3.5" />
+                        Clear
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -367,6 +466,7 @@ export function AttendanceLogView({ store }: { store: any }) {
                 <div className="py-10 text-center text-muted-foreground">
                   <Clock className="h-8 w-8 mx-auto mb-2 opacity-40" />
                   <p className="text-sm">No attendance records found</p>
+                  <p className="mt-1 text-xs">Try another day, month, or clear filters.</p>
                 </div>
               ) : (
                 <div className="space-y-5">
