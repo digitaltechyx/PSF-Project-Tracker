@@ -25,7 +25,7 @@ import {
   orderBy,
   addDoc
 } from 'firebase/firestore';
-import { Workspace, Project, Task, WorkspaceMember, Invitation, Subtask, AttendanceEntry, Pipeline, Target, SubTarget, TargetTransfer, TargetSnapshot, TargetTransferAcceptance, TaskAudit, TaskTimeLog, WorkspaceDoc } from '@/lib/types';
+import { Workspace, Project, Task, WorkspaceMember, Invitation, Subtask, AttendanceEntry, Pipeline, Target, SubTarget, TargetTransfer, TargetSnapshot, TargetTransferAcceptance, TaskAudit, TaskTimeLog, WorkspaceDoc, WorkspaceNote, NoteColor, NoteChecklistItem } from '@/lib/types';
 import { createNotification, notifyTaskAssigned, notifyTaskUpdated, notifySubtaskAssigned } from '@/lib/notifications';
 import { sendWorkspaceInviteEmail } from '@/app/actions/send-workspace-invite-email';
 import { DEFAULT_PIPELINES } from '@/lib/pipelines';
@@ -159,7 +159,26 @@ export function useNexusStore() {
     });
   }, [docsData, isAdmin, user?.uid]);
 
-  const activeProject = useMemo(() => 
+  const notesQuery = useMemoFirebase(() => {
+    const wsId = activeWorkspace?.id;
+    if (!db || !user?.uid || !wsId || !isAuthReady) return null;
+    return query(collection(db, 'workspaces', wsId, 'notes'), orderBy('updatedAt', 'desc'));
+  }, [db, user?.uid, activeWorkspace?.id, isAuthReady]);
+
+  const { data: notesData, isLoading: isNotesLoading } = useCollection<WorkspaceNote>(notesQuery);
+  const workspaceNotes = useMemo(() => {
+    const all = notesData || [];
+    if (isAdmin) return all;
+    const uid = user?.uid || '';
+    return all.filter((n) => {
+      if (n.createdByUserId === uid) return true;
+      const shared = n.sharedWithUserIds || [];
+      if (shared.length === 0) return true;
+      return shared.includes(uid);
+    });
+  }, [notesData, isAdmin, user?.uid]);
+
+  const activeProject = useMemo(() =>
     projects.find(p => p.id === activeProjectId) || null,
     [projects, activeProjectId]
   );
@@ -1501,6 +1520,58 @@ export function useNexusStore() {
       const wsId = activeWorkspace?.id;
       if (!db || !wsId) return;
       await deleteDocumentNonBlocking(doc(db, 'workspaces', wsId, 'docs', docId));
+    },
+    workspaceNotes,
+    isNotesLoading,
+    createWorkspaceNote: async (opts: {
+      title?: string;
+      body?: string;
+      color?: NoteColor;
+      pinned?: boolean;
+      checklist?: NoteChecklistItem[];
+      sharedWithUserIds?: string[];
+    }) => {
+      const wsId = activeWorkspace?.id;
+      if (!db || !wsId || !user) throw new Error('Not ready');
+      const title = (opts.title || '').trim();
+      const body = (opts.body || '').trim();
+      const checklist = opts.checklist || [];
+      if (!title && !body && checklist.length === 0) {
+        throw new Error('Write a title or note first.');
+      }
+      const ref = doc(collection(db, 'workspaces', wsId, 'notes'));
+      const now = new Date().toISOString();
+      const payload: WorkspaceNote = {
+        id: ref.id,
+        workspaceId: wsId,
+        title,
+        body,
+        color: opts.color || 'default',
+        pinned: !!opts.pinned,
+        archived: false,
+        checklist,
+        createdByUserId: user.uid,
+        createdByName: user.displayName || user.email || 'User',
+        sharedWithUserIds: opts.sharedWithUserIds || [],
+        createdAt: now,
+        updatedAt: now,
+      };
+      await setDocumentNonBlocking(ref, payload, { merge: true });
+      return ref.id;
+    },
+    updateWorkspaceNote: async (noteId: string, data: Partial<WorkspaceNote>) => {
+      const wsId = activeWorkspace?.id;
+      if (!db || !wsId) return;
+      const { id: _id, workspaceId: _ws, createdByUserId: _by, createdAt: _ca, ...rest } = data as any;
+      await updateDocumentNonBlocking(doc(db, 'workspaces', wsId, 'notes', noteId), {
+        ...rest,
+        updatedAt: new Date().toISOString(),
+      });
+    },
+    deleteWorkspaceNote: async (noteId: string) => {
+      const wsId = activeWorkspace?.id;
+      if (!db || !wsId) return;
+      await deleteDocumentNonBlocking(doc(db, 'workspaces', wsId, 'notes', noteId));
     },
   };
 }

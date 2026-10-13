@@ -18,7 +18,8 @@ import {
   Menu,
   Target,
   MessageSquare,
-  FileText
+  FileText,
+  StickyNote,
 } from 'lucide-react';
 import { useNexusStore } from '@/hooks/use-nexus-store';
 import { useAuth } from '@/firebase';
@@ -51,13 +52,14 @@ import { AttendanceLogView } from './views/AttendanceLogView';
 import { TargetsView } from './views/TargetsView';
 import { ChatView } from './views/ChatView';
 import { DocsView } from './views/DocsView';
+import { NotesView } from './views/NotesView';
 import { InviteMembersModal } from './invitations/InviteMembersModal';
 import { NotificationBell } from './notifications/NotificationBell';
 import { EditWorkspaceModal } from './workspaces/EditWorkspaceModal';
 import { DeleteWorkspaceButton } from './workspaces/DeleteWorkspaceButton';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 
-type ViewType = 'dashboard' | 'project' | 'members' | 'my-tasks' | 'notifications' | 'attendance' | 'targets' | 'chat' | 'docs';
+type ViewType = 'dashboard' | 'project' | 'members' | 'my-tasks' | 'notifications' | 'attendance' | 'targets' | 'chat' | 'docs' | 'notes';
 
 export function NexusShell() {
   const store = useNexusStore();
@@ -252,21 +254,30 @@ export function NexusShell() {
               <MessageSquare className="h-4 w-4" />
               Chat
             </Button>
-            <Button 
-              variant="ghost"
-              data-active={currentView === 'docs'}
-              className="sidebar-nav-btn"
-              onClick={() => handleNavClick('docs')}
-            >
-              <FileText className="h-4 w-4" />
-              Docs
-            </Button>
-            <Button 
-              variant="ghost"
-              data-active={currentView === 'members'}
-              className="sidebar-nav-btn"
-              onClick={() => handleNavClick('members')}
-            >
+              <Button
+                variant="ghost"
+                data-active={currentView === 'docs'}
+                className="sidebar-nav-btn"
+                onClick={() => handleNavClick('docs')}
+              >
+                <FileText className="h-4 w-4" />
+                Docs
+              </Button>
+              <Button
+                variant="ghost"
+                data-active={currentView === 'notes'}
+                className="sidebar-nav-btn"
+                onClick={() => handleNavClick('notes')}
+              >
+                <StickyNote className="h-4 w-4" />
+                Notes
+              </Button>
+              <Button
+                variant="ghost"
+                data-active={currentView === 'members'}
+                className="sidebar-nav-btn"
+                onClick={() => handleNavClick('members')}
+              >
               <Users className="h-4 w-4" />
               People
             </Button>
@@ -347,12 +358,13 @@ export function NexusShell() {
                currentView === 'targets' ? 'Targets' :
                currentView === 'chat' ? 'Chat' :
                currentView === 'docs' ? 'Docs' :
+               currentView === 'notes' ? 'Notes' :
                store.activeProject?.name || 'Project'}
               </h1>
             </div>
           </div>
           <div className="flex items-center gap-2 md:gap-3">
-            {currentView !== 'dashboard' && currentView !== 'notifications' && currentView !== 'members' && currentView !== 'attendance' && currentView !== 'targets' && currentView !== 'chat' && currentView !== 'docs' && (
+            {currentView !== 'dashboard' && currentView !== 'notifications' && currentView !== 'members' && currentView !== 'attendance' && currentView !== 'targets' && currentView !== 'chat' && currentView !== 'docs' && currentView !== 'notes' && (
               <div className="relative w-40 sm:w-64 animate-in fade-in duration-300">
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input 
@@ -396,6 +408,7 @@ export function NexusShell() {
           {currentView === 'targets' && store.canAccessTargets && <TargetsView store={store} />}
           {currentView === 'chat' && <ChatView store={store} />}
           {currentView === 'docs' && <DocsView store={store} />}
+          {currentView === 'notes' && <NotesView store={store} />}
         </main>
       </div>
 
@@ -430,6 +443,9 @@ export function NexusShell() {
                 </Button>
                 <Button variant="ghost" data-active={currentView === 'docs'} className="sidebar-nav-btn" onClick={() => handleNavClick('docs')}>
                   <FileText className="h-4 w-4" /> Docs
+                </Button>
+                <Button variant="ghost" data-active={currentView === 'notes'} className="sidebar-nav-btn" onClick={() => handleNavClick('notes')}>
+                  <StickyNote className="h-4 w-4" /> Notes
                 </Button>
                 <Button variant="ghost" data-active={currentView === 'members'} className="sidebar-nav-btn" onClick={() => handleNavClick('members')}>
                   <Users className="h-4 w-4" /> People

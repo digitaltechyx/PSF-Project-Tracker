@@ -322,6 +322,44 @@ export interface WorkspaceDoc {
   updatedAt: string;
 }
 
+/** Sticky-note colors inspired by Google Keep. */
+export type NoteColor =
+  | 'default'
+  | 'coral'
+  | 'peach'
+  | 'sand'
+  | 'mint'
+  | 'sage'
+  | 'fog'
+  | 'sky'
+  | 'lavender'
+  | 'blush'
+  | 'stone';
+
+export interface NoteChecklistItem {
+  id: string;
+  text: string;
+  done: boolean;
+}
+
+/** Workspace Keep-style note (native — not Google Keep API). */
+export interface WorkspaceNote {
+  id: string;
+  workspaceId: string;
+  title: string;
+  body: string;
+  color: NoteColor;
+  pinned: boolean;
+  archived: boolean;
+  checklist: NoteChecklistItem[];
+  createdByUserId: string;
+  createdByName: string;
+  /** Empty = visible to all workspace members; otherwise only these users (+ creator/admins). */
+  sharedWithUserIds: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface AttendanceBreak {
   startTime: string;
   endTime?: string | null;

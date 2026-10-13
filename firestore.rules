@@ -208,6 +208,20 @@ service cloud.firestore {
           || resource.data.createdByUserId == request.auth.uid;
       }
 
+      // Keep-style workspace notes
+      match /notes/{noteId} {
+        allow read: if isWorkspaceMember(workspaceId);
+        allow create: if isWorkspaceMember(workspaceId)
+          && request.resource.data.createdByUserId == request.auth.uid
+          && request.resource.data.workspaceId == workspaceId;
+        allow update: if isWorkspaceMember(workspaceId) && (
+          isWorkspaceAdmin(workspaceId)
+          || resource.data.createdByUserId == request.auth.uid
+        );
+        allow delete: if isWorkspaceAdmin(workspaceId)
+          || resource.data.createdByUserId == request.auth.uid;
+      }
+
       // Chat channels (listable by all members; private message access enforced below)
       match /channels/{channelId} {
         allow read: if isWorkspaceMember(workspaceId);
