@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Coffee, LogIn, LogOut, Play, Timer } from 'lucide-react';
+import { Coffee, LogIn, LogOut, Play, Timer, Globe2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import {
   formatAttendanceTime,
@@ -15,6 +15,13 @@ import {
   getAttendanceStatus,
   statusLabel,
 } from '@/lib/attendance';
+import {
+  formatClockInTimeZone,
+  formatDateInTimeZone,
+  getTimezoneOffsetLabel,
+  getTimezoneShortLabel,
+  resolveWorkspaceTimezone,
+} from '@/lib/timezone';
 import { cn } from '@/lib/utils';
 import { CheckoutWorkSummaryDialog } from './CheckoutWorkSummaryDialog';
 
@@ -28,25 +35,31 @@ export function TimeTrackingWidget({ store, className }: { store: any; className
     startBreak,
     endBreak,
     activeWorkspace,
+    workspaceTimezone: storeTimezone,
   } = store;
   const [mounted, setMounted] = useState(false);
-  const [now, setNow] = useState(Date.now());
+  const [now, setNow] = useState(() => new Date());
   const [isProcessing, setIsProcessing] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const { toast } = useToast();
 
+  const timeZone = resolveWorkspaceTimezone(storeTimezone || activeWorkspace?.timezone);
   const status = getAttendanceStatus(todayAttendance);
 
   useEffect(() => setMounted(true), []);
 
   useEffect(() => {
-    if (status === 'not_checked_in' || status === 'done') return;
-    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    const id = window.setInterval(() => setNow(new Date()), 1000);
     return () => window.clearInterval(id);
-  }, [status]);
+  }, []);
 
-  const workMs = useMemo(() => getWorkMs(todayAttendance, now), [todayAttendance, now]);
-  const breakMs = useMemo(() => getBreakMs(todayAttendance, now), [todayAttendance, now]);
+  const workMs = useMemo(() => getWorkMs(todayAttendance, now.getTime()), [todayAttendance, now]);
+  const breakMs = useMemo(() => getBreakMs(todayAttendance, now.getTime()), [todayAttendance, now]);
+
+  const companyClock = formatClockInTimeZone(now, timeZone, mounted);
+  const companyDate = formatDateInTimeZone(now, timeZone, mounted);
+  const tzLabel = getTimezoneShortLabel(timeZone);
+  const tzOffset = getTimezoneOffsetLabel(timeZone, now);
 
   const run = async (fn: () => Promise<{ ok: boolean; reason?: string }>, success: string) => {
     setIsProcessing(true);
@@ -113,7 +126,24 @@ export function TimeTrackingWidget({ store, className }: { store: any; className
         )}
       >
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-primary/10 via-transparent to-transparent pointer-events-none" />
-        <div className="relative p-6 md:p-8">
+        <div className="relative p-6 md:p-8 space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-2xl border border-border/50 bg-background/70 px-4 py-3.5">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                <Globe2 className="h-3.5 w-3.5" />
+                Company time
+              </div>
+              <p className="mt-1 text-3xl font-semibold tabular-nums tracking-tight">{companyClock}</p>
+              <p className="mt-0.5 text-sm text-muted-foreground">{companyDate}</p>
+            </div>
+            <div className="shrink-0 text-left sm:text-right">
+              <Badge variant="secondary" className="font-medium">
+                {tzLabel}
+              </Badge>
+              <p className="mt-1.5 text-xs text-muted-foreground">{tzOffset} · follow this clock</p>
+            </div>
+          </div>
+
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
             <div className="space-y-3 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
@@ -137,7 +167,7 @@ export function TimeTrackingWidget({ store, className }: { store: any; className
                     Ready to start?
                   </h2>
                   <p className="text-sm text-muted-foreground max-w-md">
-                    Check in when you begin work. At check-out you can log time against your open tasks.
+                    Check in when you begin work (company timezone). At check-out you can log time against your open tasks.
                   </p>
                 </>
               )}
@@ -157,7 +187,7 @@ export function TimeTrackingWidget({ store, className }: { store: any; className
                   </div>
                   <p className="text-xs text-muted-foreground flex items-center gap-1.5">
                     <Timer className="h-3.5 w-3.5" />
-                    In at {formatAttendanceTime(todayAttendance?.checkInTime, mounted)}
+                    In at {formatAttendanceTime(todayAttendance?.checkInTime, mounted, timeZone)}
                     {breakMs > 0 && <> · Breaks {formatDuration(breakMs)}</>}
                   </p>
                 </>
@@ -168,8 +198,8 @@ export function TimeTrackingWidget({ store, className }: { store: any; className
                   <div className="text-3xl font-bold tabular-nums">{formatDuration(workMs)}</div>
                   <p className="text-sm text-muted-foreground">
                     Work {formatDuration(workMs)} · Break {formatDuration(breakMs)} ·{' '}
-                    {formatAttendanceTime(todayAttendance?.checkInTime, mounted)} →{' '}
-                    {formatAttendanceTime(todayAttendance?.checkOutTime, mounted)}
+                    {formatAttendanceTime(todayAttendance?.checkInTime, mounted, timeZone)} →{' '}
+                    {formatAttendanceTime(todayAttendance?.checkOutTime, mounted, timeZone)}
                   </p>
                 </>
               )}
@@ -235,7 +265,7 @@ export function TimeTrackingWidget({ store, className }: { store: any; className
           </div>
 
           {(status === 'working' || status === 'on_break' || status === 'done') && (
-            <div className="mt-6 pt-6 border-t border-border/60 grid grid-cols-3 gap-4 max-w-lg">
+            <div className="pt-6 border-t border-border/60 grid grid-cols-3 gap-4 max-w-lg">
               <div>
                 <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Work</p>
                 <p className="text-lg font-semibold tabular-nums">{formatDuration(workMs)}</p>

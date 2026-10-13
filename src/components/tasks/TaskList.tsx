@@ -16,6 +16,7 @@ import { Task, Priority, Pipeline, Project } from '@/lib/types';
 import { CheckCircle2, CalendarDays } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
+import { ChangeReasonDialog, type PendingMajorChange } from '@/components/tasks/ChangeReasonDialog';
 import {
   DEFAULT_PIPELINES,
   getClosedStatusId,
@@ -56,6 +57,7 @@ export function TaskList({
   workspaceProjects?: Project[] | null;
 }) {
   const [mounted, setMounted] = useState(false);
+  const [pendingChange, setPendingChange] = useState<(PendingMajorChange & { taskId: string }) | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -119,7 +121,14 @@ export function TaskList({
                     checked={done}
                     disabled={readOnly}
                     onCheckedChange={(checked) => {
-                      updateTask(task.id, { status: checked ? taskClosedId : taskOpenId });
+                      const nextStatus = checked ? taskClosedId : taskOpenId;
+                      if (nextStatus === task.status) return;
+                      setPendingChange({
+                        taskId: task.id,
+                        title: checked ? 'Mark complete' : 'Reopen task',
+                        description: 'A reason is required for this status change and will appear in the audit trail.',
+                        payload: { status: nextStatus },
+                      });
                     }}
                   />
                 </TableCell>
@@ -213,6 +222,19 @@ export function TaskList({
           })}
         </TableBody>
       </Table>
+
+      <ChangeReasonDialog
+        open={!!pendingChange}
+        pending={pendingChange}
+        onOpenChange={(open) => {
+          if (!open) setPendingChange(null);
+        }}
+        onConfirm={(reason) => {
+          if (!pendingChange) return;
+          updateTask(pendingChange.taskId, pendingChange.payload, { reason });
+          setPendingChange(null);
+        }}
+      />
     </div>
   );
 }

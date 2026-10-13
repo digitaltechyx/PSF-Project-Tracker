@@ -211,7 +211,7 @@ export function ProjectView({ store }: { store: any }) {
     if (removedIds.length > 0) {
       const affected = (store.projectTasks || []).filter((t: any) => removedIds.includes(t.status));
       for (const t of affected) {
-        store.updateTask(t.id, { status: fallback });
+        store.updateTask(t.id, { status: fallback }, { reason: 'Status removed during pipeline update' });
       }
     }
 

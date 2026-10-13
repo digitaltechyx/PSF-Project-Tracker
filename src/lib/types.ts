@@ -30,6 +30,11 @@ export interface Workspace {
   memberRoles: Record<string, 'owner' | 'lead' | 'member'>;
   /** Members (non-admin) allowed to open the Targets page. Admins always have access. */
   targetsAllowedUserIds?: string[];
+  /**
+   * Shared company timezone (IANA), e.g. Asia/Karachi.
+   * Used for attendance day boundaries and company clock.
+   */
+  timezone?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -157,6 +162,8 @@ export interface TaskAudit {
   field?: string;
   fromValue?: string | null;
   toValue?: string | null;
+  /** Required for major field changes (status, priority, due date, assignees). */
+  reason?: string | null;
   message?: string;
   durationMs?: number;
   createdAt: string;

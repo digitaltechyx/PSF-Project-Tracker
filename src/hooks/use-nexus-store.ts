@@ -31,6 +31,7 @@ import { sendWorkspaceInviteEmail } from '@/app/actions/send-workspace-invite-em
 import { DEFAULT_PIPELINES } from '@/lib/pipelines';
 import { buildFieldChangeAudits } from '@/lib/task-audit';
 import { parseGoogleDocUrl } from '@/lib/google-docs';
+import { DEFAULT_WORKSPACE_TIMEZONE, getDateKeyInTimeZone, resolveWorkspaceTimezone } from '@/lib/timezone';
 
 export function useNexusStore() {
   const { user, isAuthReady } = useUser();
@@ -252,14 +253,15 @@ export function useNexusStore() {
     return allAttendanceData || [];
   }, [allAttendanceData, isAdmin]);
 
-  // Helper to get today's date key in local timezone (YYYY-MM-DD)
+  const workspaceTimezone = useMemo(
+    () => resolveWorkspaceTimezone(activeWorkspace?.timezone),
+    [activeWorkspace?.timezone]
+  );
+
+  // Today’s attendance day in the shared company timezone (YYYY-MM-DD)
   const getTodayDateKey = useCallback(() => {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  }, []);
+    return getDateKeyInTimeZone(new Date(), workspaceTimezone);
+  }, [workspaceTimezone]);
 
   // Query for today's attendance entry for current user
   const todayDateKey = getTodayDateKey();
@@ -363,6 +365,7 @@ export function useNexusStore() {
       color: '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0'),
       ownerUserId: user.uid,
       memberRoles: { [user.uid]: 'owner' },
+      timezone: DEFAULT_WORKSPACE_TIMEZONE,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -436,7 +439,11 @@ export function useNexusStore() {
     }
   }, [db, user, hasWorkspaceAdminAccess]);
 
-  const updateTask = useCallback((taskId: string, data: Partial<Task>) => {
+  const updateTask = useCallback((
+    taskId: string,
+    data: Partial<Task>,
+    opts?: { reason?: string | null }
+  ) => {
     if (!db || !user) return;
     const t = allWorkspaceTasks.find(x => x.id === taskId);
     if (!t) return;
@@ -458,10 +465,17 @@ export function useNexusStore() {
     updateDocumentNonBlocking(ref, { ...payload, updatedAt: new Date().toISOString() });
 
     const actorName = user.displayName || 'User';
-    const auditRows = buildFieldChangeAudits(t, payload, {
-      actorUserId: user.uid,
-      actorName,
-    });
+    const memberNames: Record<string, string> = {};
+    for (const m of workspaceMembers) {
+      if (m.userId) memberNames[m.userId] = m.displayName || m.email || m.userId;
+    }
+    const project = projects.find((p) => p.id === t.projectId);
+    const auditRows = buildFieldChangeAudits(
+      t,
+      payload,
+      { actorUserId: user.uid, actorName, reason: opts?.reason || null },
+      { memberNames, pipelines: project?.pipelines || DEFAULT_PIPELINES }
+    );
     auditRows.forEach((row) => {
       const auditRef = doc(collection(db, 'workspaces', t.workspaceId, 'projects', t.projectId, 'tasks', t.id, 'audits'));
       setDocumentNonBlocking(auditRef, {
@@ -480,8 +494,8 @@ export function useNexusStore() {
     const oldAssignees = t.assigneeUserIds || [];
     const newAssignees = payload.assigneeUserIds !== undefined ? (payload.assigneeUserIds || []) : oldAssignees;
 
-    if (isAdmin && payload.assigneeUserIds) {
-      newAssignees.forEach(assigneeId => {
+    if (isAdmin && payload.assigneeUserIds !== undefined) {
+      newAssignees.forEach((assigneeId) => {
         if (!oldAssignees.includes(assigneeId) && assigneeId !== user.uid) {
           notifyTaskAssigned(db, assigneeId, { id: user.uid, name: user.displayName || 'User' }, {
             id: t.id,
@@ -503,64 +517,85 @@ export function useNexusStore() {
         }, changes);
       }
     });
-  }, [db, allWorkspaceTasks, isAdmin, user]);
+  }, [db, allWorkspaceTasks, isAdmin, user, workspaceMembers, projects]);
 
   const createSubtask = useCallback(async (taskId: string, projectId: string, data: Partial<Subtask>) => {
     const wsId = activeWorkspace?.id;
-    if (!db || !wsId || !projectId || !taskId || !user || !isAdmin) return null;
+    if (!db || !wsId || !projectId || !taskId || !user || !isAdmin) {
+      console.warn('createSubtask blocked', { wsId, projectId, taskId, hasUser: !!user, isAdmin });
+      return null;
+    }
+    const title = (data.title || '').trim();
+    if (!title) return null;
+
     const subtaskRef = doc(collection(db, 'workspaces', wsId, 'projects', projectId, 'tasks', taskId, 'subtasks'));
-    const taskObj = allWorkspaceTasks.find(t => t.id === taskId);
+    const taskObj = allWorkspaceTasks.find((t) => t.id === taskId);
     const subtaskData = {
       id: subtaskRef.id,
       workspaceId: wsId,
       projectId,
       taskId,
-      ...data,
+      title,
+      status: data.status || 'todo',
+      priority: data.priority || 'medium',
+      dueDate: data.dueDate ?? null,
+      assigneeUserIds: data.assigneeUserIds || [],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
     try {
       await setDocumentNonBlocking(subtaskRef, subtaskData, { merge: true });
-      // Notify assignees if they're not the current user
-      if (data.assigneeUserIds && data.assigneeUserIds.length > 0) {
-        data.assigneeUserIds.forEach((assigneeId: string) => {
+      if (subtaskData.assigneeUserIds.length > 0) {
+        subtaskData.assigneeUserIds.forEach((assigneeId: string) => {
           if (assigneeId !== user.uid) {
-            notifySubtaskAssigned(db, assigneeId, { id: user.uid, name: user.displayName || 'User' }, {
-              id: taskId,
-              title: taskObj?.title || 'Task',
-              workspaceId: wsId,
-              projectId
-            }, data.title || 'Untitled');
+            notifySubtaskAssigned(
+              db,
+              assigneeId,
+              { id: user.uid, name: user.displayName || 'User' },
+              {
+                id: taskId,
+                title: taskObj?.title || 'Task',
+                workspaceId: wsId,
+                projectId,
+              },
+              title
+            );
           }
         });
       }
       return subtaskRef.id;
     } catch (e) {
-      console.error("Failed to create subtask:", e);
+      console.error('Failed to create subtask:', e);
       return null;
     }
   }, [db, user, isAdmin, activeWorkspace?.id, allWorkspaceTasks]);
 
   const updateSubtask = useCallback((taskId: string, subtaskId: string, data: Partial<Subtask>) => {
     if (!db || !isAdmin || !user) return;
-    const s = allWorkspaceSubtasks.find(x => x.id === subtaskId);
-    if (s) {
-      const ref = doc(db, 'workspaces', s.workspaceId, 'projects', s.projectId, 'tasks', s.taskId, 'subtasks', s.id);
-      updateDocumentNonBlocking(ref, { ...data, updatedAt: new Date().toISOString() });
-      // Handle subtask assignment changes
+    const s = allWorkspaceSubtasks.find((x) => x.id === subtaskId);
+    if (!s) return;
+
+    const ref = doc(db, 'workspaces', s.workspaceId, 'projects', s.projectId, 'tasks', s.taskId, 'subtasks', s.id);
+    updateDocumentNonBlocking(ref, { ...data, updatedAt: new Date().toISOString() });
+
+    if (data.assigneeUserIds !== undefined) {
       const oldAssignees = s.assigneeUserIds || [];
       const newAssignees = data.assigneeUserIds || [];
-      
-      // Notify newly assigned users
-      newAssignees.forEach(assigneeId => {
+      newAssignees.forEach((assigneeId) => {
         if (!oldAssignees.includes(assigneeId) && assigneeId !== user.uid) {
-          const taskObj = allWorkspaceTasks.find(t => t.id === s.taskId);
-          notifySubtaskAssigned(db, assigneeId, { id: user.uid, name: user.displayName || 'User' }, {
-            id: s.taskId,
-            title: taskObj?.title || 'Task',
-            workspaceId: s.workspaceId,
-            projectId: s.projectId
-          }, data.title || s.title);
+          const taskObj = allWorkspaceTasks.find((t) => t.id === s.taskId);
+          notifySubtaskAssigned(
+            db,
+            assigneeId,
+            { id: user.uid, name: user.displayName || 'User' },
+            {
+              id: s.taskId,
+              title: taskObj?.title || 'Task',
+              workspaceId: s.workspaceId,
+              projectId: s.projectId,
+            },
+            data.title || s.title
+          );
         }
       });
     }
@@ -922,6 +957,7 @@ export function useNexusStore() {
       const auditRef = doc(
         collection(db, 'workspaces', wsId, 'projects', task.projectId, 'tasks', task.id, 'audits')
       );
+      const durationLabel = `${entry.durationMinutes}m`;
       const audit: TaskAudit = {
         id: auditRef.id,
         workspaceId: wsId,
@@ -932,8 +968,8 @@ export function useNexusStore() {
         actorName,
         durationMs,
         message: entry.description?.trim()
-          ? `${actorName} logged time: ${entry.description.trim()}`
-          : `${actorName} logged time`,
+          ? `${actorName} logged ${durationLabel} on ${dateKey}: ${entry.description.trim()}`
+          : `${actorName} logged ${durationLabel} on ${dateKey} at check-out`,
         createdAt: new Date().toISOString(),
       };
       await setDocumentNonBlocking(auditRef, audit, { merge: true });
@@ -1256,6 +1292,7 @@ export function useNexusStore() {
     isAdmin,
     isOwner,
     currentRole,
+    workspaceTimezone,
     todayAttendance,
     isAttendanceLoading,
     myAttendanceHistory,

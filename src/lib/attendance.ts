@@ -11,8 +11,23 @@ export function getAttendanceStatus(entry?: AttendanceEntry | null): AttendanceS
   return 'working';
 }
 
-export function formatAttendanceTime(iso?: string | null, mounted = true) {
+export function formatAttendanceTime(
+  iso?: string | null,
+  mounted = true,
+  timeZone?: string | null
+) {
   if (!mounted || !iso) return '—';
+  if (timeZone) {
+    try {
+      return new Intl.DateTimeFormat(undefined, {
+        timeZone,
+        hour: '2-digit',
+        minute: '2-digit',
+      }).format(new Date(iso));
+    } catch {
+      /* fall through */
+    }
+  }
   return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 

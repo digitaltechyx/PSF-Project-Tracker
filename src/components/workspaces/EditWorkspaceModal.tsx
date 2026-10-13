@@ -15,6 +15,18 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { Pencil, Loader2 } from 'lucide-react';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  DEFAULT_WORKSPACE_TIMEZONE,
+  WORKSPACE_TIMEZONES,
+  resolveWorkspaceTimezone,
+} from '@/lib/timezone';
 
 interface EditWorkspaceModalProps {
   isOpen: boolean;
@@ -27,6 +39,7 @@ export function EditWorkspaceModal({ isOpen, onOpenChange, store }: EditWorkspac
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [color, setColor] = useState('#452ED2');
+  const [timezone, setTimezone] = useState(DEFAULT_WORKSPACE_TIMEZONE);
   const [isSaving, setIsSaving] = useState(false);
 
   const workspace = store.activeWorkspace;
@@ -37,6 +50,7 @@ export function EditWorkspaceModal({ isOpen, onOpenChange, store }: EditWorkspac
       setName(workspace.name || '');
       setDescription(workspace.description || '');
       setColor(workspace.color || '#452ED2');
+      setTimezone(resolveWorkspaceTimezone(workspace.timezone));
     }
   }, [workspace, isOpen]);
 
@@ -55,6 +69,7 @@ export function EditWorkspaceModal({ isOpen, onOpenChange, store }: EditWorkspac
         name: name.trim(),
         description: description.trim(),
         color,
+        timezone,
       });
       toast({
         title: 'Workspace updated',
@@ -98,7 +113,7 @@ export function EditWorkspaceModal({ isOpen, onOpenChange, store }: EditWorkspac
             </div>
             <DialogTitle>Workspace settings</DialogTitle>
             <DialogDescription>
-              Update the identity and details shown to your team.
+              Update identity, company timezone, and details shown to your team.
             </DialogDescription>
           </DialogHeader>
 
@@ -124,6 +139,25 @@ export function EditWorkspaceModal({ isOpen, onOpenChange, store }: EditWorkspac
                 placeholder="Describe the purpose of this workspace"
                 rows={3}
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Company timezone</Label>
+              <Select value={timezone} onValueChange={setTimezone}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select timezone" />
+                </SelectTrigger>
+                <SelectContent>
+                  {WORKSPACE_TIMEZONES.map((z) => (
+                    <SelectItem key={z.value} value={z.value}>
+                      {z.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Check-in days and the dashboard clock follow this timezone for everyone.
+              </p>
             </div>
 
             <div className="space-y-2">

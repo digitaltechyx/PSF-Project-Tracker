@@ -24,6 +24,7 @@ import {
   getAttendanceStatus,
   statusLabel,
 } from '@/lib/attendance';
+import { getDateKeyInTimeZone, resolveWorkspaceTimezone } from '@/lib/timezone';
 import { AttendanceEntry } from '@/lib/types';
 import { TimeTrackingWidget } from '@/components/dashboard/TimeTrackingWidget';
 
@@ -35,11 +36,14 @@ export function AttendanceLogView({ store }: { store: any }) {
     isMyAttendanceLoading,
     workspaceMembers,
     isAdmin,
+    workspaceTimezone,
+    activeWorkspace,
   } = store;
   const [mounted, setMounted] = useState(false);
   const [memberFilter, setMemberFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [now, setNow] = useState(Date.now());
+  const timeZone = resolveWorkspaceTimezone(workspaceTimezone || activeWorkspace?.timezone);
 
   useEffect(() => {
     setMounted(true);
@@ -47,10 +51,7 @@ export function AttendanceLogView({ store }: { store: any }) {
     return () => window.clearInterval(id);
   }, []);
 
-  const todayKey = useMemo(() => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  }, []);
+  const todayKey = useMemo(() => getDateKeyInTimeZone(new Date(), timeZone), [timeZone, now]);
 
   const memberMap = useMemo(() => {
     const map = new Map<string, any>();
@@ -150,12 +151,12 @@ export function AttendanceLogView({ store }: { store: any }) {
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
             <span className="inline-flex items-center gap-1">
               <LogIn className="h-3 w-3" />
-              {formatAttendanceTime(entry.checkInTime, mounted)}
+              {formatAttendanceTime(entry.checkInTime, mounted, timeZone)}
             </span>
             {entry.checkOutTime && (
               <span className="inline-flex items-center gap-1">
                 <LogOut className="h-3 w-3" />
-                {formatAttendanceTime(entry.checkOutTime, mounted)}
+                {formatAttendanceTime(entry.checkOutTime, mounted, timeZone)}
               </span>
             )}
             <span className="font-medium text-foreground/80">Work {work}</span>
@@ -210,9 +211,9 @@ export function AttendanceLogView({ store }: { store: any }) {
                       </span>
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">
-                      {formatAttendanceTime(entry.checkInTime, mounted)}
+                      {formatAttendanceTime(entry.checkInTime, mounted, timeZone)}
                       {entry.checkOutTime
-                        ? ` → ${formatAttendanceTime(entry.checkOutTime, mounted)}`
+                        ? ` → ${formatAttendanceTime(entry.checkOutTime, mounted, timeZone)}`
                         : ' · in progress'}
                       {' · '}Work {formatDuration(getWorkMs(entry, now))} · Break{' '}
                       {formatDuration(getBreakMs(entry, now))}

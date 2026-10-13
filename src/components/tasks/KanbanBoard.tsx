@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { ChangeReasonDialog, type PendingMajorChange } from '@/components/tasks/ChangeReasonDialog';
 import {
   getClosedStatusId,
   getPipelineInfo,
@@ -37,7 +38,7 @@ export function KanbanBoard({
   tasks: Task[];
   pipelines: Pipeline[];
   onTaskClick: (id: string) => void;
-  updateTask: (id: string, data: Partial<Task>) => void;
+  updateTask: (id: string, data: Partial<Task>, opts?: { reason?: string | null }) => void;
   onAddTask?: (status: Status) => void;
   onAddStatus?: () => void;
   canManageStatuses?: boolean;
@@ -48,6 +49,7 @@ export function KanbanBoard({
 }) {
   const [mounted, setMounted] = useState(false);
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
+  const [pendingChange, setPendingChange] = useState<(PendingMajorChange & { taskId: string }) | null>(null);
   const [activeColumn, setActiveColumn] = useState<string | null>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
@@ -118,7 +120,16 @@ export function KanbanBoard({
     if (readOnly) return;
     e.preventDefault();
     const taskId = e.dataTransfer.getData('text');
-    if (taskId) updateTask(taskId, { status });
+    const task = tasks.find((t) => t.id === taskId);
+    if (taskId && task && task.status !== status) {
+      const toName = getPipelineInfo(pipelines, status).name;
+      setPendingChange({
+        taskId,
+        title: 'Update status',
+        description: `Moving to “${toName}”. A reason is required for the audit trail.`,
+        payload: { status },
+      });
+    }
     setDraggedTaskId(null);
     setActiveColumn(null);
   };
@@ -337,6 +348,19 @@ export function KanbanBoard({
         </button>
       )}
     </div>
+
+      <ChangeReasonDialog
+        open={!!pendingChange}
+        pending={pendingChange}
+        onOpenChange={(open) => {
+          if (!open) setPendingChange(null);
+        }}
+        onConfirm={(reason) => {
+          if (!pendingChange) return;
+          updateTask(pendingChange.taskId, pendingChange.payload as Partial<Task>, { reason });
+          setPendingChange(null);
+        }}
+      />
     </div>
   );
 }
