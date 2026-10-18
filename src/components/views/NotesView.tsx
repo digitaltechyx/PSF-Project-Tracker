@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Archive,
   CheckSquare,
@@ -14,7 +14,6 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -24,7 +23,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { NoteHtmlPreview, NoteRichEditor } from '@/components/notes/NoteRichEditor';
 import { useToast } from '@/hooks/use-toast';
+import { noteBodyHasContent, noteHtmlToPlainText, sanitizeNoteHtml } from '@/lib/note-html';
 import { cn } from '@/lib/utils';
 import type { NoteChecklistItem, NoteColor, WorkspaceNote } from '@/lib/types';
 
@@ -42,6 +43,8 @@ const NOTE_COLORS: { id: NoteColor; label: string; bg: string; border: string }[
   { id: 'stone', label: 'Stone', bg: 'bg-[#e8eaed]', border: 'border-[#e8eaed]' },
 ];
 
+const AUTOSAVE_MS = 700;
+
 function colorClasses(color?: NoteColor) {
   return NOTE_COLORS.find((c) => c.id === (color || 'default')) || NOTE_COLORS[0];
 }
@@ -52,6 +55,21 @@ function newChecklistItem(text = ''): NoteChecklistItem {
     text,
     done: false,
   };
+}
+
+function checklistHasContent(items: NoteChecklistItem[]) {
+  return items.some((i) => i.text.trim());
+}
+
+function noteDraftHasContent(opts: {
+  title: string;
+  body: string;
+  checklist: NoteChecklistItem[];
+  useChecklist: boolean;
+}) {
+  if (opts.title.trim()) return true;
+  if (opts.useChecklist) return checklistHasContent(opts.checklist);
+  return noteBodyHasContent(opts.body);
 }
 
 function ColorPicker({
@@ -81,6 +99,22 @@ function ColorPicker({
   );
 }
 
+function SaveStatus({ status }: { status: 'idle' | 'saving' | 'saved' | 'error' }) {
+  if (status === 'idle') return null;
+  return (
+    <span className="inline-flex items-center gap-1.5 text-[11px] text-slate-600">
+      {status === 'saving' && (
+        <>
+          <Loader2 className="h-3 w-3 animate-spin" />
+          Saving…
+        </>
+      )}
+      {status === 'saved' && 'Saved'}
+      {status === 'error' && <span className="text-destructive">Couldn’t save</span>}
+    </span>
+  );
+}
+
 export function NotesView({ store }: { store: any }) {
   const {
     workspaceNotes,
@@ -104,7 +138,18 @@ export function NotesView({ store }: { store: any }) {
   const [draftColor, setDraftColor] = useState<NoteColor>('default');
   const [draftChecklist, setDraftChecklist] = useState<NoteChecklistItem[]>([]);
   const [useChecklist, setUseChecklist] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [composerNoteId, setComposerNoteId] = useState<string | null>(null);
+  const [composerStatus, setComposerStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const composerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const composerBusyRef = useRef(false);
+  const composerDraftRef = useRef({
+    title: '',
+    body: '',
+    color: 'default' as NoteColor,
+    checklist: [] as NoteChecklistItem[],
+    useChecklist: false,
+    noteId: null as string | null,
+  });
 
   // Edit dialog
   const [editing, setEditing] = useState<WorkspaceNote | null>(null);
@@ -112,73 +157,281 @@ export function NotesView({ store }: { store: any }) {
   const [editBody, setEditBody] = useState('');
   const [editColor, setEditColor] = useState<NoteColor>('default');
   const [editChecklist, setEditChecklist] = useState<NoteChecklistItem[]>([]);
+  const [editStatus, setEditStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const editTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const editBusyRef = useRef(false);
+  const editSnapshotRef = useRef('');
+  const editDraftRef = useRef({
+    id: '',
+    title: '',
+    body: '',
+    color: 'default' as NoteColor,
+    checklist: [] as NoteChecklistItem[],
+  });
+  const skipNextEditAutosaveRef = useRef(false);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return notes.filter((n) => {
+      // Hide the note still open in the composer so it isn't shown twice
+      if (composerOpen && composerNoteId && n.id === composerNoteId) return false;
       if (!!n.archived !== showArchived) return false;
       if (!q) return true;
-      const hay = `${n.title} ${n.body} ${(n.checklist || []).map((i) => i.text).join(' ')}`.toLowerCase();
+      const hay = `${n.title} ${noteHtmlToPlainText(n.body)} ${(n.checklist || [])
+        .map((i) => i.text)
+        .join(' ')}`.toLowerCase();
       return hay.includes(q);
     });
-  }, [notes, search, showArchived]);
+  }, [notes, search, showArchived, composerOpen, composerNoteId]);
 
   const pinned = filtered.filter((n) => n.pinned);
   const others = filtered.filter((n) => !n.pinned);
 
-  const resetComposer = () => {
+  useEffect(() => {
+    composerDraftRef.current = {
+      title: draftTitle,
+      body: draftBody,
+      color: draftColor,
+      checklist: draftChecklist,
+      useChecklist,
+      noteId: composerNoteId,
+    };
+  }, [draftTitle, draftBody, draftColor, draftChecklist, useChecklist, composerNoteId]);
+
+  useEffect(() => {
+    if (!editing) return;
+    editDraftRef.current = {
+      id: editing.id,
+      title: editTitle,
+      body: editBody,
+      color: editColor,
+      checklist: editChecklist,
+    };
+  }, [editing, editTitle, editBody, editColor, editChecklist]);
+
+  const resetComposerLocal = useCallback(() => {
+    if (composerTimerRef.current) {
+      clearTimeout(composerTimerRef.current);
+      composerTimerRef.current = null;
+    }
     setDraftTitle('');
     setDraftBody('');
     setDraftColor('default');
     setDraftChecklist([]);
     setUseChecklist(false);
+    setComposerNoteId(null);
+    setComposerStatus('idle');
     setComposerOpen(false);
-  };
+  }, []);
 
-  const handleCreate = async () => {
-    setSaving(true);
-    try {
-      await createWorkspaceNote({
-        title: draftTitle,
-        body: useChecklist ? '' : draftBody,
-        color: draftColor,
-        checklist: useChecklist ? draftChecklist.filter((i) => i.text.trim()) : [],
-      });
-      resetComposer();
-      toast({ title: 'Note saved' });
-    } catch (e: any) {
-      toast({ variant: 'destructive', title: 'Could not save', description: e?.message });
-    } finally {
-      setSaving(false);
+  const persistComposer = useCallback(async () => {
+    const draft = composerDraftRef.current;
+    if (
+      !noteDraftHasContent({
+        title: draft.title,
+        body: draft.body,
+        checklist: draft.checklist,
+        useChecklist: draft.useChecklist,
+      })
+    ) {
+      return draft.noteId;
     }
-  };
+    if (composerBusyRef.current) return draft.noteId;
+    composerBusyRef.current = true;
+    setComposerStatus('saving');
+    try {
+      const payload = {
+        title: draft.title.trim(),
+        body: draft.useChecklist ? '' : sanitizeNoteHtml(draft.body),
+        color: draft.color,
+        checklist: draft.useChecklist
+          ? draft.checklist.filter((i) => i.text.trim())
+          : [],
+      };
+      if (draft.noteId) {
+        await updateWorkspaceNote(draft.noteId, payload);
+        setComposerStatus('saved');
+        return draft.noteId;
+      }
+      const id = await createWorkspaceNote(payload);
+      setComposerNoteId(id);
+      composerDraftRef.current.noteId = id;
+      setComposerStatus('saved');
+      return id as string;
+    } catch (e: any) {
+      setComposerStatus('error');
+      toast({ variant: 'destructive', title: 'Could not save note', description: e?.message });
+      return draft.noteId;
+    } finally {
+      composerBusyRef.current = false;
+    }
+  }, [createWorkspaceNote, updateWorkspaceNote, toast]);
+
+  const closeComposer = useCallback(async () => {
+    if (composerTimerRef.current) {
+      clearTimeout(composerTimerRef.current);
+      composerTimerRef.current = null;
+    }
+    await persistComposer();
+    resetComposerLocal();
+  }, [persistComposer, resetComposerLocal]);
+
+  // Debounced autosave while composing a new note
+  useEffect(() => {
+    if (!composerOpen) return;
+    if (
+      !noteDraftHasContent({
+        title: draftTitle,
+        body: draftBody,
+        checklist: draftChecklist,
+        useChecklist,
+      })
+    ) {
+      return;
+    }
+    if (composerTimerRef.current) clearTimeout(composerTimerRef.current);
+    composerTimerRef.current = setTimeout(() => {
+      void persistComposer();
+    }, AUTOSAVE_MS);
+    return () => {
+      if (composerTimerRef.current) clearTimeout(composerTimerRef.current);
+    };
+  }, [
+    composerOpen,
+    draftTitle,
+    draftBody,
+    draftColor,
+    draftChecklist,
+    useChecklist,
+    persistComposer,
+  ]);
+
+  const persistEdit = useCallback(async () => {
+    const draft = editDraftRef.current;
+    if (!draft.id) return;
+    const nextSnapshot = JSON.stringify({
+      title: draft.title.trim(),
+      body: draft.body,
+      color: draft.color,
+      checklist: draft.checklist,
+    });
+    if (nextSnapshot === editSnapshotRef.current) return;
+    if (editBusyRef.current) return;
+    editBusyRef.current = true;
+    setEditStatus('saving');
+    try {
+      const safeBody = sanitizeNoteHtml(draft.body);
+      await updateWorkspaceNote(draft.id, {
+        title: draft.title.trim(),
+        body: safeBody,
+        color: draft.color,
+        checklist: draft.checklist,
+      });
+      editSnapshotRef.current = nextSnapshot;
+      setEditStatus('saved');
+      setEditing((prev) =>
+        prev && prev.id === draft.id
+          ? {
+              ...prev,
+              title: draft.title.trim(),
+              body: safeBody,
+              color: draft.color,
+              checklist: draft.checklist,
+            }
+          : prev
+      );
+    } catch (e: any) {
+      setEditStatus('error');
+      toast({ variant: 'destructive', title: 'Could not save note', description: e?.message });
+    } finally {
+      editBusyRef.current = false;
+    }
+  }, [updateWorkspaceNote, toast]);
 
   const openEdit = (n: WorkspaceNote) => {
+    if (editTimerRef.current) {
+      clearTimeout(editTimerRef.current);
+      editTimerRef.current = null;
+    }
+    skipNextEditAutosaveRef.current = true;
     setEditing(n);
     setEditTitle(n.title || '');
     setEditBody(n.body || '');
     setEditColor(n.color || 'default');
     setEditChecklist([...(n.checklist || [])]);
+    setEditStatus('idle');
+    editSnapshotRef.current = JSON.stringify({
+      title: (n.title || '').trim(),
+      body: n.body || '',
+      color: n.color || 'default',
+      checklist: n.checklist || [],
+    });
   };
 
-  const handleSaveEdit = async () => {
-    if (!editing) return;
-    setSaving(true);
-    try {
-      await updateWorkspaceNote(editing.id, {
-        title: editTitle.trim(),
-        body: editBody,
-        color: editColor,
-        checklist: editChecklist,
-      });
-      setEditing(null);
-      toast({ title: 'Note updated' });
-    } catch (e: any) {
-      toast({ variant: 'destructive', title: 'Could not update', description: e?.message });
-    } finally {
-      setSaving(false);
+  const closeEdit = useCallback(async () => {
+    if (editTimerRef.current) {
+      clearTimeout(editTimerRef.current);
+      editTimerRef.current = null;
     }
-  };
+    if (editing && (isAdmin || editing.createdByUserId === currentUser?.uid)) {
+      await persistEdit();
+    }
+    setEditing(null);
+    setEditStatus('idle');
+  }, [editing, isAdmin, currentUser?.uid, persistEdit]);
+
+  // Debounced autosave while editing
+  useEffect(() => {
+    if (!editing) return;
+    if (!(isAdmin || editing.createdByUserId === currentUser?.uid)) return;
+    if (skipNextEditAutosaveRef.current) {
+      skipNextEditAutosaveRef.current = false;
+      return;
+    }
+    if (editTimerRef.current) clearTimeout(editTimerRef.current);
+    editTimerRef.current = setTimeout(() => {
+      void persistEdit();
+    }, AUTOSAVE_MS);
+    return () => {
+      if (editTimerRef.current) clearTimeout(editTimerRef.current);
+    };
+  }, [
+    editing,
+    editTitle,
+    editBody,
+    editColor,
+    editChecklist,
+    isAdmin,
+    currentUser?.uid,
+    persistEdit,
+  ]);
+
+  // Flush composer/edit if user leaves Notes view mid-edit
+  useEffect(() => {
+    return () => {
+      if (composerTimerRef.current) clearTimeout(composerTimerRef.current);
+      if (editTimerRef.current) clearTimeout(editTimerRef.current);
+      void persistComposer();
+      const draft = editDraftRef.current;
+      if (draft.id) {
+        const nextSnapshot = JSON.stringify({
+          title: draft.title.trim(),
+          body: draft.body,
+          color: draft.color,
+          checklist: draft.checklist,
+        });
+        if (nextSnapshot !== editSnapshotRef.current) {
+          void updateWorkspaceNote(draft.id, {
+            title: draft.title.trim(),
+            body: draft.body,
+            color: draft.color,
+            checklist: draft.checklist,
+          });
+        }
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const canEdit = (n: WorkspaceNote) =>
     isAdmin || n.createdByUserId === currentUser?.uid;
@@ -233,13 +486,16 @@ export function NotesView({ store }: { store: any }) {
         {note.title ? (
           <h4 className="pr-14 text-sm font-semibold text-slate-900">{note.title}</h4>
         ) : null}
-        {note.body ? (
-          <p className={cn('whitespace-pre-wrap text-sm leading-6 text-slate-800', note.title && 'mt-2')}>
-            {note.body}
-          </p>
+        {noteBodyHasContent(note.body) ? (
+          <NoteHtmlPreview html={note.body} className={cn(note.title && 'mt-2')} />
         ) : null}
         {checklist.length > 0 && (
-          <ul className={cn('space-y-1.5 text-sm text-slate-800', (note.title || note.body) && 'mt-3')}>
+          <ul
+            className={cn(
+              'space-y-1.5 text-sm text-slate-800',
+              (note.title || noteBodyHasContent(note.body)) && 'mt-3'
+            )}
+          >
             {checklist.slice(0, 8).map((item) => (
               <li key={item.id} className="flex items-start gap-2">
                 <span
@@ -282,7 +538,7 @@ export function NotesView({ store }: { store: any }) {
         <div>
           <h2 className="text-xl font-semibold tracking-tight">Notes</h2>
           <p className="text-sm text-muted-foreground">
-            Keep-style sticky notes for your workspace — quick thoughts, lists, and reminders.
+            Keep-style sticky notes — changes autosave as you type.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -386,11 +642,11 @@ export function NotesView({ store }: { store: any }) {
                   </Button>
                 </div>
               ) : (
-                <Textarea
+                <NoteRichEditor
                   value={draftBody}
-                  onChange={(e) => setDraftBody(e.target.value)}
+                  onChange={setDraftBody}
                   placeholder="Take a note…"
-                  className="min-h-[80px] resize-none border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
+                  minHeightClass="min-h-[80px]"
                 />
               )}
               <div className="flex flex-wrap items-center justify-between gap-3 border-t border-black/5 pt-3">
@@ -412,12 +668,12 @@ export function NotesView({ store }: { store: any }) {
                     <CheckSquare className="h-4 w-4" />
                   </Button>
                 </div>
-                <div className="flex gap-2">
-                  <Button type="button" variant="ghost" size="sm" onClick={resetComposer}>
+                <div className="flex items-center gap-3">
+                  <SaveStatus status={composerStatus} />
+                  <Button type="button" variant="ghost" size="sm" onClick={() => void closeComposer()}>
                     Close
                   </Button>
-                  <Button type="button" size="sm" disabled={saving} onClick={handleCreate}>
-                    {saving && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
+                  <Button type="button" size="sm" onClick={() => void closeComposer()}>
                     Done
                   </Button>
                 </div>
@@ -474,7 +730,12 @@ export function NotesView({ store }: { store: any }) {
         </div>
       )}
 
-      <Dialog open={!!editing} onOpenChange={(open) => !open && setEditing(null)}>
+      <Dialog
+        open={!!editing}
+        onOpenChange={(open) => {
+          if (!open) void closeEdit();
+        }}
+      >
         <DialogContent
           className={cn(
             'max-w-lg border-0 sm:rounded-2xl',
@@ -547,16 +808,19 @@ export function NotesView({ store }: { store: any }) {
                   )}
                 </div>
               ) : (
-                <Textarea
+                <NoteRichEditor
                   value={editBody}
-                  onChange={(e) => setEditBody(e.target.value)}
+                  onChange={setEditBody}
                   placeholder="Note"
                   disabled={!canEdit(editing)}
-                  className="min-h-[140px] resize-none border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
+                  minHeightClass="min-h-[140px]"
                 />
               )}
               {canEdit(editing) && <ColorPicker value={editColor} onChange={setEditColor} />}
-              <p className="text-xs text-slate-600">By {editing.createdByName}</p>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs text-slate-600">By {editing.createdByName}</p>
+                <SaveStatus status={editStatus} />
+              </div>
             </div>
           )}
           <DialogFooter className="gap-2 sm:justify-between">
@@ -580,7 +844,8 @@ export function NotesView({ store }: { store: any }) {
                     variant="ghost"
                     size="icon"
                     title={editing.archived ? 'Unarchive' : 'Archive'}
-                    onClick={() => {
+                    onClick={async () => {
+                      await persistEdit();
                       updateWorkspaceNote(editing.id, {
                         archived: !editing.archived,
                         pinned: false,
@@ -597,6 +862,10 @@ export function NotesView({ store }: { store: any }) {
                     className="text-destructive"
                     title="Delete"
                     onClick={async () => {
+                      if (editTimerRef.current) {
+                        clearTimeout(editTimerRef.current);
+                        editTimerRef.current = null;
+                      }
                       await deleteWorkspaceNote(editing.id);
                       setEditing(null);
                       toast({ title: 'Note deleted' });
@@ -607,17 +876,9 @@ export function NotesView({ store }: { store: any }) {
                 </>
               )}
             </div>
-            <div className="flex gap-2">
-              <Button type="button" variant="ghost" onClick={() => setEditing(null)}>
-                Close
-              </Button>
-              {editing && canEdit(editing) && (
-                <Button type="button" disabled={saving} onClick={handleSaveEdit}>
-                  {saving && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
-                  Save
-                </Button>
-              )}
-            </div>
+            <Button type="button" onClick={() => void closeEdit()}>
+              Close
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

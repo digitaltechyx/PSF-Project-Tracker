@@ -31,6 +31,7 @@ import { sendWorkspaceInviteEmail } from '@/app/actions/send-workspace-invite-em
 import { DEFAULT_PIPELINES } from '@/lib/pipelines';
 import { buildFieldChangeAudits, buildSubtaskChangeAudits } from '@/lib/task-audit';
 import { parseGoogleDocUrl } from '@/lib/google-docs';
+import { noteBodyHasContent, sanitizeNoteHtml } from '@/lib/note-html';
 import { DEFAULT_WORKSPACE_TIMEZONE, getDateKeyInTimeZone, resolveWorkspaceTimezone } from '@/lib/timezone';
 
 export function useNexusStore() {
@@ -1642,9 +1643,9 @@ export function useNexusStore() {
       const wsId = activeWorkspace?.id;
       if (!db || !wsId || !user) throw new Error('Not ready');
       const title = (opts.title || '').trim();
-      const body = (opts.body || '').trim();
-      const checklist = opts.checklist || [];
-      if (!title && !body && checklist.length === 0) {
+      const body = sanitizeNoteHtml(opts.body || '');
+      const checklist = (opts.checklist || []).filter((i) => i.text.trim());
+      if (!title && !noteBodyHasContent(body) && checklist.length === 0) {
         throw new Error('Write a title or note first.');
       }
       const ref = doc(collection(db, 'workspaces', wsId, 'notes'));
@@ -1671,6 +1672,9 @@ export function useNexusStore() {
       const wsId = activeWorkspace?.id;
       if (!db || !wsId) return;
       const { id: _id, workspaceId: _ws, createdByUserId: _by, createdAt: _ca, ...rest } = data as any;
+      if (typeof rest.body === 'string') {
+        rest.body = sanitizeNoteHtml(rest.body);
+      }
       await updateDocumentNonBlocking(doc(db, 'workspaces', wsId, 'notes', noteId), {
         ...rest,
         updatedAt: new Date().toISOString(),
