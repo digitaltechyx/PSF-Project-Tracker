@@ -357,7 +357,10 @@ export interface WorkspaceNote {
   checklist: NoteChecklistItem[];
   createdByUserId: string;
   createdByName: string;
-  /** Empty = visible to all workspace members; otherwise only these users (+ creator/admins). */
+  /**
+   * Empty = visible to all workspace members.
+   * Non-empty = only these users (+ creator/admins). New notes default to [creatorId] (private).
+   */
   sharedWithUserIds: string[];
   createdAt: string;
   updatedAt: string;

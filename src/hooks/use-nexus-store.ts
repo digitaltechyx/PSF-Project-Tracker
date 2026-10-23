@@ -1661,7 +1661,9 @@ export function useNexusStore() {
         checklist,
         createdByUserId: user.uid,
         createdByName: user.displayName || user.email || 'User',
-        sharedWithUserIds: opts.sharedWithUserIds || [],
+        // Default: only creator (and admins). Empty array = whole workspace.
+        sharedWithUserIds:
+          opts.sharedWithUserIds !== undefined ? opts.sharedWithUserIds : [user.uid],
         createdAt: now,
         updatedAt: now,
       };

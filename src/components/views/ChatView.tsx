@@ -13,6 +13,8 @@ import {
   X,
   FileText,
   AtSign,
+  Trash2,
+  MoreVertical,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -30,6 +32,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -72,6 +84,7 @@ export function ChatView({ store }: { store: any }) {
     activeWorkspace,
     workspaceMembers,
     currentUser,
+    isAdmin,
   } = store;
   const { isAuthReady } = useUser();
   const { toast } = useToast();
@@ -96,6 +109,8 @@ export function ChatView({ store }: { store: any }) {
   const [channelMembers, setChannelMembers] = useState<string[]>([]);
   const [mentionOpen, setMentionOpen] = useState(false);
   const [mentionFilter, setMentionFilter] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -201,6 +216,29 @@ export function ChatView({ store }: { store: any }) {
     }
   };
 
+  const canDeleteChannel = (c: { id: string; name: string; createdByUserId: string }) => {
+    if (c.id === 'general' || c.name.toLowerCase() === 'general') return false;
+    return Boolean(isAdmin) || c.createdByUserId === currentUser?.id;
+  };
+
+  const handleDeleteChannel = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await chat.deleteChannel(deleteTarget.id, { isAdmin: Boolean(isAdmin) });
+      toast({ title: 'Channel deleted', description: `#${deleteTarget.name} was removed.` });
+      setDeleteTarget(null);
+    } catch (e: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Could not delete channel',
+        description: e?.message,
+      });
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <div className="h-[calc(100vh-8rem)] min-h-[480px] rounded-2xl border border-border/60 bg-card shadow-sm overflow-hidden flex animate-in fade-in duration-300">
       {/* Left rail */}
@@ -217,18 +255,44 @@ export function ChatView({ store }: { store: any }) {
               <p className="text-xs text-muted-foreground px-2 py-3">Loading…</p>
             )}
             {chat.channels.map((c) => (
-              <button
+              <div
                 key={c.id}
-                type="button"
-                onClick={() => chat.setSelection({ type: 'channel', id: c.id })}
                 className={cn(
-                  'w-full flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-left hover:bg-muted/60',
-                  chat.selection?.type === 'channel' && chat.selection.id === c.id && 'bg-muted font-medium'
+                  'group flex items-center gap-0.5 rounded-lg hover:bg-muted/60',
+                  chat.selection?.type === 'channel' && chat.selection.id === c.id && 'bg-muted'
                 )}
               >
-                {c.isPrivate ? <Lock className="h-3.5 w-3.5 text-muted-foreground" /> : <Hash className="h-3.5 w-3.5 text-muted-foreground" />}
-                <span className="truncate">{c.name}</span>
-              </button>
+                <button
+                  type="button"
+                  onClick={() => chat.setSelection({ type: 'channel', id: c.id })}
+                  className={cn(
+                    'min-w-0 flex-1 flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-left',
+                    chat.selection?.type === 'channel' && chat.selection.id === c.id && 'font-medium'
+                  )}
+                >
+                  {c.isPrivate ? (
+                    <Lock className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  ) : (
+                    <Hash className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  )}
+                  <span className="truncate">{c.name}</span>
+                </button>
+                {canDeleteChannel(c) && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 shrink-0 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive"
+                    title={`Delete #${c.name}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDeleteTarget({ id: c.id, name: c.name });
+                    }}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                )}
+              </div>
             ))}
           </div>
 
@@ -285,12 +349,32 @@ export function ChatView({ store }: { store: any }) {
       <div className="flex-1 flex flex-col min-w-0">
         <div className="h-14 border-b border-border/60 px-4 flex items-center gap-2 shrink-0">
           <MessageSquare className="h-4 w-4 text-muted-foreground" />
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <h2 className="font-semibold truncate">{headerTitle}</h2>
             {activeChannel?.description ? (
               <p className="text-[11px] text-muted-foreground truncate">{activeChannel.description}</p>
             ) : null}
           </div>
+          {activeChannel && canDeleteChannel(activeChannel) && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" title="Channel options">
+                  <MoreVertical className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive"
+                  onSelect={() =>
+                    setDeleteTarget({ id: activeChannel.id, name: activeChannel.name })
+                  }
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Delete channel
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
 
         <ScrollArea className="flex-1 px-4">
@@ -492,6 +576,42 @@ export function ChatView({ store }: { store: any }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => {
+          if (!open && !deleting) setDeleteTarget(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete #{deleteTarget?.name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently removes the channel and all of its messages. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={deleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={(e) => {
+                e.preventDefault();
+                void handleDeleteChannel();
+              }}
+            >
+              {deleting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deleting…
+                </>
+              ) : (
+                'Delete channel'
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

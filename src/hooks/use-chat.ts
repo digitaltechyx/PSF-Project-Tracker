@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   collection,
   doc,
+  getDocs,
   limit,
   orderBy,
   query,
@@ -16,6 +17,7 @@ import {
   useMemoFirebase,
   setDocumentNonBlocking,
   updateDocumentNonBlocking,
+  deleteDocumentNonBlocking,
 } from '@/firebase';
 import { createNotification } from '@/lib/notifications';
 import { dmIdFor, extractMentionUserIds, uploadChatAttachment } from '@/lib/chat-upload';
@@ -173,6 +175,48 @@ export function useChat(opts: {
     [db, workspaceId, currentUser]
   );
 
+  const deleteChannel = useCallback(
+    async (channelId: string, opts?: { isAdmin?: boolean }) => {
+      if (!db || !workspaceId || !currentUser) throw new Error('Not ready');
+      const channel = channels.find((c) => c.id === channelId);
+      if (!channel) throw new Error('Channel not found');
+      if (channel.id === 'general' || channel.name.toLowerCase() === 'general') {
+        throw new Error('The #general channel cannot be deleted.');
+      }
+      const canDelete =
+        Boolean(opts?.isAdmin) || channel.createdByUserId === currentUser.id;
+      if (!canDelete) {
+        throw new Error('Only the channel creator or a workspace admin can delete this channel.');
+      }
+
+      // Remove messages first so the channel is fully cleaned up
+      const messagesCol = collection(
+        db,
+        'workspaces',
+        workspaceId,
+        'channels',
+        channelId,
+        'messages'
+      );
+      const snap = await getDocs(messagesCol);
+      await Promise.all(snap.docs.map((d) => deleteDocumentNonBlocking(d.ref)));
+      await deleteDocumentNonBlocking(
+        doc(db, 'workspaces', workspaceId, 'channels', channelId)
+      );
+
+      if (selection?.type === 'channel' && selection.id === channelId) {
+        const fallback =
+          channels.find(
+            (c) =>
+              c.id !== channelId &&
+              (c.id === 'general' || c.name.toLowerCase() === 'general')
+          ) || channels.find((c) => c.id !== channelId) || null;
+        setSelection(fallback ? { type: 'channel', id: fallback.id } : null);
+      }
+    },
+    [db, workspaceId, currentUser, channels, selection]
+  );
+
   const openDm = useCallback(
     async (otherUserId: string) => {
       if (!db || !workspaceId || !currentUser || otherUserId === currentUser.id) return null;
@@ -306,6 +350,7 @@ export function useChat(opts: {
     selection,
     setSelection,
     createChannel,
+    deleteChannel,
     openDm,
     sendMessage,
   };

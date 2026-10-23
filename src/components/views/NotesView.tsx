@@ -9,8 +9,10 @@ import {
   PinOff,
   Plus,
   Search,
+  Share2,
   Trash2,
   StickyNote,
+  Users,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,6 +21,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -28,6 +31,8 @@ import { useToast } from '@/hooks/use-toast';
 import { noteBodyHasContent, noteHtmlToPlainText, sanitizeNoteHtml } from '@/lib/note-html';
 import { cn } from '@/lib/utils';
 import type { NoteChecklistItem, NoteColor, WorkspaceNote } from '@/lib/types';
+
+type ShareMode = 'everyone' | 'people';
 
 const NOTE_COLORS: { id: NoteColor; label: string; bg: string; border: string }[] = [
   { id: 'default', label: 'Default', bg: 'bg-white', border: 'border-border/70' },
@@ -115,6 +120,14 @@ function SaveStatus({ status }: { status: 'idle' | 'saving' | 'saved' | 'error' 
   );
 }
 
+function noteShareLabel(note: WorkspaceNote, currentUserId?: string) {
+  const shared = note.sharedWithUserIds || [];
+  if (shared.length === 0) return 'Everyone';
+  const others = shared.filter((id) => id !== currentUserId && id !== note.createdByUserId);
+  if (others.length === 0) return 'Only you';
+  return `${others.length} member${others.length === 1 ? '' : 's'}`;
+}
+
 export function NotesView({ store }: { store: any }) {
   const {
     workspaceNotes,
@@ -122,14 +135,22 @@ export function NotesView({ store }: { store: any }) {
     createWorkspaceNote,
     updateWorkspaceNote,
     deleteWorkspaceNote,
+    workspaceMembers,
     currentUser,
     isAdmin,
   } = store;
   const { toast } = useToast();
 
   const notes: WorkspaceNote[] = workspaceNotes || [];
+  const members = workspaceMembers || [];
   const [search, setSearch] = useState('');
   const [showArchived, setShowArchived] = useState(false);
+
+  // Share dialog
+  const [shareNote, setShareNote] = useState<WorkspaceNote | null>(null);
+  const [shareMode, setShareMode] = useState<ShareMode>('everyone');
+  const [shareIds, setShareIds] = useState<string[]>([]);
+  const [shareSaving, setShareSaving] = useState(false);
 
   // Composer
   const [composerOpen, setComposerOpen] = useState(false);
@@ -436,6 +457,57 @@ export function NotesView({ store }: { store: any }) {
   const canEdit = (n: WorkspaceNote) =>
     isAdmin || n.createdByUserId === currentUser?.uid;
 
+  const openShare = (n: WorkspaceNote) => {
+    const shared = n.sharedWithUserIds || [];
+    const isEveryone = shared.length === 0;
+    setShareNote(n);
+    setShareMode(isEveryone ? 'everyone' : 'people');
+    setShareIds(
+      isEveryone
+        ? []
+        : shared.filter((id) => id !== currentUser?.uid && id !== n.createdByUserId)
+    );
+  };
+
+  const handleSaveShare = async () => {
+    if (!shareNote) return;
+    setShareSaving(true);
+    try {
+      const nextIds =
+        shareMode === 'everyone'
+          ? []
+          : Array.from(
+              new Set([
+                shareNote.createdByUserId,
+                ...(currentUser?.uid ? [currentUser.uid] : []),
+                ...shareIds,
+              ])
+            );
+      await updateWorkspaceNote(shareNote.id, { sharedWithUserIds: nextIds });
+      if (editing?.id === shareNote.id) {
+        setEditing({ ...editing, sharedWithUserIds: nextIds });
+      }
+      toast({
+        title: 'Sharing updated',
+        description:
+          shareMode === 'everyone'
+            ? 'Visible to everyone in the workspace.'
+            : shareIds.length
+              ? `Shared with ${shareIds.length} member${shareIds.length === 1 ? '' : 's'}.`
+              : 'Only you can see this note.',
+      });
+      setShareNote(null);
+    } catch (e: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Could not update sharing',
+        description: e?.message,
+      });
+    } finally {
+      setShareSaving(false);
+    }
+  };
+
   const NoteCard = ({ note }: { note: WorkspaceNote }) => {
     const c = colorClasses(note.color);
     const checklist = note.checklist || [];
@@ -452,6 +524,18 @@ export function NotesView({ store }: { store: any }) {
         <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition group-hover:opacity-100">
           {canEdit(note) && (
             <>
+              <span
+                role="button"
+                tabIndex={0}
+                className="rounded-full bg-white/80 p-1.5 shadow-sm hover:bg-white"
+                title="Share"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openShare(note);
+                }}
+              >
+                <Share2 className="h-3.5 w-3.5" />
+              </span>
               <span
                 role="button"
                 tabIndex={0}
@@ -484,7 +568,7 @@ export function NotesView({ store }: { store: any }) {
           <Pin className="mb-2 h-3.5 w-3.5 text-slate-600" />
         )}
         {note.title ? (
-          <h4 className="pr-14 text-sm font-semibold text-slate-900">{note.title}</h4>
+          <h4 className="pr-20 text-sm font-semibold text-slate-900">{note.title}</h4>
         ) : null}
         {noteBodyHasContent(note.body) ? (
           <NoteHtmlPreview html={note.body} className={cn(note.title && 'mt-2')} />
@@ -512,9 +596,13 @@ export function NotesView({ store }: { store: any }) {
             )}
           </ul>
         )}
-        <p className="mt-3 text-[10px] text-slate-500">
-          {note.createdByName}
-        </p>
+        <div className="mt-3 flex items-center justify-between gap-2 text-[10px] text-slate-500">
+          <span className="truncate">{note.createdByName}</span>
+          <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-white/70 px-1.5 py-0.5">
+            <Users className="h-2.5 w-2.5" />
+            {noteShareLabel(note, currentUser?.uid)}
+          </span>
+        </div>
       </button>
     );
   };
@@ -538,7 +626,7 @@ export function NotesView({ store }: { store: any }) {
         <div>
           <h2 className="text-xl font-semibold tracking-tight">Notes</h2>
           <p className="text-sm text-muted-foreground">
-            Keep-style sticky notes — changes autosave as you type.
+            Sticky notes with autosave — share any note with workspace members.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -818,7 +906,12 @@ export function NotesView({ store }: { store: any }) {
               )}
               {canEdit(editing) && <ColorPicker value={editColor} onChange={setEditColor} />}
               <div className="flex items-center justify-between gap-2">
-                <p className="text-xs text-slate-600">By {editing.createdByName}</p>
+                <p className="text-xs text-slate-600">
+                  By {editing.createdByName}
+                  <span className="ml-2 text-slate-500">
+                    · {noteShareLabel(editing, currentUser?.uid)}
+                  </span>
+                </p>
                 <SaveStatus status={editStatus} />
               </div>
             </div>
@@ -827,6 +920,15 @@ export function NotesView({ store }: { store: any }) {
             <div className="flex gap-1">
               {editing && canEdit(editing) && (
                 <>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    title="Share"
+                    onClick={() => openShare(editing)}
+                  >
+                    <Share2 className="h-4 w-4" />
+                  </Button>
                   <Button
                     type="button"
                     variant="ghost"
@@ -878,6 +980,113 @@ export function NotesView({ store }: { store: any }) {
             </div>
             <Button type="button" onClick={() => void closeEdit()}>
               Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!shareNote}
+        onOpenChange={(open) => {
+          if (!open && !shareSaving) setShareNote(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Share note</DialogTitle>
+            <DialogDescription>
+              Choose who in this workspace can see
+              {shareNote?.title ? ` “${shareNote.title}”` : ' this note'}.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-1">
+            <label
+              className={cn(
+                'flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-2.5',
+                shareMode === 'everyone' ? 'border-primary/40 bg-primary/5' : 'border-border/60'
+              )}
+            >
+              <input
+                type="radio"
+                className="mt-1"
+                checked={shareMode === 'everyone'}
+                onChange={() => setShareMode('everyone')}
+              />
+              <div>
+                <p className="text-sm font-medium">Everyone in workspace</p>
+                <p className="text-xs text-muted-foreground">All members can view this note.</p>
+              </div>
+            </label>
+
+            <label
+              className={cn(
+                'flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-2.5',
+                shareMode === 'people' ? 'border-primary/40 bg-primary/5' : 'border-border/60'
+              )}
+            >
+              <input
+                type="radio"
+                className="mt-1"
+                checked={shareMode === 'people'}
+                onChange={() => setShareMode('people')}
+              />
+              <div>
+                <p className="text-sm font-medium">Specific people</p>
+                <p className="text-xs text-muted-foreground">
+                  Only selected members (plus you). Leave none selected for only you.
+                </p>
+              </div>
+            </label>
+
+            {shareMode === 'people' && (
+              <div className="max-h-56 space-y-2 overflow-y-auto rounded-xl border border-border/60 p-2">
+                {members.filter((m: any) => m.userId !== currentUser?.uid).length === 0 ? (
+                  <p className="px-2 py-4 text-center text-xs text-muted-foreground">
+                    No other members in this workspace yet.
+                  </p>
+                ) : (
+                  members
+                    .filter((m: any) => m.userId !== currentUser?.uid)
+                    .map((m: any) => {
+                      const checked = shareIds.includes(m.userId);
+                      return (
+                        <label
+                          key={m.userId}
+                          className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-muted/50"
+                        >
+                          <Checkbox
+                            checked={checked}
+                            onCheckedChange={(v) =>
+                              setShareIds((ids) =>
+                                v ? [...ids, m.userId] : ids.filter((id) => id !== m.userId)
+                              )
+                            }
+                          />
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium">{m.displayName}</p>
+                            <p className="truncate text-xs text-muted-foreground">{m.email}</p>
+                          </div>
+                        </label>
+                      );
+                    })
+                )}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={shareSaving}
+              onClick={() => setShareNote(null)}
+            >
+              Cancel
+            </Button>
+            <Button type="button" disabled={shareSaving} onClick={() => void handleSaveShare()}>
+              {shareSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Save sharing
             </Button>
           </DialogFooter>
         </DialogContent>

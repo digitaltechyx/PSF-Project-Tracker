@@ -245,8 +245,14 @@ service cloud.firestore {
           allow read: if canAccessChannelMessages();
           allow create: if canAccessChannelMessages()
             && request.resource.data.authorUserId == request.auth.uid;
-          allow update, delete: if canAccessChannelMessages()
+          allow update: if canAccessChannelMessages()
             && resource.data.authorUserId == request.auth.uid;
+          // Author, workspace admin, or channel creator (needed to delete a channel + its messages)
+          allow delete: if canAccessChannelMessages() && (
+            resource.data.authorUserId == request.auth.uid
+            || isWorkspaceAdmin(workspaceId)
+            || get(/databases/$(database)/documents/workspaces/$(workspaceId)/channels/$(channelId)).data.createdByUserId == request.auth.uid
+          );
         }
       }
 
