@@ -62,13 +62,14 @@ import { TargetsView } from './views/TargetsView';
 import { ChatView } from './views/ChatView';
 import { DocsView } from './views/DocsView';
 import { NotesView } from './views/NotesView';
+import { ProgramDashboardView } from './views/ProgramDashboardView';
 import { InviteMembersModal } from './invitations/InviteMembersModal';
 import { NotificationBell } from './notifications/NotificationBell';
 import { EditWorkspaceModal } from './workspaces/EditWorkspaceModal';
 import { DeleteWorkspaceButton } from './workspaces/DeleteWorkspaceButton';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 
-type ViewType = 'dashboard' | 'project' | 'members' | 'my-tasks' | 'notifications' | 'attendance' | 'targets' | 'chat' | 'docs' | 'notes';
+type ViewType = 'dashboard' | 'program' | 'project' | 'members' | 'my-tasks' | 'notifications' | 'attendance' | 'targets' | 'chat' | 'docs' | 'notes';
 
 export function NexusShell() {
   const store = useNexusStore();
@@ -104,8 +105,15 @@ export function NexusShell() {
   }, [currentView, store.canAccessTargets]);
 
   const handleNavClick = (view: ViewType) => {
-    if (view !== 'project') store.selectProject(null);
+    if (view !== 'project' && view !== 'program') store.selectProject(null);
     setCurrentView(view);
+    setMobileNavOpen(false);
+  };
+
+  const handleProgramClick = (id: string) => {
+    store.selectProgram(id);
+    setExpandedProgramIds((prev) => ({ ...prev, [id]: true }));
+    setCurrentView('program');
     setMobileNavOpen(false);
   };
 
@@ -383,12 +391,9 @@ export function NexusShell() {
                       </button>
                       <Button
                         variant="ghost"
-                        data-active={store.activeProgramId === prog.id}
+                        data-active={store.activeProgramId === prog.id && currentView === 'program'}
                         className="sidebar-nav-btn font-medium flex-1 min-w-0"
-                        onClick={() => {
-                          store.selectProgram(prog.id);
-                          setExpandedProgramIds((prev) => ({ ...prev, [prog.id]: true }));
-                        }}
+                        onClick={() => handleProgramClick(prog.id)}
                       >
                         <Layers className="h-4 w-4 shrink-0" style={{ color: prog.color }} />
                         <span className="truncate">{prog.name}</span>
@@ -480,12 +485,13 @@ export function NexusShell() {
                currentView === 'chat' ? 'Chat' :
                currentView === 'docs' ? 'Docs' :
                currentView === 'notes' ? 'Notes' :
+               currentView === 'program' ? (store.activeProgram?.name || 'Program') :
                store.activeProject?.name || 'Project'}
               </h1>
             </div>
           </div>
           <div className="flex items-center gap-2 md:gap-3">
-            {currentView !== 'dashboard' && currentView !== 'notifications' && currentView !== 'members' && currentView !== 'attendance' && currentView !== 'targets' && currentView !== 'chat' && currentView !== 'docs' && currentView !== 'notes' && (
+            {currentView !== 'dashboard' && currentView !== 'program' && currentView !== 'notifications' && currentView !== 'members' && currentView !== 'attendance' && currentView !== 'targets' && currentView !== 'chat' && currentView !== 'docs' && currentView !== 'notes' && (
               <div className="relative w-40 sm:w-64 animate-in fade-in duration-300">
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input 
@@ -509,8 +515,16 @@ export function NexusShell() {
             <DashboardView
               store={store}
               onNavigateToProject={handleProjectClick}
+              onNavigateToProgram={handleProgramClick}
               onNavigateToTask={handleNavigateToTask}
               onNavigateToTargets={() => handleNavClick('targets')}
+            />
+          )}
+          {currentView === 'program' && (
+            <ProgramDashboardView
+              store={store}
+              onNavigateToProject={handleProjectClick}
+              onCreateProject={(programId) => openCreateProject(programId)}
             />
           )}
           {currentView === 'project' && <ProjectView store={store} />}
@@ -601,8 +615,9 @@ export function NexusShell() {
                         </button>
                         <Button
                           variant="ghost"
+                          data-active={store.activeProgramId === prog.id && currentView === 'program'}
                           className="sidebar-nav-btn font-medium flex-1 min-w-0"
-                          onClick={() => store.selectProgram(prog.id)}
+                          onClick={() => handleProgramClick(prog.id)}
                         >
                           <Layers className="h-4 w-4" style={{ color: prog.color }} />
                           <span className="truncate">{prog.name}</span>

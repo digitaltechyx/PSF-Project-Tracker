@@ -472,7 +472,7 @@ export function useNexusStore() {
   );
 
   const deleteProgram = useCallback(
-    async (programId: string) => {
+    async (programId: string, opts?: { moveProjectsTo?: string | null }) => {
       const wsId = activeWorkspace?.id;
       if (!db || !wsId || !isAdmin || !user) throw new Error('Only admins can delete programs.');
       const program = programs.find((p) => p.id === programId);
@@ -481,13 +481,31 @@ export function useNexusStore() {
         throw new Error('Keep at least one program in the workspace.');
       }
       const childProjects = projects.filter((p) => p.programId === programId);
+      const moveTo = opts?.moveProjectsTo || null;
       if (childProjects.length > 0) {
-        throw new Error('Move or delete projects in this program first.');
+        if (!moveTo || moveTo === programId) {
+          throw new Error('Choose another program to move these projects into, then delete.');
+        }
+        if (!programs.some((p) => p.id === moveTo)) {
+          throw new Error('Target program not found.');
+        }
+        const now = new Date().toISOString();
+        await Promise.all(
+          childProjects.map((p) =>
+            updateDocumentNonBlocking(doc(db, 'workspaces', wsId, 'projects', p.id), {
+              programId: moveTo,
+              updatedAt: now,
+            })
+          )
+        );
       }
       await deleteDocumentNonBlocking(doc(db, 'workspaces', wsId, 'programs', programId));
       if (activeProgramId === programId) {
-        const fallback = programs.find((p) => p.id !== programId);
+        const fallback =
+          (moveTo && programs.find((p) => p.id === moveTo)) ||
+          programs.find((p) => p.id !== programId);
         setActiveProgramId(fallback?.id || null);
+        setActiveProjectId(null);
       }
     },
     [db, activeWorkspace?.id, isAdmin, user, programs, projects, activeProgramId]

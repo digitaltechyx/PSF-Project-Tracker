@@ -5,6 +5,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { 
   CheckCircle2, 
+  Layers,
   Loader2,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -14,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { TodayCard } from '@/components/dashboard/TodayCard';
 import { TimeTrackingWidget } from '@/components/dashboard/TimeTrackingWidget';
 import { DashboardKpiScoreboard } from '@/components/dashboard/DashboardKpiScoreboard';
+import { MemberWorkloadBoard } from '@/components/dashboard/MemberWorkloadBoard';
 import { TaskDetailPanel } from '@/components/tasks/TaskDetailPanel';
 import { getTaskPipelineInfo, isTaskClosed } from '@/lib/pipelines';
 import { getDateKeyInTimeZone, resolveWorkspaceTimezone } from '@/lib/timezone';
@@ -48,17 +50,20 @@ function targetStatusClass(status?: TargetStatus | string) {
 export function DashboardView({
   store,
   onNavigateToProject,
+  onNavigateToProgram,
   onNavigateToTask,
   onNavigateToTargets,
 }: {
   store: any;
   onNavigateToProject: (id: string) => void;
+  onNavigateToProgram?: (id: string) => void;
   onNavigateToTask?: (wsId: string, projId: string, taskId: string) => void;
   onNavigateToTargets?: () => void;
 }) {
   const {
     allWorkspaceTasks,
     workspaceProjects,
+    workspacePrograms,
     workspaceTargets,
     canAccessTargets,
     activeWorkspace,
@@ -84,6 +89,7 @@ export function DashboardView({
       return String(t.dueDate).slice(0, 10) === todayKey;
     }).length;
     return {
+      totalPrograms: (workspacePrograms || []).length,
       totalProjects: workspaceProjects.length,
       totalTasks: tasks.length,
       doneTasks,
@@ -94,7 +100,27 @@ export function DashboardView({
       ).length,
       urgent: tasks.filter((t: any) => t.priority === 'urgent' && !isTaskClosed(t, workspaceProjects)).length,
     };
-  }, [allWorkspaceTasks, workspaceProjects, timeZone]);
+  }, [allWorkspaceTasks, workspaceProjects, workspacePrograms, timeZone]);
+
+  const programSummaries = useMemo(() => {
+    const programs = workspacePrograms || [];
+    return programs.map((prog: any) => {
+      const projects = (workspaceProjects || []).filter((p: any) => p.programId === prog.id);
+      const projectIds = new Set(projects.map((p: any) => p.id));
+      const tasks = (allWorkspaceTasks || []).filter((t: any) => projectIds.has(t.projectId));
+      const done = tasks.filter((t: any) => isTaskClosed(t, workspaceProjects)).length;
+      const total = tasks.length;
+      return {
+        id: prog.id,
+        name: prog.name,
+        color: prog.color,
+        projectCount: projects.length,
+        done,
+        total,
+        progress: total > 0 ? (done / total) * 100 : 0,
+      };
+    });
+  }, [workspacePrograms, workspaceProjects, allWorkspaceTasks]);
 
   const targetStats = useMemo(() => {
     const targets: Target[] = workspaceTargets || [];
@@ -162,7 +188,8 @@ export function DashboardView({
           {store.currentUser?.name ? `, ${store.currentUser.name.split(' ')[0]}` : ''}
         </h2>
         <p className="text-sm text-muted-foreground">
-          {activeWorkspace?.name} · {stats.totalTasks} tasks across {stats.totalProjects} projects
+          {activeWorkspace?.name} · {stats.totalPrograms} programs · {stats.totalProjects} projects ·{' '}
+          {stats.totalTasks} tasks
           {canAccessTargets ? ` · ${targetStats.total} targets` : ''}
         </p>
       </div>
@@ -173,6 +200,7 @@ export function DashboardView({
         workspaceName={activeWorkspace?.name}
         showTargets={!!canAccessTargets}
         delivery={{
+          programs: stats.totalPrograms,
           projects: stats.totalProjects,
           tasks: stats.totalTasks,
           open: stats.active,
@@ -196,6 +224,12 @@ export function DashboardView({
         }
       />
 
+      <MemberWorkloadBoard
+        store={store}
+        onNavigateToProgram={onNavigateToProgram}
+        onNavigateToProject={onNavigateToProject}
+      />
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Card className="shadow-sm border border-border/50 lg:col-span-2">
           <CardHeader className="flex items-center justify-between flex-row">
@@ -207,6 +241,10 @@ export function DashboardView({
               {recentTasks.map((task: any) => {
                 const pipeline = getTaskPipelineInfo(task, workspaceProjects);
                 const closed = isTaskClosed(task, workspaceProjects);
+                const project = workspaceProjects.find((p: any) => p.id === task.projectId);
+                const program = (workspacePrograms || []).find(
+                  (pr: any) => pr.id === project?.programId
+                );
                 return (
                 <div
                   key={task.id}
@@ -242,7 +280,21 @@ export function DashboardView({
                       <Badge variant="outline" className="text-[10px] uppercase font-bold py-0 h-5">
                         {task.priority}
                       </Badge>
-                      <span className="text-xs text-muted-foreground">in</span>
+                      {program && (
+                        <>
+                          <span className="text-xs text-muted-foreground">in</span>
+                          <span
+                            className="text-xs font-medium underline hover:text-primary transition-colors"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onNavigateToProgram?.(program.id);
+                            }}
+                          >
+                            {program.name}
+                          </span>
+                          <span className="text-xs text-muted-foreground">/</span>
+                        </>
+                      )}
                       <span 
                         className="text-xs font-medium underline hover:text-primary transition-colors"
                         onClick={(e) => {
@@ -250,7 +302,7 @@ export function DashboardView({
                           onNavigateToProject(task.projectId);
                         }}
                       >
-                        {workspaceProjects.find((p: any) => p.id === task.projectId)?.name || 'Unknown Project'}
+                        {project?.name || 'Unknown Project'}
                       </span>
                     </div>
                   </div>
@@ -274,33 +326,32 @@ export function DashboardView({
 
         <Card className="shadow-sm border border-border/50">
           <CardHeader>
-            <CardTitle className="text-base font-semibold">Projects</CardTitle>
+            <CardTitle className="text-base font-semibold">Programs</CardTitle>
+            <p className="text-xs text-muted-foreground">Progress by program</p>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {workspaceProjects.map((project: any) => {
-                const projectTasks = allWorkspaceTasks.filter((t: any) => t.projectId === project.id);
-                const done = projectTasks.filter((t: any) => isTaskClosed(t, workspaceProjects)).length;
-                const total = projectTasks.length;
-                const progress = total > 0 ? (done / total) * 100 : 0;
-                
-                return (
-                  <div 
-                    key={project.id} 
-                    className="space-y-2 cursor-pointer group"
-                    onClick={() => onNavigateToProject(project.id)}
-                  >
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm font-medium group-hover:text-primary transition-colors">{project.name}</span>
-                      <span className="text-xs text-muted-foreground">{done}/{total}</span>
-                    </div>
-                    <Progress value={progress} className="h-1.5" />
+              {programSummaries.map((prog) => (
+                <div
+                  key={prog.id}
+                  className="space-y-2 cursor-pointer group"
+                  onClick={() => onNavigateToProgram?.(prog.id)}
+                >
+                  <div className="flex justify-between items-center gap-2">
+                    <span className="inline-flex min-w-0 items-center gap-2 text-sm font-medium group-hover:text-primary transition-colors">
+                      <Layers className="h-3.5 w-3.5 shrink-0" style={{ color: prog.color }} />
+                      <span className="truncate">{prog.name}</span>
+                    </span>
+                    <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                      {prog.projectCount} proj · {prog.done}/{prog.total}
+                    </span>
                   </div>
-                );
-              })}
-              {workspaceProjects.length === 0 && (
+                  <Progress value={prog.progress} className="h-1.5" />
+                </div>
+              ))}
+              {programSummaries.length === 0 && (
                 <div className="text-center py-6 text-sm text-muted-foreground italic">
-                  No projects created yet.
+                  No programs created yet.
                 </div>
               )}
             </div>

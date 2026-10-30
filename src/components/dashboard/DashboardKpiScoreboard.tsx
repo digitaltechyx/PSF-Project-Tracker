@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   Crosshair,
   FolderKanban,
+  Layers,
   ListTodo,
   TrendingUp,
 } from 'lucide-react';
@@ -160,6 +161,7 @@ export function DashboardKpiScoreboard({
   workspaceName,
 }: {
   delivery: {
+    programs?: number;
     projects: number;
     tasks: number;
     open: number;
@@ -209,8 +211,8 @@ export function DashboardKpiScoreboard({
               {workspaceName ? `${workspaceName} analytics` : 'Delivery analytics'}
             </h3>
             <p className="mt-1 max-w-xl text-sm leading-6 text-slate-600">
-              Live KPIs for tasks, projects
-              {showTargets ? ', and targets' : ''} — so the team can see progress and risk at a glance.
+              Live KPIs across programs → projects → tasks
+              {showTargets ? ', plus targets' : ''} — progress and risk at a glance.
             </p>
           </div>
 
@@ -245,11 +247,18 @@ export function DashboardKpiScoreboard({
               {delivery.dueToday} due today · {critical} critical
             </p>
           </div>
-          <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
+            <KpiTile
+              label="Programs"
+              value={delivery.programs ?? 0}
+              hint="Top-level work streams"
+              icon={Layers}
+              tone="violet"
+            />
             <KpiTile
               label="Projects"
               value={delivery.projects}
-              hint="Active workspace projects"
+              hint="Across all programs"
               icon={FolderKanban}
               tone="blue"
             />
