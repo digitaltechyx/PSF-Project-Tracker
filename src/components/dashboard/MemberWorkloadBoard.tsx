@@ -77,11 +77,7 @@ export function MemberWorkloadBoard({
         }
         // Programs explicitly assigned to this member
         for (const prog of programs) {
-          const assignees: string[] = prog.assigneeUserIds || [];
-          if (
-            assignees.includes(m.userId) ||
-            prog.createdByUserId === m.userId
-          ) {
+          if ((prog.assigneeUserIds || []).includes(m.userId)) {
             programIdSet.add(prog.id);
           }
         }
@@ -91,9 +87,7 @@ export function MemberWorkloadBoard({
           .map((programId) => {
             const prog = programById.get(programId) as any;
             if (!prog) return null;
-            const isProgramAssignee =
-              (prog.assigneeUserIds || []).includes(m.userId) ||
-              prog.createdByUserId === m.userId;
+            const isProgramAssignee = (prog.assigneeUserIds || []).includes(m.userId);
             const projectsInProgram = projects.filter((p: any) => p.programId === programId);
             const relatedProjectIds = isProgramAssignee
               ? projectsInProgram.map((p: any) => p.id)

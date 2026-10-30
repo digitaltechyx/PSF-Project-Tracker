@@ -164,18 +164,11 @@ export function ProgramDashboardView({
 
   const assignedMembers = useMemo(() => {
     const ids = new Set(activeProgram?.assigneeUserIds || []);
-    if (activeProgram?.createdByUserId) ids.add(activeProgram.createdByUserId);
     return (workspaceMembers || []).filter((m: any) => ids.has(m.userId));
   }, [activeProgram, workspaceMembers]);
 
   const handleToggleAssignee = (userId: string) => {
     if (!activeProgram || !isAdmin) return;
-    const member = (workspaceMembers || []).find((m: any) => m.userId === userId);
-    const isSystemAdmin = member?.role === 'owner' || member?.role === 'lead';
-    const isCreator = Boolean(
-      activeProgram.createdByUserId && userId === activeProgram.createdByUserId
-    );
-    if (isSystemAdmin || isCreator) return;
     const current: string[] = activeProgram.assigneeUserIds || [];
     const next = current.includes(userId)
       ? current.filter((id: string) => id !== userId)
@@ -315,10 +308,9 @@ export function ProgramDashboardView({
                         activeProgram.createdByUserId &&
                           m.userId === activeProgram.createdByUserId
                       );
-                      const locked = isSystemAdmin || isCreator;
-                      const assigned =
-                        locked ||
-                        (activeProgram.assigneeUserIds || []).includes(m.userId);
+                      const assigned = (activeProgram.assigneeUserIds || []).includes(
+                        m.userId
+                      );
                       return (
                         <div
                           key={m.userId}
@@ -338,7 +330,6 @@ export function ProgramDashboardView({
                           </div>
                           <Checkbox
                             checked={assigned}
-                            disabled={locked}
                             onCheckedChange={() => handleToggleAssignee(m.userId)}
                           />
                         </div>

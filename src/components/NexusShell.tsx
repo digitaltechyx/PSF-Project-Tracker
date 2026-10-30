@@ -150,8 +150,6 @@ export function NexusShell() {
   };
 
   const toggleNewProgAssignee = (userId: string) => {
-    const me = store.currentUser?.id || '';
-    if (userId === me) return;
     setNewProgAssignees((prev) =>
       prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]
     );
@@ -740,9 +738,7 @@ export function NexusShell() {
               </p>
               <div className="max-h-48 space-y-1 overflow-y-auto rounded-xl border border-border/60 p-2">
                 {(store.workspaceMembers || []).map((m: any) => {
-                  const me = store.currentUser?.id || '';
-                  const locked = m.userId === me;
-                  const checked = locked || newProgAssignees.includes(m.userId);
+                  const checked = newProgAssignees.includes(m.userId);
                   return (
                     <div
                       key={m.userId}
@@ -759,7 +755,6 @@ export function NexusShell() {
                       </div>
                       <Checkbox
                         checked={checked}
-                        disabled={locked}
                         onCheckedChange={() => toggleNewProgAssignee(m.userId)}
                       />
                     </div>

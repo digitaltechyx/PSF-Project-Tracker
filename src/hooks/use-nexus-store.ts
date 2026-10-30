@@ -447,9 +447,9 @@ export function useNexusStore() {
       if (!name) throw new Error('Program name required');
       const ref = doc(collection(db, 'workspaces', wsId, 'programs'));
       const now = new Date().toISOString();
-      const assignees = Array.from(
-        new Set([...(opts.assigneeUserIds || []).filter(Boolean), user.uid])
-      );
+      const requested = Array.from(new Set((opts.assigneeUserIds || []).filter(Boolean)));
+      // Default to creator only when nobody was selected.
+      const assignees = requested.length > 0 ? requested : [user.uid];
       const program: Program = {
         id: ref.id,
         workspaceId: wsId,
