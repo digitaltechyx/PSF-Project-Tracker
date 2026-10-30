@@ -52,6 +52,7 @@ import {
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
 import { DashboardView } from './views/DashboardView';
 import { ProjectView } from './views/ProjectView';
 import { MembersView } from './views/MembersView';
@@ -89,6 +90,7 @@ export function NexusShell() {
   const [newWsDesc, setNewWsDesc] = useState('');
   const [newProgName, setNewProgName] = useState('');
   const [newProgDesc, setNewProgDesc] = useState('');
+  const [newProgAssignees, setNewProgAssignees] = useState<string[]>([]);
   const [newProjName, setNewProjName] = useState('');
   const [newProjDesc, setNewProjDesc] = useState('');
   const [newProjProgramId, setNewProjProgramId] = useState('');
@@ -141,12 +143,31 @@ export function NexusShell() {
     }
   };
 
+  const openCreateProgram = () => {
+    const me = store.currentUser?.id || '';
+    setNewProgAssignees(me ? [me] : []);
+    setIsProgDialogOpen(true);
+  };
+
+  const toggleNewProgAssignee = (userId: string) => {
+    const me = store.currentUser?.id || '';
+    if (userId === me) return;
+    setNewProgAssignees((prev) =>
+      prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]
+    );
+  };
+
   const handleCreateProgram = async () => {
     if (!newProgName.trim()) return;
     try {
-      await store.createProgram({ name: newProgName, description: newProgDesc });
+      await store.createProgram({
+        name: newProgName,
+        description: newProgDesc,
+        assigneeUserIds: newProgAssignees,
+      });
       setNewProgName('');
       setNewProgDesc('');
+      setNewProgAssignees([]);
       setIsProgDialogOpen(false);
     } catch (e: any) {
       console.error(e);
@@ -359,7 +380,7 @@ export function NexusShell() {
                   size="icon"
                   className="h-5 w-5 text-white/50 hover:bg-white/10 hover:text-white"
                   title="New program"
-                  onClick={() => setIsProgDialogOpen(true)}
+                  onClick={openCreateProgram}
                 >
                   <Plus className="h-3 w-3" />
                 </Button>
@@ -594,7 +615,7 @@ export function NexusShell() {
                       variant="ghost"
                       size="icon"
                       className="h-5 w-5 text-white/50 hover:bg-white/10 hover:text-white"
-                      onClick={() => setIsProgDialogOpen(true)}
+                      onClick={openCreateProgram}
                     >
                       <Plus className="h-3 w-3" />
                     </Button>
@@ -686,7 +707,7 @@ export function NexusShell() {
       </Dialog>
 
       <Dialog open={isProgDialogOpen} onOpenChange={setIsProgDialogOpen}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-[480px]">
           <DialogHeader>
             <DialogTitle>Create program</DialogTitle>
             <DialogDescription>
@@ -711,6 +732,45 @@ export function NexusShell() {
                 value={newProgDesc}
                 onChange={(e) => setNewProgDesc(e.target.value)}
               />
+            </div>
+            <div className="space-y-2">
+              <Label>Assign to</Label>
+              <p className="text-xs text-muted-foreground">
+                Select members responsible for this program.
+              </p>
+              <div className="max-h-48 space-y-1 overflow-y-auto rounded-xl border border-border/60 p-2">
+                {(store.workspaceMembers || []).map((m: any) => {
+                  const me = store.currentUser?.id || '';
+                  const locked = m.userId === me;
+                  const checked = locked || newProgAssignees.includes(m.userId);
+                  return (
+                    <div
+                      key={m.userId}
+                      className="flex items-center justify-between rounded-lg px-2 py-1.5 hover:bg-muted/50"
+                    >
+                      <div className="flex min-w-0 items-center gap-2">
+                        <Avatar className="h-7 w-7">
+                          <AvatarImage src={m.avatarUrl || undefined} />
+                          <AvatarFallback className="text-[10px]">
+                            {(m.displayName || '?').charAt(0)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="truncate text-sm">{m.displayName}</span>
+                      </div>
+                      <Checkbox
+                        checked={checked}
+                        disabled={locked}
+                        onCheckedChange={() => toggleNewProgAssignee(m.userId)}
+                      />
+                    </div>
+                  );
+                })}
+                {(store.workspaceMembers || []).length === 0 && (
+                  <p className="py-4 text-center text-xs text-muted-foreground">
+                    No members yet — you will be assigned as creator.
+                  </p>
+                )}
+              </div>
             </div>
           </div>
           <DialogFooter>

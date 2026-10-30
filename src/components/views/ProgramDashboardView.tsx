@@ -11,10 +11,13 @@ import {
   Plus,
   Trash2,
   Loader2,
+  Users,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,6 +28,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
 import {
   Select,
   SelectContent,
@@ -95,9 +106,11 @@ export function ProgramDashboardView({
     projectsInActiveProgram,
     workspaceProjects,
     allWorkspaceTasks,
+    workspaceMembers,
     isAdmin,
     deleteProgram,
     updateProgram,
+    updateProgramAssignees,
     activeWorkspace,
     workspaceTimezone,
   } = store;
@@ -109,6 +122,7 @@ export function ProgramDashboardView({
   const [deleting, setDeleting] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
+  const [assigneesOpen, setAssigneesOpen] = useState(false);
 
   const programProjects = projectsInActiveProgram || [];
   const programIds = useMemo(
@@ -147,6 +161,27 @@ export function ProgramDashboardView({
     () => (workspacePrograms || []).filter((p: any) => p.id !== activeProgram?.id),
     [workspacePrograms, activeProgram?.id]
   );
+
+  const assignedMembers = useMemo(() => {
+    const ids = new Set(activeProgram?.assigneeUserIds || []);
+    if (activeProgram?.createdByUserId) ids.add(activeProgram.createdByUserId);
+    return (workspaceMembers || []).filter((m: any) => ids.has(m.userId));
+  }, [activeProgram, workspaceMembers]);
+
+  const handleToggleAssignee = (userId: string) => {
+    if (!activeProgram || !isAdmin) return;
+    const member = (workspaceMembers || []).find((m: any) => m.userId === userId);
+    const isSystemAdmin = member?.role === 'owner' || member?.role === 'lead';
+    const isCreator = Boolean(
+      activeProgram.createdByUserId && userId === activeProgram.createdByUserId
+    );
+    if (isSystemAdmin || isCreator) return;
+    const current: string[] = activeProgram.assigneeUserIds || [];
+    const next = current.includes(userId)
+      ? current.filter((id: string) => id !== userId)
+      : [...current, userId];
+    updateProgramAssignees(activeProgram.id, next);
+  };
 
   if (!activeProgram) {
     return (
@@ -237,10 +272,86 @@ export function ProgramDashboardView({
             {activeProgram.description ||
               'Projects and tasks under this program. Create projects here to keep work grouped.'}
           </p>
+          {assignedMembers.length > 0 && (
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <span className="text-xs font-medium text-muted-foreground">Assigned</span>
+              <div className="flex -space-x-2">
+                {assignedMembers.slice(0, 6).map((m: any) => (
+                  <Avatar key={m.userId} className="h-7 w-7 border-2 border-background" title={m.displayName}>
+                    <AvatarImage src={m.avatarUrl || undefined} />
+                    <AvatarFallback className="text-[10px]">
+                      {(m.displayName || '?').charAt(0)}
+                    </AvatarFallback>
+                  </Avatar>
+                ))}
+              </div>
+              {assignedMembers.length > 6 && (
+                <span className="text-xs text-muted-foreground">+{assignedMembers.length - 6}</span>
+              )}
+            </div>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {isAdmin && (
             <>
+              <Dialog open={assigneesOpen} onOpenChange={setAssigneesOpen}>
+                <DialogTrigger asChild>
+                  <Button variant="outline" className="gap-1.5">
+                    <Users className="h-4 w-4" />
+                    Assign
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-[420px]">
+                  <DialogHeader>
+                    <DialogTitle>Assign program</DialogTitle>
+                    <DialogDescription>
+                      Choose who owns or leads this program. Assigned members show on the main dashboard workload.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="max-h-[400px] space-y-2 overflow-y-auto py-2">
+                    {(workspaceMembers || []).map((m: any) => {
+                      const isSystemAdmin = m.role === 'owner' || m.role === 'lead';
+                      const isCreator = Boolean(
+                        activeProgram.createdByUserId &&
+                          m.userId === activeProgram.createdByUserId
+                      );
+                      const locked = isSystemAdmin || isCreator;
+                      const assigned =
+                        locked ||
+                        (activeProgram.assigneeUserIds || []).includes(m.userId);
+                      return (
+                        <div
+                          key={m.userId}
+                          className="flex items-center justify-between rounded-xl p-2.5 transition-colors hover:bg-muted/50"
+                        >
+                          <div className="flex min-w-0 items-center gap-3">
+                            <Avatar className="h-8 w-8">
+                              <AvatarImage src={m.avatarUrl || undefined} />
+                              <AvatarFallback>{m.displayName?.charAt(0)}</AvatarFallback>
+                            </Avatar>
+                            <div className="flex min-w-0 flex-col">
+                              <span className="truncate text-sm font-medium">{m.displayName}</span>
+                              <span className="text-[10px] uppercase text-muted-foreground">
+                                {isCreator ? 'creator' : isSystemAdmin ? 'admin' : 'member'}
+                              </span>
+                            </div>
+                          </div>
+                          <Checkbox
+                            checked={assigned}
+                            disabled={locked}
+                            onCheckedChange={() => handleToggleAssignee(m.userId)}
+                          />
+                        </div>
+                      );
+                    })}
+                    {(workspaceMembers || []).length === 0 && (
+                      <p className="py-6 text-center text-sm text-muted-foreground">
+                        No workspace members yet.
+                      </p>
+                    )}
+                  </div>
+                </DialogContent>
+              </Dialog>
               <Button
                 variant="outline"
                 className="gap-1.5"

@@ -154,6 +154,7 @@ export function useNexusStore() {
             name: 'General',
             description: 'Default program for existing projects',
             color: '#64748b',
+            assigneeUserIds: [user.uid],
             createdByUserId: user.uid,
             createdAt: now,
             updatedAt: now,
@@ -434,19 +435,28 @@ export function useNexusStore() {
   }, []);
 
   const createProgram = useCallback(
-    async (opts: { name: string; description?: string; color?: string }) => {
+    async (opts: {
+      name: string;
+      description?: string;
+      color?: string;
+      assigneeUserIds?: string[];
+    }) => {
       const wsId = activeWorkspace?.id;
       if (!db || !wsId || !user || !isAdmin) throw new Error('Only admins can create programs.');
       const name = opts.name.trim();
       if (!name) throw new Error('Program name required');
       const ref = doc(collection(db, 'workspaces', wsId, 'programs'));
       const now = new Date().toISOString();
+      const assignees = Array.from(
+        new Set([...(opts.assigneeUserIds || []).filter(Boolean), user.uid])
+      );
       const program: Program = {
         id: ref.id,
         workspaceId: wsId,
         name,
         description: opts.description?.trim() || '',
         color: opts.color || '#' + Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0'),
+        assigneeUserIds: assignees,
         createdByUserId: user.uid,
         createdAt: now,
         updatedAt: now,
@@ -463,12 +473,26 @@ export function useNexusStore() {
       const wsId = activeWorkspace?.id;
       if (!db || !wsId || !isAdmin) return;
       const { id: _id, workspaceId: _ws, createdAt: _ca, createdByUserId: _by, ...rest } = data as any;
+      if (rest.assigneeUserIds !== undefined) {
+        rest.assigneeUserIds = Array.from(
+          new Set((rest.assigneeUserIds || []).filter(Boolean))
+        );
+      }
       await updateDocumentNonBlocking(doc(db, 'workspaces', wsId, 'programs', programId), {
         ...rest,
         updatedAt: new Date().toISOString(),
       });
     },
     [db, activeWorkspace?.id, isAdmin]
+  );
+
+  const updateProgramAssignees = useCallback(
+    (programId: string, assigneeUserIds: string[]) => {
+      void updateProgram(programId, {
+        assigneeUserIds: Array.from(new Set((assigneeUserIds || []).filter(Boolean))),
+      });
+    },
+    [updateProgram]
   );
 
   const deleteProgram = useCallback(
@@ -1640,6 +1664,7 @@ export function useNexusStore() {
     deleteWorkspace,
     createProgram,
     updateProgram,
+    updateProgramAssignees,
     deleteProgram,
     createProject: async (
       wsId: string,

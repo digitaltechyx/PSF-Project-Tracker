@@ -126,6 +126,8 @@ export interface Program {
   name: string;
   description: string;
   color: string;
+  /** Members responsible for this program (program leads / owners). */
+  assigneeUserIds?: string[];
   createdByUserId?: string | null;
   createdAt: string;
   updatedAt: string;

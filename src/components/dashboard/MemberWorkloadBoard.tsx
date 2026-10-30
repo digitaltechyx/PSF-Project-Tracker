@@ -75,18 +75,33 @@ export function MemberWorkloadBoard({
           const proj = projectById.get(pid) as any;
           if (proj?.programId) programIdSet.add(proj.programId);
         }
+        // Programs explicitly assigned to this member
+        for (const prog of programs) {
+          const assignees: string[] = prog.assigneeUserIds || [];
+          if (
+            assignees.includes(m.userId) ||
+            prog.createdByUserId === m.userId
+          ) {
+            programIdSet.add(prog.id);
+          }
+        }
         const programIds = [...programIdSet];
 
         const programStats = programIds
           .map((programId) => {
             const prog = programById.get(programId) as any;
             if (!prog) return null;
-            const progProjectIds = projectIds.filter(
-              (pid) => (projectById.get(pid) as any)?.programId === programId
-            );
-            const progTasks = assigned.filter((t: any) =>
-              progProjectIds.includes(t.projectId)
-            );
+            const isProgramAssignee =
+              (prog.assigneeUserIds || []).includes(m.userId) ||
+              prog.createdByUserId === m.userId;
+            const projectsInProgram = projects.filter((p: any) => p.programId === programId);
+            const relatedProjectIds = isProgramAssignee
+              ? projectsInProgram.map((p: any) => p.id)
+              : projectIds.filter(
+                  (pid) => (projectById.get(pid) as any)?.programId === programId
+                );
+            const relatedSet = new Set(relatedProjectIds);
+            const progTasks = assigned.filter((t: any) => relatedSet.has(t.projectId));
             const progDone = progTasks.filter((t: any) =>
               isTaskClosed(t, projects)
             ).length;
@@ -94,7 +109,7 @@ export function MemberWorkloadBoard({
               id: programId,
               name: prog.name,
               color: prog.color || '#64748b',
-              projectCount: progProjectIds.length,
+              projectCount: relatedProjectIds.length,
               tasksTotal: progTasks.length,
               tasksDone: progDone,
             };
