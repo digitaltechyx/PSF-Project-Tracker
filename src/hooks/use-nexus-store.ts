@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { 
   useUser, 
   useFirestore, 
@@ -25,7 +25,7 @@ import {
   orderBy,
   addDoc
 } from 'firebase/firestore';
-import { Workspace, Project, Task, WorkspaceMember, Invitation, Subtask, AttendanceEntry, Pipeline, Target, SubTarget, TargetTransfer, TargetSnapshot, TargetTransferAcceptance, TaskAudit, TaskTimeLog, WorkspaceDoc, WorkspaceNote, NoteColor, NoteChecklistItem } from '@/lib/types';
+import { Workspace, Program, Project, Task, WorkspaceMember, Invitation, Subtask, AttendanceEntry, Pipeline, Target, SubTarget, TargetTransfer, TargetSnapshot, TargetTransferAcceptance, TaskAudit, TaskTimeLog, WorkspaceDoc, WorkspaceNote, NoteColor, NoteChecklistItem } from '@/lib/types';
 import { createNotification, notifyTaskAssigned, notifyTaskUpdated, notifySubtaskAssigned } from '@/lib/notifications';
 import { sendWorkspaceInviteEmail } from '@/app/actions/send-workspace-invite-email';
 import { DEFAULT_PIPELINES } from '@/lib/pipelines';
@@ -38,8 +38,10 @@ export function useNexusStore() {
   const { user, isAuthReady } = useUser();
   const db = useFirestore();
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null);
+  const [activeProgramId, setActiveProgramId] = useState<string | null>(null);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const programMigrateRef = useRef<string | null>(null);
   const [preferredProjectView, setPreferredProjectView] = useState<'list' | 'board' | 'calendar'>('list');
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
   const [isPrefsLoading, setIsPrefsLoading] = useState(true);
@@ -103,19 +105,113 @@ export function useNexusStore() {
     [isOwner, currentRole]
   );
 
+  const programsQuery = useMemoFirebase(() => {
+    const wsId = activeWorkspace?.id;
+    if (!db || !user?.uid || !wsId || !isAuthReady) return null;
+    return query(collection(db, 'workspaces', wsId, 'programs'), orderBy('name', 'asc'));
+  }, [db, user?.uid, activeWorkspace?.id, isAuthReady]);
+
+  const { data: programsData, isLoading: isProgramsLoading } = useCollection<Program>(programsQuery);
+  const programs = useMemo(() => programsData || [], [programsData]);
+
   const projectsQuery = useMemoFirebase(() => {
     const wsId = activeWorkspace?.id;
     if (!db || !user?.uid || !wsId || wsId === '' || !isAuthReady) return null;
     return query(collection(db, 'workspaces', wsId, 'projects'));
   }, [db, user?.uid, activeWorkspace?.id, isAuthReady]);
-  
+
   const { data: projectsData } = useCollection<Project>(projectsQuery);
-  
+
   const projects = useMemo(() => {
     if (!projectsData) return [];
     if (isAdmin) return projectsData;
     return projectsData.filter(p => p.allowedUserIds?.includes(user?.uid || ''));
   }, [projectsData, isAdmin, user?.uid]);
+
+  // One-time per workspace: ensure at least one Program and attach orphan projects
+  useEffect(() => {
+    const wsId = activeWorkspace?.id;
+    if (!db || !user?.uid || !wsId || !isAuthReady || isProgramsLoading) return;
+    if (!isAdmin) return;
+    if (programMigrateRef.current === wsId) return;
+    if (projectsData === null || projectsData === undefined) return;
+
+    programMigrateRef.current = wsId;
+
+    const run = async () => {
+      try {
+        let programList = programsData || [];
+        let generalId = programList.find((p) => p.name.toLowerCase() === 'general')?.id
+          || programList[0]?.id
+          || null;
+
+        if (!generalId) {
+          const ref = doc(collection(db, 'workspaces', wsId, 'programs'));
+          const now = new Date().toISOString();
+          const program: Program = {
+            id: ref.id,
+            workspaceId: wsId,
+            name: 'General',
+            description: 'Default program for existing projects',
+            color: '#64748b',
+            createdByUserId: user.uid,
+            createdAt: now,
+            updatedAt: now,
+          };
+          await setDocumentNonBlocking(ref, program, { merge: true });
+          generalId = ref.id;
+        }
+
+        const orphans = (projectsData || []).filter((p) => !p.programId);
+        for (const p of orphans) {
+          await updateDocumentNonBlocking(
+            doc(db, 'workspaces', wsId, 'projects', p.id),
+            { programId: generalId, updatedAt: new Date().toISOString() }
+          );
+        }
+
+        if (!activeProgramId) {
+          setActiveProgramId(generalId);
+        }
+      } catch (e) {
+        console.error('Program migration failed', e);
+        programMigrateRef.current = null;
+      }
+    };
+
+    void run();
+  }, [
+    db,
+    user?.uid,
+    activeWorkspace?.id,
+    isAuthReady,
+    isAdmin,
+    isProgramsLoading,
+    programsData,
+    projectsData,
+    activeProgramId,
+  ]);
+
+  // Keep active program valid when list loads / workspace switches
+  useEffect(() => {
+    if (!programs.length) {
+      setActiveProgramId(null);
+      return;
+    }
+    if (activeProgramId && programs.some((p) => p.id === activeProgramId)) return;
+    const general = programs.find((p) => p.name.toLowerCase() === 'general');
+    setActiveProgramId(general?.id || programs[0].id);
+  }, [programs, activeProgramId, activeWorkspace?.id]);
+
+  const activeProgram = useMemo(
+    () => programs.find((p) => p.id === activeProgramId) || null,
+    [programs, activeProgramId]
+  );
+
+  const projectsInActiveProgram = useMemo(() => {
+    if (!activeProgramId) return projects;
+    return projects.filter((p) => p.programId === activeProgramId);
+  }, [projects, activeProgramId]);
 
   const canAccessTargets = useMemo(() => {
     if (!user?.uid || !activeWorkspace?.id) return false;
@@ -319,16 +415,83 @@ export function useNexusStore() {
 
   const switchWorkspace = useCallback((id: string) => {
     setActiveWorkspaceId(id);
-    setActiveProjectId(null); 
+    setActiveProgramId(null);
+    setActiveProjectId(null);
+    programMigrateRef.current = null;
     if (user?.uid && db) {
       const userRef = doc(db, 'users', user.uid);
       updateDocumentNonBlocking(userRef, { lastActiveWorkspaceId: id });
     }
   }, [user?.uid, db]);
 
+  const selectProgram = useCallback((id: string | null) => {
+    setActiveProgramId(id);
+    setActiveProjectId(null);
+  }, []);
+
   const selectProject = useCallback((id: string | null) => {
     setActiveProjectId(id);
   }, []);
+
+  const createProgram = useCallback(
+    async (opts: { name: string; description?: string; color?: string }) => {
+      const wsId = activeWorkspace?.id;
+      if (!db || !wsId || !user || !isAdmin) throw new Error('Only admins can create programs.');
+      const name = opts.name.trim();
+      if (!name) throw new Error('Program name required');
+      const ref = doc(collection(db, 'workspaces', wsId, 'programs'));
+      const now = new Date().toISOString();
+      const program: Program = {
+        id: ref.id,
+        workspaceId: wsId,
+        name,
+        description: opts.description?.trim() || '',
+        color: opts.color || '#' + Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0'),
+        createdByUserId: user.uid,
+        createdAt: now,
+        updatedAt: now,
+      };
+      await setDocumentNonBlocking(ref, program, { merge: true });
+      setActiveProgramId(ref.id);
+      return ref.id;
+    },
+    [db, activeWorkspace?.id, user, isAdmin]
+  );
+
+  const updateProgram = useCallback(
+    async (programId: string, data: Partial<Program>) => {
+      const wsId = activeWorkspace?.id;
+      if (!db || !wsId || !isAdmin) return;
+      const { id: _id, workspaceId: _ws, createdAt: _ca, createdByUserId: _by, ...rest } = data as any;
+      await updateDocumentNonBlocking(doc(db, 'workspaces', wsId, 'programs', programId), {
+        ...rest,
+        updatedAt: new Date().toISOString(),
+      });
+    },
+    [db, activeWorkspace?.id, isAdmin]
+  );
+
+  const deleteProgram = useCallback(
+    async (programId: string) => {
+      const wsId = activeWorkspace?.id;
+      if (!db || !wsId || !isAdmin || !user) throw new Error('Only admins can delete programs.');
+      const program = programs.find((p) => p.id === programId);
+      if (!program) throw new Error('Program not found');
+      if (programs.length <= 1) {
+        throw new Error('Keep at least one program in the workspace.');
+      }
+      const childProjects = projects.filter((p) => p.programId === programId);
+      if (childProjects.length > 0) {
+        throw new Error('Move or delete projects in this program first.');
+      }
+      await deleteDocumentNonBlocking(doc(db, 'workspaces', wsId, 'programs', programId));
+      if (activeProgramId === programId) {
+        const fallback = programs.find((p) => p.id !== programId);
+        setActiveProgramId(fallback?.id || null);
+      }
+    },
+    [db, activeWorkspace?.id, isAdmin, user, programs, projects, activeProgramId]
+  );
 
   const openTask = useCallback((taskId: string | null) => {
     setSelectedTaskId(taskId);
@@ -916,6 +1079,10 @@ export function useNexusStore() {
         // Delete project
         deleteDocumentNonBlocking(projDoc.ref);
       }
+      // Delete programs
+      const programsCol = collection(db, 'workspaces', workspaceId, 'programs');
+      const programsSnap = await getDocs(programsCol);
+      programsSnap.docs.forEach((p) => deleteDocumentNonBlocking(p.ref));
       // Delete workspace members
       const membersCol = collection(db, 'workspaces', workspaceId, 'members');
       const membersSnap = await getDocs(membersCol);
@@ -1346,10 +1513,20 @@ export function useNexusStore() {
     const target = workspaceTargets.find((t) => t.id === targetId);
     if (!target) throw new Error('Target not found');
 
+    let programId = activeProgramId || programs[0]?.id || null;
+    if (!programId) {
+      programId = await createProgram({
+        name: 'General',
+        description: 'Default program',
+        color: '#64748b',
+      });
+    }
+
     const projRef = doc(collection(db, 'workspaces', wsId, 'projects'));
     const projData: Project = {
       id: projRef.id,
       workspaceId: wsId,
+      programId,
       name: target.title,
       description: target.description || '',
       color: '#' + Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0'),
@@ -1374,7 +1551,7 @@ export function useNexusStore() {
     }
 
     return projRef.id;
-  }, [db, activeWorkspace?.id, user, workspaceTargets, createTask]);
+  }, [db, activeWorkspace?.id, user, workspaceTargets, createTask, activeProgramId, programs, createProgram]);
 
   const endBreak = useCallback(async (): Promise<{ ok: boolean; reason?: string }> => {
     const wsId = activeWorkspace?.id;
@@ -1403,7 +1580,12 @@ export function useNexusStore() {
     currentUser: user ? { id: user.uid, name: user.displayName || 'User', email: user.email || '', avatarUrl: user.photoURL || null } : null,
     workspaces,
     activeWorkspace: activeWorkspace || { id: '', name: 'Loading...', color: '#ccc', memberRoles: {}, ownerUserId: '' },
+    workspacePrograms: programs,
+    isProgramsLoading,
+    activeProgram,
+    activeProgramId,
     workspaceProjects: projects,
+    projectsInActiveProgram,
     activeProject,
     selectedTaskId,
     preferredProjectView,
@@ -1429,6 +1611,7 @@ export function useNexusStore() {
     isAllAttendanceLoading,
     setGlobalSearchQuery,
     switchWorkspace,
+    selectProgram,
     selectProject,
     openTask,
     closeTask,
@@ -1437,13 +1620,30 @@ export function useNexusStore() {
     createWorkspace,
     updateWorkspace,
     deleteWorkspace,
-    createProject: async (wsId: string, name: string, description: string) => {
+    createProgram,
+    updateProgram,
+    deleteProgram,
+    createProject: async (
+      wsId: string,
+      name: string,
+      description: string,
+      programId?: string | null
+    ) => {
       if (!db || !wsId) return null;
+      let resolvedProgramId = programId || activeProgramId || programs[0]?.id || null;
+      if (!resolvedProgramId) {
+        resolvedProgramId = await createProgram({
+          name: 'General',
+          description: 'Default program',
+          color: '#64748b',
+        });
+      }
       const projRef = doc(collection(db, 'workspaces', wsId, 'projects'));
       const creatorId = user?.uid || null;
       const projData: Project = {
         id: projRef.id,
         workspaceId: wsId,
+        programId: resolvedProgramId,
         name,
         description: description || '',
         color: '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0'),
@@ -1454,6 +1654,9 @@ export function useNexusStore() {
         updatedAt: new Date().toISOString(),
       };
       await setDocumentNonBlocking(projRef, projData, { merge: true });
+      if (resolvedProgramId !== activeProgramId) {
+        setActiveProgramId(resolvedProgramId);
+      }
       return projRef.id;
     },
     updateProjectMembers: (projectId: string, allowedUserIds: string[]) => {

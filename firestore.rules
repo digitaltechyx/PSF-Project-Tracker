@@ -144,6 +144,15 @@ service cloud.firestore {
         allow delete: if false;
       }
 
+      // Programs group projects: Workspace → Program → Project → Task → Subtask
+      match /programs/{programId} {
+        allow read: if isWorkspaceMember(workspaceId);
+        allow create: if isWorkspaceAdmin(workspaceId)
+          && request.resource.data.workspaceId == workspaceId;
+        allow update: if isWorkspaceAdmin(workspaceId);
+        allow delete: if isWorkspaceAdmin(workspaceId);
+      }
+
       match /projects/{projectId} {
         allow read: if isSignedIn();
         allow create: if isWorkspaceAdmin(workspaceId);

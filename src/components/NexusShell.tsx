@@ -20,7 +20,16 @@ import {
   MessageSquare,
   FileText,
   StickyNote,
+  Layers,
+  ChevronRight,
 } from 'lucide-react';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { useNexusStore } from '@/hooks/use-nexus-store';
 import { useAuth } from '@/firebase';
 import { Button } from '@/components/ui/button';
@@ -71,13 +80,18 @@ export function NexusShell() {
   // Dialog States
   const [isWsDialogOpen, setIsWsDialogOpen] = useState(false);
   const [isWsEditDialogOpen, setIsWsEditDialogOpen] = useState(false);
+  const [isProgDialogOpen, setIsProgDialogOpen] = useState(false);
   const [isProjDialogOpen, setIsProjDialogOpen] = useState(false);
   const [isInviteOpen, setIsInviteOpen] = useState(false);
   
   const [newWsName, setNewWsName] = useState('');
   const [newWsDesc, setNewWsDesc] = useState('');
+  const [newProgName, setNewProgName] = useState('');
+  const [newProgDesc, setNewProgDesc] = useState('');
   const [newProjName, setNewProjName] = useState('');
   const [newProjDesc, setNewProjDesc] = useState('');
+  const [newProjProgramId, setNewProjProgramId] = useState('');
+  const [expandedProgramIds, setExpandedProgramIds] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     setMounted(true);
@@ -119,14 +133,59 @@ export function NexusShell() {
     }
   };
 
-  const handleCreateProject = () => {
-    if (newProjName && store.activeWorkspace?.id) {
-      store.createProject(store.activeWorkspace.id, newProjName, newProjDesc);
+  const handleCreateProgram = async () => {
+    if (!newProgName.trim()) return;
+    try {
+      await store.createProgram({ name: newProgName, description: newProgDesc });
+      setNewProgName('');
+      setNewProgDesc('');
+      setIsProgDialogOpen(false);
+    } catch (e: any) {
+      console.error(e);
+      alert(e?.message || 'Could not create program');
+    }
+  };
+
+  const openCreateProject = (programId?: string) => {
+    setNewProjProgramId(programId || store.activeProgramId || store.workspacePrograms?.[0]?.id || '');
+    setIsProjDialogOpen(true);
+  };
+
+  const handleCreateProject = async () => {
+    if (!newProjName.trim() || !store.activeWorkspace?.id) return;
+    if (!newProjProgramId) {
+      alert('Select a program first.');
+      return;
+    }
+    try {
+      const id = await store.createProject(
+        store.activeWorkspace.id,
+        newProjName,
+        newProjDesc,
+        newProjProgramId
+      );
       setNewProjName('');
       setNewProjDesc('');
       setIsProjDialogOpen(false);
+      if (id) handleProjectClick(id);
+    } catch (e: any) {
+      console.error(e);
+      alert(e?.message || 'Could not create project');
     }
   };
+
+  const toggleProgramExpanded = (programId: string) => {
+    setExpandedProgramIds((prev) => ({
+      ...prev,
+      [programId]: !(prev[programId] ?? true),
+    }));
+  };
+
+  const isProgramExpanded = (programId: string) =>
+    expandedProgramIds[programId] ?? true;
+
+  const projectsForProgram = (programId: string) =>
+    (store.workspaceProjects || []).filter((p: any) => p.programId === programId);
 
   const handleLogout = () => {
     auth.signOut();
@@ -283,33 +342,95 @@ export function NexusShell() {
             </Button>
           </div>
 
-          <div className="space-y-4">
+          <div className="space-y-3">
             <div className="flex items-center justify-between px-2 text-[10px] font-semibold text-white/50 uppercase tracking-wider">
-              Projects
+              Programs
               {store.isAdmin && (
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
-                  className="h-5 w-5 text-white/50 hover:bg-white/10 hover:text-white" 
-                  onClick={() => setIsProjDialogOpen(true)}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-5 w-5 text-white/50 hover:bg-white/10 hover:text-white"
+                  title="New program"
+                  onClick={() => setIsProgDialogOpen(true)}
                 >
                   <Plus className="h-3 w-3" />
                 </Button>
               )}
             </div>
-            <div className="space-y-1">
-              {store.workspaceProjects?.map(p => (
-                <Button 
-                  key={p.id} 
-                  variant="ghost"
-                  data-active={store.activeProject?.id === p.id && currentView === 'project'}
-                  className="sidebar-nav-btn font-normal"
-                  onClick={() => handleProjectClick(p.id)}
-                >
-                  <Box className="h-4 w-4" style={{ color: p.color }} />
-                  <span className="truncate">{p.name}</span>
-                </Button>
-              ))}
+            <div className="space-y-2">
+              {(store.workspacePrograms || []).length === 0 && (
+                <p className="px-2 text-[11px] text-white/40">
+                  {store.isAdmin ? 'Create a program to add projects.' : 'No programs yet.'}
+                </p>
+              )}
+              {(store.workspacePrograms || []).map((prog: any) => {
+                const open = isProgramExpanded(prog.id);
+                const childProjects = projectsForProgram(prog.id);
+                return (
+                  <div key={prog.id} className="space-y-0.5">
+                    <div className="flex items-center gap-0.5">
+                      <button
+                        type="button"
+                        className="grid h-7 w-7 place-items-center rounded-md text-white/50 hover:bg-white/10 hover:text-white"
+                        onClick={() => toggleProgramExpanded(prog.id)}
+                        title={open ? 'Collapse' : 'Expand'}
+                      >
+                        {open ? (
+                          <ChevronDown className="h-3.5 w-3.5" />
+                        ) : (
+                          <ChevronRight className="h-3.5 w-3.5" />
+                        )}
+                      </button>
+                      <Button
+                        variant="ghost"
+                        data-active={store.activeProgramId === prog.id}
+                        className="sidebar-nav-btn font-medium flex-1 min-w-0"
+                        onClick={() => {
+                          store.selectProgram(prog.id);
+                          setExpandedProgramIds((prev) => ({ ...prev, [prog.id]: true }));
+                        }}
+                      >
+                        <Layers className="h-4 w-4 shrink-0" style={{ color: prog.color }} />
+                        <span className="truncate">{prog.name}</span>
+                      </Button>
+                      {store.isAdmin && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 shrink-0 text-white/40 hover:bg-white/10 hover:text-white"
+                          title={`Add project to ${prog.name}`}
+                          onClick={() => openCreateProject(prog.id)}
+                        >
+                          <Plus className="h-3 w-3" />
+                        </Button>
+                      )}
+                    </div>
+                    {open && (
+                      <div className="ml-4 space-y-0.5 border-l border-white/10 pl-2">
+                        {childProjects.length === 0 ? (
+                          <p className="px-2 py-1 text-[10px] text-white/35">No projects</p>
+                        ) : (
+                          childProjects.map((p: any) => (
+                            <Button
+                              key={p.id}
+                              variant="ghost"
+                              data-active={store.activeProject?.id === p.id && currentView === 'project'}
+                              className="sidebar-nav-btn font-normal"
+                              onClick={() => {
+                                store.selectProgram(prog.id);
+                                handleProjectClick(p.id);
+                              }}
+                            >
+                              <Box className="h-4 w-4" style={{ color: p.color }} />
+                              <span className="truncate">{p.name}</span>
+                            </Button>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         </ScrollArea>
@@ -451,20 +572,74 @@ export function NexusShell() {
                   <Users className="h-4 w-4" /> People
                 </Button>
               </div>
-              <div className="space-y-1">
-                <p className="px-2 text-[10px] font-semibold text-white/50 uppercase tracking-wider mb-2">Projects</p>
-                {store.workspaceProjects?.map((p: any) => (
-                  <Button
-                    key={p.id}
-                    variant="ghost"
-                    data-active={store.activeProject?.id === p.id && currentView === 'project'}
-                    className="sidebar-nav-btn font-normal"
-                    onClick={() => handleProjectClick(p.id)}
-                  >
-                    <Box className="h-4 w-4" style={{ color: p.color }} />
-                    <span className="truncate">{p.name}</span>
-                  </Button>
-                ))}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between px-2 mb-1">
+                  <p className="text-[10px] font-semibold text-white/50 uppercase tracking-wider">Programs</p>
+                  {store.isAdmin && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-5 w-5 text-white/50 hover:bg-white/10 hover:text-white"
+                      onClick={() => setIsProgDialogOpen(true)}
+                    >
+                      <Plus className="h-3 w-3" />
+                    </Button>
+                  )}
+                </div>
+                {(store.workspacePrograms || []).map((prog: any) => {
+                  const open = isProgramExpanded(prog.id);
+                  const childProjects = projectsForProgram(prog.id);
+                  return (
+                    <div key={prog.id} className="space-y-0.5">
+                      <div className="flex items-center gap-0.5">
+                        <button
+                          type="button"
+                          className="grid h-7 w-7 place-items-center rounded-md text-white/50 hover:bg-white/10"
+                          onClick={() => toggleProgramExpanded(prog.id)}
+                        >
+                          {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                        </button>
+                        <Button
+                          variant="ghost"
+                          className="sidebar-nav-btn font-medium flex-1 min-w-0"
+                          onClick={() => store.selectProgram(prog.id)}
+                        >
+                          <Layers className="h-4 w-4" style={{ color: prog.color }} />
+                          <span className="truncate">{prog.name}</span>
+                        </Button>
+                        {store.isAdmin && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-white/40 hover:bg-white/10 hover:text-white"
+                            onClick={() => openCreateProject(prog.id)}
+                          >
+                            <Plus className="h-3 w-3" />
+                          </Button>
+                        )}
+                      </div>
+                      {open && (
+                        <div className="ml-4 space-y-0.5 border-l border-white/10 pl-2">
+                          {childProjects.map((p: any) => (
+                            <Button
+                              key={p.id}
+                              variant="ghost"
+                              data-active={store.activeProject?.id === p.id && currentView === 'project'}
+                              className="sidebar-nav-btn font-normal"
+                              onClick={() => {
+                                store.selectProgram(prog.id);
+                                handleProjectClick(p.id);
+                              }}
+                            >
+                              <Box className="h-4 w-4" style={{ color: p.color }} />
+                              <span className="truncate">{p.name}</span>
+                            </Button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </ScrollArea>
           </div>
@@ -495,13 +670,65 @@ export function NexusShell() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={isProgDialogOpen} onOpenChange={setIsProgDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create program</DialogTitle>
+            <DialogDescription>
+              Programs group related projects. Hierarchy: Program → Project → Task → Subtask.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="prog-name">Program name</Label>
+              <Input
+                id="prog-name"
+                placeholder="e.g. Product launch"
+                value={newProgName}
+                onChange={(e) => setNewProgName(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="prog-desc">Description</Label>
+              <Textarea
+                id="prog-desc"
+                placeholder="Optional"
+                value={newProgDesc}
+                onChange={(e) => setNewProgDesc(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsProgDialogOpen(false)}>Cancel</Button>
+            <Button onClick={() => void handleCreateProgram()} disabled={!newProgName.trim()}>
+              Create program
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={isProjDialogOpen} onOpenChange={setIsProjDialogOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Create project</DialogTitle>
-            <DialogDescription>Add a project to this workspace.</DialogDescription>
+            <DialogDescription>Add a project inside a program.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Program</Label>
+              <Select value={newProjProgramId} onValueChange={setNewProjProgramId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select program" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(store.workspacePrograms || []).map((p: any) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="space-y-2">
               <Label htmlFor="proj-name">Project name</Label>
               <Input id="proj-name" placeholder="e.g. Website redesign" value={newProjName} onChange={(e) => setNewProjName(e.target.value)} />
@@ -513,7 +740,12 @@ export function NexusShell() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsProjDialogOpen(false)}>Cancel</Button>
-            <Button onClick={handleCreateProject}>Create project</Button>
+            <Button
+              onClick={() => void handleCreateProject()}
+              disabled={!newProjName.trim() || !newProjProgramId}
+            >
+              Create project
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -116,9 +116,26 @@ export interface WorkspaceMember {
   avatarUrl?: string | null;
 }
 
+/**
+ * Program groups projects inside a workspace.
+ * Hierarchy: Workspace → Program → Project → Task → Subtask
+ */
+export interface Program {
+  id: string;
+  workspaceId: string;
+  name: string;
+  description: string;
+  color: string;
+  createdByUserId?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Project {
   id: string;
   workspaceId: string;
+  /** Parent program. New projects always set this; legacy projects are migrated to a default program. */
+  programId?: string;
   name: string;
   description: string;
   color: string;
