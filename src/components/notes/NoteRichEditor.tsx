@@ -6,12 +6,18 @@ import {
   Highlighter,
   Italic,
   List,
+  ListOrdered,
   Strikethrough,
   Underline,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { noteBodyHasContent, plainTextToNoteHtml, sanitizeNoteHtml } from '@/lib/note-html';
+import {
+  noteBodyHasContent,
+  normalizeNoteHtml,
+  plainTextToNoteHtml,
+  sanitizeNoteHtml,
+} from '@/lib/note-html';
 
 const HIGHLIGHT = '#fff59d';
 
@@ -21,6 +27,7 @@ type FormatCmd =
   | 'underline'
   | 'strikeThrough'
   | 'insertUnorderedList'
+  | 'insertOrderedList'
   | 'highlight';
 
 function ToolbarButton({
@@ -55,6 +62,31 @@ function ToolbarButton({
   );
 }
 
+function insertHtmlAtSelection(html: string) {
+  const sel = window.getSelection();
+  if (!sel || !sel.rangeCount) {
+    document.execCommand('insertHTML', false, html);
+    return;
+  }
+  const range = sel.getRangeAt(0);
+  range.deleteContents();
+  const temp = document.createElement('div');
+  temp.innerHTML = html;
+  const frag = document.createDocumentFragment();
+  let node: ChildNode | null;
+  let lastNode: ChildNode | null = null;
+  while ((node = temp.firstChild)) {
+    lastNode = frag.appendChild(node);
+  }
+  range.insertNode(frag);
+  if (lastNode) {
+    range.setStartAfter(lastNode);
+    range.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+}
+
 export function NoteRichEditor({
   value,
   onChange,
@@ -62,6 +94,7 @@ export function NoteRichEditor({
   disabled,
   className,
   minHeightClass = 'min-h-[80px]',
+  maxHeightClass = 'max-h-[320px]',
 }: {
   value: string;
   onChange: (html: string) => void;
@@ -69,6 +102,8 @@ export function NoteRichEditor({
   disabled?: boolean;
   className?: string;
   minHeightClass?: string;
+  /** Keep-style scrollable body so notes don’t grow forever. */
+  maxHeightClass?: string;
 }) {
   const editorRef = useRef<HTMLDivElement>(null);
   const lastEmitted = useRef('');
@@ -77,20 +112,32 @@ export function NoteRichEditor({
   // Sync external value into the editor when it changes from outside typing
   useEffect(() => {
     const el = editorRef.current;
-    if (!el || disabled) return;
+    if (!el) return;
     const next = sanitizeNoteHtml(plainTextToNoteHtml(value || ''));
-    if (next === lastEmitted.current) return;
-    if (el.innerHTML !== next) {
-      el.innerHTML = next || '';
+    const nextNorm = normalizeNoteHtml(next);
+    if (nextNorm === normalizeNoteHtml(lastEmitted.current)) return;
+    if (normalizeNoteHtml(el.innerHTML) === nextNorm) {
       lastEmitted.current = next;
+      return;
     }
+    // Don't clobber while the user is actively typing in this field
+    if (!disabled && document.activeElement === el) return;
+    el.innerHTML = next || '';
+    lastEmitted.current = next;
   }, [value, disabled]);
 
-  const emit = () => {
+  const emit = (opts?: { scrubDom?: boolean }) => {
     const el = editorRef.current;
     if (!el) return;
     let html = sanitizeNoteHtml(el.innerHTML);
     if (!noteBodyHasContent(html)) html = '';
+    // Only rewrite DOM on blur/paste scrub — never while typing (caret jump).
+    if (
+      opts?.scrubDom &&
+      normalizeNoteHtml(el.innerHTML) !== normalizeNoteHtml(html)
+    ) {
+      el.innerHTML = html || '';
+    }
     lastEmitted.current = html;
     onChange(html);
     bump((n) => n + 1);
@@ -100,6 +147,12 @@ export function NoteRichEditor({
     const el = editorRef.current;
     if (!el || disabled) return;
     el.focus();
+    try {
+      document.execCommand('styleWithCSS', false, 'true');
+    } catch {
+      /* ignore */
+    }
+
     if (cmd === 'highlight') {
       const already = document.queryCommandValue('hiliteColor');
       const normalized = String(already || '').toLowerCase();
@@ -107,17 +160,11 @@ export function NoteRichEditor({
         normalized.includes('fff59d') ||
         normalized.includes('255, 245, 157') ||
         normalized === 'yellow';
-      try {
-        document.execCommand('styleWithCSS', false, 'true');
-      } catch {
-        /* ignore */
-      }
       document.execCommand('hiliteColor', false, isOn ? 'transparent' : HIGHLIGHT);
       // Fallback for browsers that ignore hiliteColor
       if (!isOn) {
         const sel = window.getSelection();
         if (sel && sel.rangeCount && sel.toString()) {
-          // hiliteColor usually works; if not, wrap with mark via insertHTML
           const current = document.queryCommandValue('hiliteColor');
           if (!String(current || '').toLowerCase().includes('fff59d')) {
             const text = sel.toString();
@@ -143,6 +190,73 @@ export function NoteRichEditor({
       return document.queryCommandState(cmd);
     } catch {
       return false;
+    }
+  };
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
+    if (disabled) return;
+    e.preventDefault();
+    const clip = e.clipboardData;
+    const html = clip.getData('text/html');
+    const text = clip.getData('text/plain');
+
+    let insert = '';
+    if (html && html.trim()) {
+      insert = sanitizeNoteHtml(html);
+    }
+    if (!noteBodyHasContent(insert) && text) {
+      insert = plainTextToNoteHtml(text);
+    }
+    if (!insert) return;
+
+    try {
+      document.execCommand('styleWithCSS', false, 'true');
+    } catch {
+      /* ignore */
+    }
+
+    const ok = document.execCommand('insertHTML', false, insert);
+    if (!ok) insertHtmlAtSelection(insert);
+    emit({ scrubDom: true });
+  };
+
+  const handleCopy = (e: React.ClipboardEvent<HTMLDivElement>) => {
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed || !editorRef.current) return;
+    if (!editorRef.current.contains(sel.anchorNode)) return;
+
+    // Prefer a sanitized HTML fragment so paste targets get clean formatting
+    try {
+      const range = sel.getRangeAt(0);
+      const frag = range.cloneContents();
+      const holder = document.createElement('div');
+      holder.appendChild(frag);
+      const html = sanitizeNoteHtml(holder.innerHTML);
+      const plain = sel.toString();
+      if (html || plain) {
+        e.clipboardData.setData('text/html', html || plainTextToNoteHtml(plain));
+        e.clipboardData.setData('text/plain', plain);
+        e.preventDefault();
+      }
+    } catch {
+      /* fall through to default copy */
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (disabled) return;
+    const mod = e.metaKey || e.ctrlKey;
+    if (!mod) return;
+    const key = e.key.toLowerCase();
+    if (key === 'b') {
+      e.preventDefault();
+      run('bold');
+    } else if (key === 'i') {
+      e.preventDefault();
+      run('italic');
+    } else if (key === 'u') {
+      e.preventDefault();
+      run('underline');
     }
   };
 
@@ -185,6 +299,13 @@ export function NoteRichEditor({
           >
             <List className="h-3.5 w-3.5" />
           </ToolbarButton>
+          <ToolbarButton
+            title="Numbered list"
+            active={queryActive('insertOrderedList')}
+            onClick={() => run('insertOrderedList')}
+          >
+            <ListOrdered className="h-3.5 w-3.5" />
+          </ToolbarButton>
         </div>
       )}
 
@@ -196,16 +317,20 @@ export function NoteRichEditor({
         suppressContentEditableWarning
         data-placeholder={placeholder}
         className={cn(
-          'note-rich-editor w-full bg-transparent px-0 text-sm leading-6 text-slate-800 outline-none',
+          'note-rich-editor w-full overflow-y-auto bg-transparent px-0 text-sm leading-6 text-slate-800 outline-none',
           minHeightClass,
+          maxHeightClass,
           '[&_ul]:my-1 [&_ul]:list-disc [&_ul]:pl-5',
           '[&_ol]:my-1 [&_ol]:list-decimal [&_ol]:pl-5',
           '[&_mark]:rounded-sm [&_mark]:px-0.5',
           '[&:empty]:before:pointer-events-none [&:empty]:before:text-muted-foreground [&:empty]:before:content-[attr(data-placeholder)]',
           disabled && 'cursor-default opacity-80'
         )}
-        onInput={emit}
-        onBlur={emit}
+        onInput={() => emit()}
+        onBlur={() => emit({ scrubDom: true })}
+        onPaste={handlePaste}
+        onCopy={handleCopy}
+        onKeyDown={handleKeyDown}
         onKeyUp={() => bump((n) => n + 1)}
         onMouseUp={() => bump((n) => n + 1)}
       />
@@ -216,22 +341,33 @@ export function NoteRichEditor({
 export function NoteHtmlPreview({
   html,
   className,
+  clamp = false,
 }: {
   html?: string | null;
   className?: string;
+  /** Keep-style card clamp with bottom fade. */
+  clamp?: boolean;
 }) {
   const safe = sanitizeNoteHtml(plainTextToNoteHtml(html || ''));
   if (!safe) return null;
   return (
-    <div
-      className={cn(
-        'note-rich-preview whitespace-pre-wrap text-sm leading-6 text-slate-800',
-        '[&_ul]:my-1 [&_ul]:list-disc [&_ul]:pl-5',
-        '[&_ol]:my-1 [&_ol]:list-decimal [&_ol]:pl-5',
-        '[&_mark]:rounded-sm [&_mark]:px-0.5',
-        className
+    <div className={cn(clamp && 'relative max-h-[240px] overflow-hidden')}>
+      <div
+        className={cn(
+          'note-rich-preview whitespace-pre-wrap break-words text-sm leading-6 text-slate-800',
+          '[&_ul]:my-1 [&_ul]:list-disc [&_ul]:pl-5',
+          '[&_ol]:my-1 [&_ol]:list-decimal [&_ol]:pl-5',
+          '[&_mark]:rounded-sm [&_mark]:px-0.5',
+          className
+        )}
+        dangerouslySetInnerHTML={{ __html: safe }}
+      />
+      {clamp && (
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-black/[0.06] to-transparent"
+        />
       )}
-      dangerouslySetInnerHTML={{ __html: safe }}
-    />
+    </div>
   );
 }

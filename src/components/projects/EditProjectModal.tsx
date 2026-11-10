@@ -13,6 +13,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { Pencil, Loader2 } from 'lucide-react';
 
@@ -33,17 +40,25 @@ export function EditProjectModal({
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [color, setColor] = useState('#452ED2');
+  const [programId, setProgramId] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
   const isAdmin = store.isAdmin;
+  const programs = store.workspacePrograms || [];
 
   useEffect(() => {
     if (project && isOpen) {
       setName(project.name || '');
       setDescription(project.description || '');
       setColor(project.color || '#452ED2');
+      setProgramId(
+        project.programId ||
+          store.activeProgramId ||
+          programs[0]?.id ||
+          ''
+      );
     }
-  }, [project, isOpen]);
+  }, [project, isOpen, store.activeProgramId, programs]);
 
   const handleSave = async () => {
     if (!name.trim()) {
@@ -55,6 +70,13 @@ export function EditProjectModal({
     }
 
     if (!project) return;
+    if (!programId) {
+      toast({
+        variant: 'destructive',
+        title: 'Select a program',
+      });
+      return;
+    }
 
     setIsSaving(true);
     try {
@@ -63,9 +85,15 @@ export function EditProjectModal({
         description: description.trim(),
         color,
       });
+      if (programId && programId !== project.programId) {
+        await store.moveProjectToProgram(project.id, programId);
+      }
       toast({
         title: 'Project updated',
-        description: 'Changes have been saved successfully.',
+        description:
+          programId !== project.programId
+            ? 'Saved and moved to the selected program.'
+            : 'Changes have been saved successfully.',
       });
       onOpenChange(false);
     } catch (error: any) {
@@ -120,6 +148,26 @@ export function EditProjectModal({
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Enter project name"
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Program</Label>
+              <Select value={programId} onValueChange={setProgramId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select program" />
+                </SelectTrigger>
+                <SelectContent>
+                  {programs.map((p: any) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.name}
+                      {p.id === project?.programId ? ' (current)' : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Change this to move the project (and its tasks) into another program.
+              </p>
             </div>
 
             <div className="space-y-2">

@@ -37,12 +37,14 @@ import {
   Clock3,
   Check,
   UserPlus,
+  FolderInput,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar as DayCalendar } from '@/components/ui/calendar';
 import { ChangeReasonDialog, type PendingMajorChange } from '@/components/tasks/ChangeReasonDialog';
+import { MoveTaskDialog } from '@/components/tasks/MoveTaskDialog';
 import { generateTaskDescription } from '@/ai/flows/ai-task-description-generation';
 import { suggestTaskAttributes } from '@/ai/flows/ai-task-attribute-suggestion';
 import { useToast } from '@/hooks/use-toast';
@@ -608,6 +610,7 @@ export function TaskDetailPanel({
   const [localTitle, setLocalTitle] = useState('');
   const [localDesc, setLocalDesc] = useState('');
   const [pendingChange, setPendingChange] = useState<PendingMajorChange | null>(null);
+  const [moveOpen, setMoveOpen] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -629,6 +632,11 @@ export function TaskDetailPanel({
     if (!task) return null;
     return store.workspaceProjects?.find((p: any) => p.id === task.projectId) || null;
   }, [task, store.workspaceProjects]);
+
+  const taskProgram = useMemo(() => {
+    if (!taskProject?.programId) return null;
+    return (store.workspacePrograms || []).find((p: any) => p.id === taskProject.programId) || null;
+  }, [taskProject, store.workspacePrograms]);
 
   const pipelines = useMemo(() => getProjectPipelines(taskProject), [taskProject]);
 
@@ -886,21 +894,39 @@ export function TaskDetailPanel({
               <Badge variant="secondary" className="rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em]">
                 Task
               </Badge>
-              {taskProject?.name && (
+              {(taskProgram?.name || taskProject?.name) && (
                 <span className="truncate text-xs text-slate-600">
-                  in <span className="font-medium text-foreground">{taskProject.name}</span>
+                  in{' '}
+                  {taskProgram?.name && (
+                    <>
+                      <span className="font-medium text-foreground">{taskProgram.name}</span>
+                      <span className="text-muted-foreground"> / </span>
+                    </>
+                  )}
+                  <span className="font-medium text-foreground">{taskProject?.name}</span>
                 </span>
               )}
             </div>
             {isAdmin && (
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={handleDelete}
-                className="h-8 w-8 shrink-0 text-slate-600 hover:bg-destructive/10 hover:text-destructive"
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
+              <div className="flex items-center gap-0.5">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  title="Move to another project"
+                  onClick={() => setMoveOpen(true)}
+                  className="h-8 w-8 shrink-0 text-slate-600"
+                >
+                  <FolderInput className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={handleDelete}
+                  className="h-8 w-8 shrink-0 text-slate-600 hover:bg-destructive/10 hover:text-destructive"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
             )}
           </div>
           <SheetTitle className="sr-only">{localTitle || 'Task detail'}</SheetTitle>
@@ -1546,6 +1572,13 @@ export function TaskDetailPanel({
           if (!open) setPendingChange(null);
         }}
         onConfirm={confirmMajorChange}
+      />
+
+      <MoveTaskDialog
+        open={moveOpen}
+        onOpenChange={setMoveOpen}
+        store={store}
+        task={task}
       />
     </Sheet>
   );

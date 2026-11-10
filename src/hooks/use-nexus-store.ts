@@ -28,7 +28,7 @@ import {
 import { Workspace, Program, Project, Task, WorkspaceMember, Invitation, Subtask, AttendanceEntry, Pipeline, Target, SubTarget, TargetTransfer, TargetSnapshot, TargetTransferAcceptance, TaskAudit, TaskTimeLog, WorkspaceDoc, WorkspaceNote, NoteColor, NoteChecklistItem } from '@/lib/types';
 import { createNotification, notifyTaskAssigned, notifyTaskUpdated, notifySubtaskAssigned } from '@/lib/notifications';
 import { sendWorkspaceInviteEmail } from '@/app/actions/send-workspace-invite-email';
-import { DEFAULT_PIPELINES } from '@/lib/pipelines';
+import { DEFAULT_PIPELINES, getOpenStatusId, getProjectPipelines } from '@/lib/pipelines';
 import { buildFieldChangeAudits, buildSubtaskChangeAudits } from '@/lib/task-audit';
 import { parseGoogleDocUrl } from '@/lib/google-docs';
 import { noteBodyHasContent, sanitizeNoteHtml } from '@/lib/note-html';
@@ -1144,6 +1144,154 @@ export function useNexusStore() {
     await updateDocumentNonBlocking(ref, { ...data, updatedAt: new Date().toISOString() });
   }, [db, isAdmin, user, activeWorkspace?.id]);
 
+  const moveProjectToProgram = useCallback(
+    async (projectId: string, targetProgramId: string) => {
+      const wsId = activeWorkspace?.id;
+      if (!db || !wsId || !isAdmin || !user) {
+        throw new Error('Only admins can move projects.');
+      }
+      const project = projects.find((p) => p.id === projectId);
+      if (!project) throw new Error('Project not found.');
+      if (!programs.some((p) => p.id === targetProgramId)) {
+        throw new Error('Target program not found.');
+      }
+      if (project.programId === targetProgramId) return;
+      await updateProject(projectId, { programId: targetProgramId });
+      if (activeProgramId !== targetProgramId) {
+        setActiveProgramId(targetProgramId);
+      }
+    },
+    [db, activeWorkspace?.id, isAdmin, user, projects, programs, updateProject, activeProgramId]
+  );
+
+  const remapTaskStatus = useCallback(
+    (status: string, fromProjectId: string, toProjectId: string) => {
+      const fromPipes = getProjectPipelines(projects.find((p) => p.id === fromProjectId));
+      const toPipes = getProjectPipelines(projects.find((p) => p.id === toProjectId));
+      if (toPipes.some((p) => p.id === status)) return status;
+      const from = fromPipes.find((p) => p.id === status);
+      if (from) {
+        const byName = toPipes.find(
+          (p) => p.name.trim().toLowerCase() === from.name.trim().toLowerCase()
+        );
+        if (byName) return byName.id;
+        const byCat = toPipes.find((p) => p.category === from.category);
+        if (byCat) return byCat.id;
+      }
+      return getOpenStatusId(toPipes);
+    },
+    [projects]
+  );
+
+  /**
+   * Move a task (and nested subtasks/comments/audits/timeLogs) to another project.
+   * Works across programs because projects already belong to programs.
+   */
+  const moveTask = useCallback(
+    async (taskId: string, targetProjectId: string) => {
+      if (!db || !user || !isAdmin) {
+        throw new Error('Only admins can move tasks.');
+      }
+      const task = allWorkspaceTasks.find((t) => t.id === taskId);
+      if (!task) throw new Error('Task not found.');
+      if (task.projectId === targetProjectId) return taskId;
+
+      const targetProject = projects.find((p) => p.id === targetProjectId);
+      if (!targetProject || targetProject.workspaceId !== task.workspaceId) {
+        throw new Error('Target project not found in this workspace.');
+      }
+
+      const wsId = task.workspaceId;
+      const fromProjectId = task.projectId;
+      const fromBase = ['workspaces', wsId, 'projects', fromProjectId, 'tasks', taskId] as const;
+      const toBase = ['workspaces', wsId, 'projects', targetProjectId, 'tasks', taskId] as const;
+
+      const now = new Date().toISOString();
+      const nextStatus = remapTaskStatus(task.status, fromProjectId, targetProjectId);
+      const fromProjectName = projects.find((p) => p.id === fromProjectId)?.name || 'previous project';
+      const toProjectName = targetProject.name;
+
+      const sourceSnap = await getDoc(doc(db, ...fromBase));
+      if (!sourceSnap.exists()) throw new Error('Task document missing.');
+      const sourceData = sourceSnap.data() as Task;
+
+      const movedTask: Task = {
+        ...sourceData,
+        id: taskId,
+        workspaceId: wsId,
+        projectId: targetProjectId,
+        status: nextStatus,
+        updatedAt: now,
+      };
+      await setDocumentNonBlocking(doc(db, ...toBase), movedTask, { merge: true });
+
+      const copyCollection = async (name: 'subtasks' | 'comments' | 'audits' | 'timeLogs') => {
+        const snap = await getDocs(collection(db, ...fromBase, name));
+        await Promise.all(
+          snap.docs.map((d) => {
+            const data = { ...d.data(), projectId: targetProjectId } as Record<string, unknown>;
+            if ('taskId' in data) data.taskId = taskId;
+            return setDocumentNonBlocking(doc(db, ...toBase, name, d.id), data, { merge: true });
+          })
+        );
+        return snap.docs;
+      };
+
+      const [subDocs, commentDocs, auditDocs, timeLogDocs] = await Promise.all([
+        copyCollection('subtasks'),
+        copyCollection('comments'),
+        copyCollection('audits'),
+        copyCollection('timeLogs'),
+      ]);
+
+      const moveAuditRef = doc(collection(db, ...toBase, 'audits'));
+      const moveAudit: TaskAudit = {
+        id: moveAuditRef.id,
+        workspaceId: wsId,
+        projectId: targetProjectId,
+        taskId,
+        kind: 'field_change',
+        actorUserId: user.uid,
+        actorName: user.displayName || 'User',
+        message: `${user.displayName || 'User'} moved this task from “${fromProjectName}” to “${toProjectName}”`,
+        field: 'projectId',
+        fromValue: fromProjectName,
+        toValue: toProjectName,
+        reason: 'Moved between projects',
+        createdAt: now,
+      };
+      await setDocumentNonBlocking(moveAuditRef, moveAudit, { merge: true });
+
+      // Delete originals after successful copy
+      await Promise.all([
+        ...subDocs.map((d) => deleteDocumentNonBlocking(d.ref)),
+        ...commentDocs.map((d) => deleteDocumentNonBlocking(d.ref)),
+        ...auditDocs.map((d) => deleteDocumentNonBlocking(d.ref)),
+        ...timeLogDocs.map((d) => deleteDocumentNonBlocking(d.ref)),
+        deleteDocumentNonBlocking(doc(db, ...fromBase)),
+      ]);
+
+      // Prefer showing the destination project after move
+      if (activeProjectId === fromProjectId) {
+        setActiveProjectId(targetProjectId);
+      }
+      if (targetProject.programId) {
+        setActiveProgramId(targetProject.programId);
+      }
+
+      return taskId;
+    },
+    [
+      db,
+      user,
+      isAdmin,
+      allWorkspaceTasks,
+      projects,
+      remapTaskStatus,
+      activeProjectId,
+    ]
+  );
+
   const deleteProject = useCallback(async (projectId: string) => {
     const wsId = activeWorkspace?.id;
     if (!db || !wsId || !isAdmin || !user) return;
@@ -1709,6 +1857,8 @@ export function useNexusStore() {
       updateDocumentNonBlocking(ref, { allowedUserIds, updatedAt: new Date().toISOString() });
     },
     updateProject,
+    moveProjectToProgram,
+    moveTask,
     updateProjectPipelines: async (projectId: string, pipelines: Pipeline[]) => {
       if (!pipelines.length) return;
       await updateProject(projectId, { pipelines });

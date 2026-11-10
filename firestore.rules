@@ -171,24 +171,35 @@ service cloud.firestore {
 
           match /comments/{commentId} {
             allow read: if isSignedIn();
-            allow create: if isWorkspaceMember(workspaceId) &&
-                          request.resource.data.authorUserId == request.auth.uid;
-            allow update, delete: if isWorkspaceMember(workspaceId) &&
-                                  resource.data.authorUserId == request.auth.uid;
+            // Admins may create/delete any comment when moving tasks across projects.
+            allow create: if isWorkspaceMember(workspaceId) && (
+              request.resource.data.authorUserId == request.auth.uid
+              || isWorkspaceAdmin(workspaceId)
+            );
+            allow update: if isWorkspaceMember(workspaceId) &&
+              resource.data.authorUserId == request.auth.uid;
+            allow delete: if isWorkspaceAdmin(workspaceId)
+              || (isWorkspaceMember(workspaceId) && resource.data.authorUserId == request.auth.uid);
           }
 
           match /audits/{auditId} {
             allow read: if isSignedIn();
-            allow create: if isWorkspaceMember(workspaceId)
-              && request.resource.data.actorUserId == request.auth.uid;
-            allow update, delete: if false;
+            allow create: if isWorkspaceMember(workspaceId) && (
+              request.resource.data.actorUserId == request.auth.uid
+              || isWorkspaceAdmin(workspaceId)
+            );
+            allow update: if false;
+            allow delete: if isWorkspaceAdmin(workspaceId);
           }
 
           match /timeLogs/{logId} {
             allow read: if isSignedIn();
-            allow create: if isWorkspaceMember(workspaceId)
-              && request.resource.data.userId == request.auth.uid;
-            allow update, delete: if false;
+            allow create: if isWorkspaceMember(workspaceId) && (
+              request.resource.data.userId == request.auth.uid
+              || isWorkspaceAdmin(workspaceId)
+            );
+            allow update: if false;
+            allow delete: if isWorkspaceAdmin(workspaceId);
           }
         }
       }

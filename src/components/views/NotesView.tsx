@@ -568,33 +568,47 @@ export function NotesView({ store }: { store: any }) {
           <Pin className="mb-2 h-3.5 w-3.5 text-slate-600" />
         )}
         {note.title ? (
-          <h4 className="pr-20 text-sm font-semibold text-slate-900">{note.title}</h4>
+          <h4 className="pr-20 line-clamp-3 text-sm font-semibold text-slate-900">{note.title}</h4>
         ) : null}
         {noteBodyHasContent(note.body) ? (
-          <NoteHtmlPreview html={note.body} className={cn(note.title && 'mt-2')} />
+          <NoteHtmlPreview
+            html={note.body}
+            clamp
+            className={cn(note.title && 'mt-2')}
+          />
         ) : null}
         {checklist.length > 0 && (
-          <ul
+          <div
             className={cn(
-              'space-y-1.5 text-sm text-slate-800',
+              'relative max-h-[240px] overflow-hidden',
               (note.title || noteBodyHasContent(note.body)) && 'mt-3'
             )}
           >
-            {checklist.slice(0, 8).map((item) => (
-              <li key={item.id} className="flex items-start gap-2">
-                <span
-                  className={cn(
-                    'mt-0.5 h-3.5 w-3.5 shrink-0 rounded border border-slate-500/50',
-                    item.done && 'bg-slate-700'
-                  )}
-                />
-                <span className={cn(item.done && 'line-through text-slate-500')}>{item.text}</span>
-              </li>
-            ))}
-            {checklist.length > 8 && (
-              <li className="text-xs text-slate-500">+{checklist.length - 8} more</li>
+            <ul className="space-y-1.5 text-sm text-slate-800">
+              {checklist.slice(0, 12).map((item) => (
+                <li key={item.id} className="flex items-start gap-2">
+                  <span
+                    className={cn(
+                      'mt-0.5 h-3.5 w-3.5 shrink-0 rounded border border-slate-500/50',
+                      item.done && 'bg-slate-700'
+                    )}
+                  />
+                  <span className={cn('break-words', item.done && 'line-through text-slate-500')}>
+                    {item.text}
+                  </span>
+                </li>
+              ))}
+              {checklist.length > 12 && (
+                <li className="text-xs text-slate-500">+{checklist.length - 12} more</li>
+              )}
+            </ul>
+            {checklist.length > 6 && (
+              <div
+                aria-hidden
+                className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-black/[0.06] to-transparent"
+              />
             )}
-          </ul>
+          </div>
         )}
         <div className="mt-3 flex items-center justify-between gap-2 text-[10px] text-slate-500">
           <span className="truncate">{note.createdByName}</span>
@@ -735,6 +749,7 @@ export function NotesView({ store }: { store: any }) {
                   onChange={setDraftBody}
                   placeholder="Take a note…"
                   minHeightClass="min-h-[80px]"
+                  maxHeightClass="max-h-[280px]"
                 />
               )}
               <div className="flex flex-wrap items-center justify-between gap-3 border-t border-black/5 pt-3">
@@ -826,7 +841,7 @@ export function NotesView({ store }: { store: any }) {
       >
         <DialogContent
           className={cn(
-            'max-w-lg border-0 sm:rounded-2xl',
+            'max-h-[90vh] max-w-lg overflow-y-auto border-0 sm:rounded-2xl',
             editing && colorClasses(editColor).bg
           )}
         >
@@ -902,6 +917,7 @@ export function NotesView({ store }: { store: any }) {
                   placeholder="Note"
                   disabled={!canEdit(editing)}
                   minHeightClass="min-h-[140px]"
+                  maxHeightClass="max-h-[min(50vh,420px)]"
                 />
               )}
               {canEdit(editing) && <ColorPicker value={editColor} onChange={setEditColor} />}
