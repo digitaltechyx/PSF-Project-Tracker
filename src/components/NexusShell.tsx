@@ -479,8 +479,8 @@ export function NexusShell() {
       </aside>
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col relative">
-        <header className="h-16 border-b border-border/60 flex items-center justify-between px-4 md:px-6 bg-card/80 backdrop-blur-xl sticky top-0 z-20">
+      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+        <header className="z-20 flex h-16 shrink-0 items-center justify-between border-b border-border/60 bg-card/80 px-4 backdrop-blur-xl md:px-6">
           <div className="flex items-center gap-3 min-w-0">
             <Button
               variant="ghost"
@@ -529,7 +529,7 @@ export function NexusShell() {
           </div>
         </header>
 
-        <main className="flex-1 overflow-auto app-main-surface p-4 md:p-6 lg:p-8">
+        <main className="app-main-surface min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-6 lg:p-8">
           {currentView === 'dashboard' && (
             <DashboardView
               store={store}

@@ -221,8 +221,8 @@ export function ProjectView({ store }: { store: any }) {
   if (!activeProject) return null;
 
   return (
-    <div className="flex flex-col h-full gap-5 max-w-[1600px] mx-auto w-full">
-      <div className="rounded-2xl border border-border/60 bg-card/80 shadow-sm p-3 md:p-4 space-y-3">
+    <div className="mx-auto flex h-full min-h-0 w-full max-w-[1600px] flex-col gap-5">
+      <div className="shrink-0 space-y-3 rounded-2xl border border-border/60 bg-card/80 p-3 shadow-sm md:p-4">
         <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
             <div className="view-toolbar w-fit">
@@ -540,9 +540,9 @@ export function ProjectView({ store }: { store: any }) {
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
+      <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden pb-4">
         {store.isTasksLoading ? (
-          <div className="h-full flex flex-col items-center justify-center space-y-4">
+          <div className="flex h-full flex-col items-center justify-center space-y-4">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
             <p className="text-sm text-muted-foreground">Loading tasks...</p>
           </div>
@@ -577,7 +577,7 @@ export function ProjectView({ store }: { store: any }) {
             currentUser={store.currentUser}
           />
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-[340px_1fr] gap-4 h-full">
+          <div className="grid h-full grid-cols-1 gap-4 lg:grid-cols-[340px_1fr]">
             <Calendar
               mode="single"
               selected={selectedDay}
