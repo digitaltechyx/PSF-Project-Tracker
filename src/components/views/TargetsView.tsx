@@ -116,8 +116,10 @@ export function TargetsView({ store }: { store: any }) {
     copyTargetAsProject,
     updateTargetsAccess,
     workspaceProjects,
+    workspacePrograms,
     workspaceMembers,
     activeWorkspace,
+    activeProgramId,
     isAdmin,
     currentUser,
   } = store;
@@ -137,6 +139,7 @@ export function TargetsView({ store }: { store: any }) {
   const [copyOpen, setCopyOpen] = useState(false);
   const [copyMode, setCopyMode] = useState<'task' | 'project'>('task');
   const [copyTarget, setCopyTarget] = useState<Target | null>(null);
+  const [copyProgramId, setCopyProgramId] = useState('');
   const [copyProjectId, setCopyProjectId] = useState('');
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -152,6 +155,12 @@ export function TargetsView({ store }: { store: any }) {
   const targets: Target[] = workspaceTargets || [];
   const members = workspaceMembers || [];
   const projects = workspaceProjects || [];
+  const programs = workspacePrograms || [];
+
+  const copyProjectsInProgram = useMemo(
+    () => projects.filter((p: any) => p.programId === copyProgramId),
+    [projects, copyProgramId]
+  );
 
   const nonAdminMembers = useMemo(
     () =>
@@ -223,15 +232,24 @@ export function TargetsView({ store }: { store: any }) {
   };
 
   const openCopyTask = (t: Target) => {
+    const progId =
+      activeProgramId ||
+      programs[0]?.id ||
+      projects[0]?.programId ||
+      '';
+    const projectsInProg = projects.filter((p: any) => p.programId === progId);
     setCopyTarget(t);
     setCopyMode('task');
-    setCopyProjectId(projects[0]?.id || '');
+    setCopyProgramId(progId);
+    setCopyProjectId(projectsInProg[0]?.id || projects[0]?.id || '');
     setCopyOpen(true);
   };
 
   const openCopyProject = (t: Target) => {
     setCopyTarget(t);
     setCopyMode('project');
+    setCopyProgramId(activeProgramId || programs[0]?.id || '');
+    setCopyProjectId('');
     setCopyOpen(true);
   };
 
@@ -394,15 +412,35 @@ export function TargetsView({ store }: { store: any }) {
     setSaving(true);
     try {
       if (copyMode === 'project') {
-        const projId = await copyTargetAsProject(copyTarget.id);
+        if (!copyProgramId) {
+          toast({ variant: 'destructive', title: 'Choose a program' });
+          setSaving(false);
+          return;
+        }
+        const prog = programs.find((p: any) => p.id === copyProgramId);
+        const projId = await copyTargetAsProject(copyTarget.id, {
+          programId: copyProgramId,
+        });
         if (!projId) throw new Error('Project was not created');
-        toast({ title: 'Copied as project', description: 'Original target is unchanged.' });
+        toast({
+          title: 'Copied as project',
+          description: prog
+            ? `Created under “${prog.name}”. Original target is unchanged.`
+            : 'Original target is unchanged.',
+        });
       } else {
+        if (!copyProgramId) {
+          toast({ variant: 'destructive', title: 'Choose a program' });
+          setSaving(false);
+          return;
+        }
         if (!copyProjectId) {
           toast({ variant: 'destructive', title: 'Choose a project' });
           setSaving(false);
           return;
         }
+        const dest = projects.find((p: any) => p.id === copyProjectId);
+        const prog = programs.find((p: any) => p.id === copyProgramId);
         const taskId = await copyTargetAsTask({
           projectId: copyProjectId,
           title: copyTarget.title,
@@ -411,7 +449,13 @@ export function TargetsView({ store }: { store: any }) {
           assigneeUserIds: currentUser?.id ? [currentUser.id] : [],
         });
         if (!taskId) throw new Error('Task was not created');
-        toast({ title: 'Copied as task', description: 'Original target is unchanged.' });
+        toast({
+          title: 'Copied as task',
+          description:
+            prog && dest
+              ? `Created in ${prog.name} / ${dest.name}. Original target is unchanged.`
+              : 'Original target is unchanged.',
+        });
       }
       setCopyOpen(false);
       unlockUi();
@@ -567,7 +611,7 @@ export function TargetsView({ store }: { store: any }) {
                               afterMenu(() => openCopyProject(t));
                             }}
                           >
-                            <FolderPlus className="h-4 w-4 mr-2" /> Copy as project
+                            <FolderPlus className="h-4 w-4 mr-2" /> Copy as project…
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             onSelect={(e) => {
@@ -889,33 +933,76 @@ export function TargetsView({ store }: { store: any }) {
               Creates a {copyMode} from “{copyTarget?.title}”. The original target stays as-is.
             </DialogDescription>
           </DialogHeader>
-          {copyMode === 'task' && (
-            <div className="space-y-3 py-2">
-              <Label>Project</Label>
-              {projects.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No projects available.</p>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Program</Label>
+              {programs.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No programs available.</p>
               ) : (
-                <Select value={copyProjectId} onValueChange={setCopyProjectId}>
+                <Select
+                  value={copyProgramId}
+                  onValueChange={(id) => {
+                    setCopyProgramId(id);
+                    if (copyMode === 'task') {
+                      const nextProjects = projects.filter((p: any) => p.programId === id);
+                      setCopyProjectId(nextProjects[0]?.id || '');
+                    }
+                  }}
+                >
                   <SelectTrigger>
-                    <SelectValue placeholder="Choose project" />
+                    <SelectValue placeholder="Choose program" />
                   </SelectTrigger>
                   <SelectContent>
-                    {projects.map((p: any) => (
-                      <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                    {programs.map((p: any) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.name}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               )}
             </div>
-          )}
-          {copyMode === 'project' && (
-            <p className="text-sm text-muted-foreground py-2">
-              A new project will be created with this target’s title and description. Sub-targets become tasks.
-            </p>
-          )}
+
+            {copyMode === 'task' && (
+              <div className="space-y-2">
+                <Label>Project</Label>
+                {copyProjectsInProgram.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    No projects in this program. Create a project first, or pick another program.
+                  </p>
+                ) : (
+                  <Select value={copyProjectId} onValueChange={setCopyProjectId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Choose project" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {copyProjectsInProgram.map((p: any) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+            )}
+
+            {copyMode === 'project' && (
+              <p className="text-sm text-muted-foreground">
+                A new project will be created in the selected program. Sub-targets become tasks inside it.
+              </p>
+            )}
+          </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCopyOpen(false)}>Cancel</Button>
-            <Button onClick={handleCopy} disabled={saving || (copyMode === 'task' && !copyProjectId)}>
+            <Button
+              onClick={() => void handleCopy()}
+              disabled={
+                saving ||
+                !copyProgramId ||
+                (copyMode === 'task' && !copyProjectId)
+              }
+            >
               {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               {copyMode === 'project' ? 'Create project copy' : 'Create task copy'}
             </Button>

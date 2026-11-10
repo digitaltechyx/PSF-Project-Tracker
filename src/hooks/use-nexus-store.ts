@@ -1697,51 +1697,70 @@ export function useNexusStore() {
     });
   }, [activeWorkspace?.id, createTask, user?.uid]);
 
-  const copyTargetAsProject = useCallback(async (targetId: string) => {
-    const wsId = activeWorkspace?.id;
-    if (!db || !wsId || !user) throw new Error('No workspace');
-    const target = workspaceTargets.find((t) => t.id === targetId);
-    if (!target) throw new Error('Target not found');
+  const copyTargetAsProject = useCallback(
+    async (targetId: string, opts?: { programId?: string | null }) => {
+      const wsId = activeWorkspace?.id;
+      if (!db || !wsId || !user) throw new Error('No workspace');
+      const target = workspaceTargets.find((t) => t.id === targetId);
+      if (!target) throw new Error('Target not found');
 
-    let programId = activeProgramId || programs[0]?.id || null;
-    if (!programId) {
-      programId = await createProgram({
-        name: 'General',
-        description: 'Default program',
-        color: '#64748b',
-      });
-    }
+      let programId =
+        opts?.programId || activeProgramId || programs[0]?.id || null;
+      if (opts?.programId && !programs.some((p) => p.id === opts.programId)) {
+        throw new Error('Selected program not found.');
+      }
+      if (!programId) {
+        programId = await createProgram({
+          name: 'General',
+          description: 'Default program',
+          color: '#64748b',
+        });
+      }
 
-    const projRef = doc(collection(db, 'workspaces', wsId, 'projects'));
-    const projData: Project = {
-      id: projRef.id,
-      workspaceId: wsId,
-      programId,
-      name: target.title,
-      description: target.description || '',
-      color: '#' + Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0'),
-      allowedUserIds: [user.uid],
-      createdByUserId: user.uid,
-      pipelines: DEFAULT_PIPELINES.map((p) => ({ ...p })),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    await setDocumentNonBlocking(projRef, projData, { merge: true });
+      const projRef = doc(collection(db, 'workspaces', wsId, 'projects'));
+      const projData: Project = {
+        id: projRef.id,
+        workspaceId: wsId,
+        programId,
+        name: target.title,
+        description: target.description || '',
+        color: '#' + Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0'),
+        allowedUserIds: [user.uid],
+        createdByUserId: user.uid,
+        pipelines: DEFAULT_PIPELINES.map((p) => ({ ...p })),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      await setDocumentNonBlocking(projRef, projData, { merge: true });
 
-    for (const sub of target.subTargets || []) {
-      await createTask(wsId, projRef.id, {
-        title: sub.title,
-        description: `Copied from target: ${target.title}`,
-        status: 'todo',
-        priority: 'medium',
-        dueDate: sub.endDate || target.endDate || null,
-        assigneeUserIds: [user.uid],
-        tags: ['from-target'],
-      });
-    }
+      for (const sub of target.subTargets || []) {
+        await createTask(wsId, projRef.id, {
+          title: sub.title,
+          description: `Copied from target: ${target.title}`,
+          status: 'todo',
+          priority: 'medium',
+          dueDate: sub.endDate || target.endDate || null,
+          assigneeUserIds: [user.uid],
+          tags: ['from-target'],
+        });
+      }
 
-    return projRef.id;
-  }, [db, activeWorkspace?.id, user, workspaceTargets, createTask, activeProgramId, programs, createProgram]);
+      if (programId) setActiveProgramId(programId);
+      setActiveProjectId(projRef.id);
+
+      return projRef.id;
+    },
+    [
+      db,
+      activeWorkspace?.id,
+      user,
+      workspaceTargets,
+      createTask,
+      activeProgramId,
+      programs,
+      createProgram,
+    ]
+  );
 
   const endBreak = useCallback(async (): Promise<{ ok: boolean; reason?: string }> => {
     const wsId = activeWorkspace?.id;
