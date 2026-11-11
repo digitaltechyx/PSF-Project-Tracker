@@ -317,7 +317,15 @@ export function useNexusStore() {
 
   const projectTasks = useMemo(() => {
     if (!activeProject) return [];
-    return allWorkspaceTasks.filter(t => t.projectId === activeProject.id);
+    return allWorkspaceTasks
+      .filter((t) => t.projectId === activeProject.id)
+      .slice()
+      .sort((a, b) => {
+        const ao = typeof a.sortOrder === 'number' ? a.sortOrder : Date.parse(a.createdAt || '') || 0;
+        const bo = typeof b.sortOrder === 'number' ? b.sortOrder : Date.parse(b.createdAt || '') || 0;
+        if (ao !== bo) return ao - bo;
+        return (a.title || '').localeCompare(b.title || '');
+      });
   }, [allWorkspaceTasks, activeProject]);
 
   const membersQuery = useMemoFirebase(() => {
@@ -618,12 +626,22 @@ export function useNexusStore() {
     const canCreateTask = await hasWorkspaceAdminAccess(wsId);
     if (!canCreateTask) throw new Error('Only admins can create tasks.');
     const taskRef = doc(collection(db, 'workspaces', wsId, 'projects', projectId, 'tasks'));
+    const siblings = allWorkspaceTasks.filter((t) => t.projectId === projectId);
+    const maxOrder = siblings.reduce((max, t) => {
+      const order =
+        typeof t.sortOrder === 'number' ? t.sortOrder : Date.parse(t.createdAt || '') || 0;
+      return Math.max(max, order);
+    }, 0);
+    const sortOrder =
+      typeof data?.sortOrder === 'number' ? data.sortOrder : maxOrder + 1000;
+    const { sortOrder: _ignored, ...rest } = data || {};
     const taskData = {
       id: taskRef.id,
       workspaceId: wsId,
       projectId,
       totalLoggedMs: 0,
-      ...data,
+      ...rest,
+      sortOrder,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -662,7 +680,30 @@ export function useNexusStore() {
       console.error("Failed to create task:", e);
       return null;
     }
-  }, [db, user, hasWorkspaceAdminAccess]);
+  }, [db, user, hasWorkspaceAdminAccess, allWorkspaceTasks]);
+
+  /** Persist a new list order for tasks in a project (admin). */
+  const reorderTasks = useCallback(
+    async (projectId: string, orderedTaskIds: string[]) => {
+      if (!db || !user || !isAdmin) throw new Error('Only admins can reorder tasks.');
+      if (!projectId || !orderedTaskIds.length) return;
+      const now = new Date().toISOString();
+      const wsId = activeWorkspace?.id;
+      await Promise.all(
+        orderedTaskIds.map((taskId, index) => {
+          const existing = allWorkspaceTasks.find((t) => t.id === taskId);
+          const taskWs = existing?.workspaceId || wsId;
+          const taskProjectId = existing?.projectId || projectId;
+          if (!taskWs || !taskProjectId) return Promise.resolve();
+          return updateDocumentNonBlocking(
+            doc(db, 'workspaces', taskWs, 'projects', taskProjectId, 'tasks', taskId),
+            { sortOrder: (index + 1) * 1000, updatedAt: now }
+          );
+        })
+      );
+    },
+    [db, user, isAdmin, activeWorkspace?.id, allWorkspaceTasks]
+  );
 
   const updateTask = useCallback((
     taskId: string,
@@ -1884,6 +1925,7 @@ export function useNexusStore() {
     },
     deleteProject,
     createTask,
+    reorderTasks,
     updateTask,
     createSubtask,
     updateSubtask,

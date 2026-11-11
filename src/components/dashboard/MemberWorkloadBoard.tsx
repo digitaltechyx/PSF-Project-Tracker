@@ -8,6 +8,26 @@ import { cn } from '@/lib/utils';
 import { isTaskClosed } from '@/lib/pipelines';
 import { Layers, Box, ListTodo, ChevronDown, ChevronRight } from 'lucide-react';
 
+type ProjectStat = {
+  id: string;
+  name: string;
+  color: string;
+  tasksTotal: number;
+  tasksDone: number;
+  tasksOpen: number;
+  completionRate: number;
+};
+
+type ProgramStat = {
+  id: string;
+  name: string;
+  color: string;
+  projectCount: number;
+  tasksTotal: number;
+  tasksDone: number;
+  projects: ProjectStat[];
+};
+
 type MemberRow = {
   userId: string;
   displayName: string;
@@ -19,14 +39,7 @@ type MemberRow = {
   completionRate: number;
   projectIds: string[];
   programIds: string[];
-  programs: Array<{
-    id: string;
-    name: string;
-    color: string;
-    projectCount: number;
-    tasksTotal: number;
-    tasksDone: number;
-  }>;
+  programs: ProgramStat[];
 };
 
 export function MemberWorkloadBoard({
@@ -94,21 +107,49 @@ export function MemberWorkloadBoard({
               : projectIds.filter(
                   (pid) => (projectById.get(pid) as any)?.programId === programId
                 );
-            const relatedSet = new Set(relatedProjectIds);
-            const progTasks = assigned.filter((t: any) => relatedSet.has(t.projectId));
-            const progDone = progTasks.filter((t: any) =>
-              isTaskClosed(t, projects)
-            ).length;
+
+            const projectStats: ProjectStat[] = relatedProjectIds
+              .map((pid) => {
+                const project = projectById.get(pid) as any;
+                if (!project) return null;
+                const projectTasks = assigned.filter((t: any) => t.projectId === pid);
+                const projectDone = projectTasks.filter((t: any) =>
+                  isTaskClosed(t, projects)
+                ).length;
+                const projectTotal = projectTasks.length;
+                return {
+                  id: pid,
+                  name: project.name,
+                  color: project.color || '#64748b',
+                  tasksTotal: projectTotal,
+                  tasksDone: projectDone,
+                  tasksOpen: projectTotal - projectDone,
+                  completionRate:
+                    projectTotal > 0 ? (projectDone / projectTotal) * 100 : 0,
+                } as ProjectStat;
+              })
+              .filter(Boolean)
+              .sort((a, b) => {
+                if (!a || !b) return 0;
+                if (b.tasksOpen !== a.tasksOpen) return b.tasksOpen - a.tasksOpen;
+                if (b.tasksTotal !== a.tasksTotal) return b.tasksTotal - a.tasksTotal;
+                return a.name.localeCompare(b.name);
+              }) as ProjectStat[];
+
+            const progTasksTotal = projectStats.reduce((sum, p) => sum + p.tasksTotal, 0);
+            const progTasksDone = projectStats.reduce((sum, p) => sum + p.tasksDone, 0);
+
             return {
               id: programId,
               name: prog.name,
               color: prog.color || '#64748b',
-              projectCount: relatedProjectIds.length,
-              tasksTotal: progTasks.length,
-              tasksDone: progDone,
-            };
+              projectCount: projectStats.length,
+              tasksTotal: progTasksTotal,
+              tasksDone: progTasksDone,
+              projects: projectStats,
+            } as ProgramStat;
           })
-          .filter(Boolean) as MemberRow['programs'];
+          .filter(Boolean) as ProgramStat[];
 
         return {
           userId: m.userId,
@@ -129,12 +170,6 @@ export function MemberWorkloadBoard({
         return b.tasksTotal - a.tasksTotal;
       });
   }, [workspaceMembers, workspacePrograms, workspaceProjects, allWorkspaceTasks]);
-
-  const projectById = useMemo(() => {
-    const map = new Map<string, any>();
-    for (const p of workspaceProjects || []) map.set(p.id, p);
-    return map;
-  }, [workspaceProjects]);
 
   if (!rows.length) {
     return (
@@ -227,9 +262,6 @@ export function MemberWorkloadBoard({
                         prog.tasksTotal > 0
                           ? (prog.tasksDone / prog.tasksTotal) * 100
                           : 0;
-                      const projectsInProg = row.projectIds
-                        .map((id) => projectById.get(id))
-                        .filter((p) => p && p.programId === prog.id);
                       return (
                         <div
                           key={prog.id}
@@ -253,25 +285,45 @@ export function MemberWorkloadBoard({
                             </span>
                           </button>
                           <Progress value={rate} className="mt-2 h-1" />
-                          {projectsInProg.length > 0 && (
-                            <div className="mt-2 flex flex-wrap gap-1.5">
-                              {projectsInProg.map((p: any) => (
+
+                          {prog.projects.length > 0 ? (
+                            <div className="mt-3 space-y-2">
+                              {prog.projects.map((project) => (
                                 <button
-                                  key={p.id}
+                                  key={project.id}
                                   type="button"
-                                  className={cn(
-                                    'inline-flex items-center gap-1 rounded-full border border-border/60 bg-white px-2 py-0.5 text-[11px] hover:border-primary/40'
-                                  )}
-                                  onClick={() => onNavigateToProject?.(p.id)}
+                                  className="flex w-full items-center gap-3 rounded-lg border border-border/50 bg-white px-2.5 py-2 text-left transition hover:border-primary/40"
+                                  onClick={() => onNavigateToProject?.(project.id)}
                                 >
                                   <span
-                                    className="h-1.5 w-1.5 rounded-full"
-                                    style={{ backgroundColor: p.color }}
+                                    className="h-2 w-2 shrink-0 rounded-full"
+                                    style={{ backgroundColor: project.color }}
                                   />
-                                  {p.name}
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <span className="truncate text-xs font-medium">
+                                        {project.name}
+                                      </span>
+                                      <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
+                                        {project.tasksDone}/{project.tasksTotal} ·{' '}
+                                        {Math.round(project.completionRate)}%
+                                      </span>
+                                    </div>
+                                    <Progress
+                                      value={project.completionRate}
+                                      className="mt-1.5 h-1"
+                                    />
+                                    <p className="mt-1 text-[10px] text-muted-foreground">
+                                      {project.tasksOpen} open · {project.tasksDone} done
+                                    </p>
+                                  </div>
                                 </button>
                               ))}
                             </div>
+                          ) : (
+                            <p className="mt-2 text-[11px] text-muted-foreground">
+                              No projects linked for this member yet.
+                            </p>
                           )}
                         </div>
                       );

@@ -121,6 +121,15 @@ export function ProjectView({ store }: { store: any }) {
     assigneeFilter,
   ]);
 
+  // Reorder only when the full list is visible (filters would break global order).
+  const canReorderTasks = Boolean(
+    store.isAdmin &&
+      statusFilter === 'all' &&
+      priorityFilter === 'all' &&
+      assigneeFilter === 'all' &&
+      !(store.globalSearchQuery || '').trim()
+  );
+
   const dayTasks = useMemo(() => {
     if (!selectedDay) return [];
     const key = selectedDay.toISOString().slice(0, 10);
@@ -537,6 +546,12 @@ export function ProjectView({ store }: { store: any }) {
           <span className="font-medium text-foreground">{filteredTasks.length}</span> tasks
           <span className="text-border">·</span>
           <span>{pipelines.length} statuses</span>
+          {canReorderTasks && (
+            <>
+              <span className="text-border">·</span>
+              <span>Drag ⋮⋮ to reorder</span>
+            </>
+          )}
         </div>
       </div>
 
@@ -551,6 +566,19 @@ export function ProjectView({ store }: { store: any }) {
             tasks={filteredTasks}
             onTaskClick={(id) => store.openTask?.(id)}
             updateTask={store.updateTask}
+            canReorder={canReorderTasks}
+            reorderTasks={async (orderedIds) => {
+              if (!activeProject?.id) return;
+              try {
+                await store.reorderTasks(activeProject.id, orderedIds);
+              } catch (e: any) {
+                toast({
+                  variant: 'destructive',
+                  title: 'Could not save order',
+                  description: e?.message,
+                });
+              }
+            }}
             readOnly={false}
             subtasks={store.allWorkspaceSubtasks}
             workspaceMembers={store.workspaceMembers}

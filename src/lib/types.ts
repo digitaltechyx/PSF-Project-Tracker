@@ -161,6 +161,8 @@ export interface Task {
   dueDate?: string | null;
   assigneeUserIds?: string[];
   tags?: string[];
+  /** Manual list order within a project (lower = higher in list). */
+  sortOrder?: number;
   /** Sum of checkout time logs (ms). */
   totalLoggedMs?: number;
   createdAt: string;
